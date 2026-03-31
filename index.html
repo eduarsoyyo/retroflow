@@ -65,6 +65,7 @@ const PHASES = [
   { id:'individual', label:'Análisis Individual', icon:'✍️' },
   { id:'discuss', label:'Puesta en Común', icon:'💬' },
   { id:'actions', label:'Accionables', icon:'🎯' },
+  { id:'risks', label:'Riesgos', icon:'⚠️' },
   { id:'dashboard', label:'Dashboard', icon:'📊' },
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
@@ -151,7 +152,7 @@ const DEFAULT_TASKS = TIPO_INFO.tasks.map(t => ({ id: uid(), text: t, done: fals
 
 /* ═══ REALTIME STATE ═══ */
 function useRealtime(user) {
-  const [state, setState] = useState({ notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null} });
+  const [state, setState] = useState({ notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks() });
   const [online, setOnline] = useState({});
   const [cursors, setCursors] = useState({});
   const chRef = useRef(null);
@@ -228,10 +229,11 @@ function useRealtime(user) {
   }, [user]);
 
   const reset = useCallback(() => {
-    const fresh = { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null} };
+    const currentRisks = stRef.current.risks || [];
+    const fresh = { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:currentRisks };
     setState(fresh);
     if (chRef.current && user) {
-      Object.keys(fresh).forEach(k => {
+      ['notes','tasks','actions','obj'].forEach(k => {
         chRef.current.send({ type:'broadcast', event:'sync', payload:{ key:k, data:fresh[k], from:user.id } });
       });
     }
@@ -308,6 +310,43 @@ function saveUser(user) {
 }
 function clearUser() {
   try { localStorage.removeItem('rf-user-' + SALA); } catch {}
+}
+
+// ── Risk persistence per sala (survives across retros) ──
+function loadRisks() {
+  try { const s = localStorage.getItem('rf-risks-' + SALA); return s ? JSON.parse(s) : []; } catch { return []; }
+}
+function saveRisks(risks) {
+  try { localStorage.setItem('rf-risks-' + SALA, JSON.stringify(risks)); } catch {}
+}
+
+const RISK_LEVELS = [
+  { id: 'alto', label: 'Alto', color: '#FF3B30', val: 3 },
+  { id: 'medio', label: 'Medio', color: '#FF9500', val: 2 },
+  { id: 'bajo', label: 'Bajo', color: '#34C759', val: 1 },
+];
+const RISK_STATUS = [
+  { id: 'open', label: 'Abierto', color: '#FF3B30' },
+  { id: 'mitigating', label: 'Mitigando', color: '#FF9500' },
+  { id: 'mitigated', label: 'Mitigado', color: '#34C759' },
+  { id: 'accepted', label: 'Aceptado', color: '#8E8E93' },
+];
+
+function getRiskLevel(votes) {
+  if (!votes || Object.keys(votes).length === 0) return RISK_LEVELS[1];
+  const counts = { alto: 0, medio: 0, bajo: 0 };
+  Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+  const max = Math.max(counts.alto, counts.medio, counts.bajo);
+  if (counts.alto === max) return RISK_LEVELS[0];
+  if (counts.medio === max) return RISK_LEVELS[1];
+  return RISK_LEVELS[2];
+}
+
+function getHeatColor(impLvl, probLvl) {
+  const score = impLvl.val * probLvl.val;
+  if (score >= 6) return '#FF3B30';
+  if (score >= 3) return '#FF9500';
+  return '#34C759';
 }
 
 function RoomPicker() {
@@ -708,6 +747,7 @@ function RetroBoard({ user, onLogout }) {
   const sT = d => upd('tasks',d);
   const sA = d => upd('actions',d);
   const sO = d => upd('obj',d);
+  const sR = d => { upd('risks',d); saveRisks(d); };
 
   const fileRef = useRef(null);
 
@@ -750,6 +790,7 @@ function RetroBoard({ user, onLogout }) {
         if (data.tasks) upd('tasks', data.tasks);
         if (data.actions) upd('actions', data.actions);
         if (data.obj) upd('obj', data.obj);
+        if (data.risks) { upd('risks', data.risks); saveRisks(data.risks); }
       } catch (err) { console.error('Error cargando retro:', err); }
     };
     reader.readAsText(file);
@@ -761,7 +802,8 @@ function RetroBoard({ user, onLogout }) {
     if (phase===1) return html`<${Board} notes=${state.notes} sN=${sN} user=${user} filter="all" />`;
     if (phase===2) return html`<${P3} notes=${state.notes} sN=${sN} user=${user} />`;
     if (phase===3) return html`<${P4} notes=${state.notes} actions=${state.actions} sA=${sA} user=${user} />`;
-    if (phase===4) return html`<${P5} notes=${state.notes} actions=${state.actions} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} />`;
+    if (phase===4) return html`<${P5Risks} risks=${state.risks} sR=${sR} notes=${state.notes} user=${user} />`;
+    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} />`;
     return null;
   };
 
@@ -1030,8 +1072,201 @@ function P4({ notes, actions, sA, user }) {
   `;
 }
 
-/* ═══ PHASE 5: DASHBOARD + PDF ═══ */
-function P5({ notes, actions, users, user, obj, tasks }) {
+/* ═══ PHASE 5: RISKS ═══ */
+function P5Risks({ risks, sR, notes, user }) {
+  const [form, setForm] = useState({ text:'', mitigation:'', owner:'' });
+  const [eId, setEId] = useState(null);
+  const [eF, setEF] = useState({});
+
+  const badStopNotes = notes.filter(n => n.category === 'bad' || n.category === 'stop').sort((a,b) => (b.voters?.length||0) - (a.voters?.length||0));
+
+  const addRisk = (fromNote) => {
+    const text = fromNote ? fromNote.text : form.text;
+    if (!text.trim()) return;
+    sR([...risks, { id:uid(), text:text.trim(), mitigation:form.mitigation||'', owner:form.owner||'Sin asignar', status:'open', impactVotes:{}, probVotes:{}, fromNote:fromNote?.id||null, createdBy:user.id }]);
+    if (!fromNote) setForm({ text:'', mitigation:'', owner:'' });
+  };
+
+  const toggleFromNote = (note) => {
+    const ex = risks.find(r => r.fromNote === note.id);
+    if (ex) sR(risks.filter(r => r.fromNote !== note.id));
+    else addRisk(note);
+  };
+
+  const voteImpact = (riskId, level) => {
+    sR(risks.map(r => {
+      if (r.id !== riskId) return r;
+      const v = { ...(r.impactVotes||{}) };
+      v[user.id] = v[user.id] === level ? undefined : level;
+      if (!v[user.id]) delete v[user.id];
+      return { ...r, impactVotes: v };
+    }));
+  };
+
+  const voteProb = (riskId, level) => {
+    sR(risks.map(r => {
+      if (r.id !== riskId) return r;
+      const v = { ...(r.probVotes||{}) };
+      v[user.id] = v[user.id] === level ? undefined : level;
+      if (!v[user.id]) delete v[user.id];
+      return { ...r, probVotes: v };
+    }));
+  };
+
+  const updateStatus = (id, st) => sR(risks.map(r => r.id===id ? {...r, status:st} : r));
+  const delRisk = (id) => sR(risks.filter(r => r.id !== id));
+  const saveEdit = () => { sR(risks.map(r => r.id===eId ? {...r,...eF} : r)); setEId(null); };
+
+  const openRisks = risks.filter(r => r.status !== 'mitigated');
+  const mitigatedRisks = risks.filter(r => r.status === 'mitigated');
+
+  // Heat map data
+  const heatData = openRisks.map(r => ({
+    ...r,
+    impLvl: getRiskLevel(r.impactVotes),
+    probLvl: getRiskLevel(r.probVotes),
+  }));
+
+  return html`
+    <div style=${{ maxWidth:1000, margin:'0 auto' }}>
+      <!-- Heat map + table layout -->
+      <div style=${{ display:'grid', gridTemplateColumns:'280px 1fr', gap:14, marginBottom:14 }}>
+        <!-- Heat Map Matrix -->
+        <div style=${{ ...cS, padding:'18px' }}>
+          <h3 style=${{ fontSize:14, fontWeight:700, marginBottom:12 }}>⚠️ Mapa de calor</h3>
+          <div style=${{ position:'relative' }}>
+            <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:2 }}>
+              ${['alto','medio','bajo'].map(prob =>
+                ['bajo','medio','alto'].map(imp => {
+                  const probLvl = RISK_LEVELS.find(l=>l.id===prob);
+                  const impLvl = RISK_LEVELS.find(l=>l.id===imp);
+                  const color = getHeatColor(impLvl, probLvl);
+                  const inCell = heatData.filter(r => r.impLvl.id===imp && r.probLvl.id===prob);
+                  return html`
+                    <div key=${prob+imp} style=${{ background:color+'20', border:'1px solid '+color+'30', borderRadius:6, padding:6, minHeight:50, display:'flex', flexWrap:'wrap', gap:3, alignContent:'flex-start' }}>
+                      ${inCell.map((r,i) => html`
+                        <div key=${r.id} style=${{ width:24, height:24, borderRadius:12, background:color, color:'#FFF', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #FFF' }} title=${r.text}>R${risks.indexOf(r)+1}</div>
+                      `)}
+                    </div>`;
+                })
+              )}
+            </div>
+            <div style=${{ display:'flex', justifyContent:'space-between', marginTop:4, fontSize:9, color:'#86868B' }}>
+              <span>Bajo</span><span>Medio</span><span>Alto</span>
+            </div>
+            <div style=${{ position:'absolute', left:-18, top:0, bottom:20, display:'flex', flexDirection:'column', justifyContent:'space-between', fontSize:9, color:'#86868B' }}>
+              <span>A</span><span>M</span><span>B</span>
+            </div>
+            <div style=${{ textAlign:'center', fontSize:9, color:'#86868B', marginTop:2 }}>IMPACTO →</div>
+            <div style=${{ position:'absolute', left:-28, top:'40%', transform:'rotate(-90deg)', fontSize:9, color:'#86868B' }}>PROB.</div>
+          </div>
+        </div>
+
+        <!-- Risk list -->
+        <div style=${{ ...cS, padding:'18px' }}>
+          <h3 style=${{ fontSize:14, fontWeight:700, marginBottom:10 }}>📋 Registro de riesgos (${openRisks.length} abiertos)</h3>
+          <!-- New risk form -->
+          <div style=${{ display:'flex', gap:5, marginBottom:14, flexWrap:'wrap' }}>
+            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Descripción del riesgo..." style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
+            <input value=${form.mitigation} onInput=${e=>setForm({...form,mitigation:e.target.value})} placeholder="Mitigación" style=${{ ...iS, flex:1, minWidth:100, fontSize:13 }} />
+            <input value=${form.owner} onInput=${e=>setForm({...form,owner:e.target.value})} placeholder="Owner" style=${{ ...iS, width:80, flex:'none', fontSize:13 }} />
+            <button onClick=${()=>addRisk(null)} style=${bP}>+ Riesgo</button>
+          </div>
+          <!-- Risk items -->
+          <div style=${{ display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
+            ${openRisks.map((r, idx) => {
+              const imp = getRiskLevel(r.impactVotes);
+              const prob = getRiskLevel(r.probVotes);
+              const hc = getHeatColor(imp, prob);
+              const st = RISK_STATUS.find(s=>s.id===r.status) || RISK_STATUS[0];
+
+              if (eId===r.id) return html`
+                <div key=${r.id} style=${{ padding:'12px', borderRadius:12, background:'#F9F9FB', border:'2px solid #007AFF30', animation:'fadeIn .2s' }}>
+                  <div style=${{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 }}>
+                    <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:12 }} />
+                    <input value=${eF.mitigation} onInput=${e=>setEF({...eF,mitigation:e.target.value})} placeholder="Mitigación" style=${{ ...iS, flex:1, minWidth:100, fontSize:12 }} />
+                    <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, width:80, flex:'none', fontSize:12 }} />
+                  </div>
+                  <div style=${{ display:'flex', gap:5 }}><button onClick=${saveEdit} style=${{ ...bP, padding:'6px 14px', fontSize:11 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'6px 12px', fontSize:11 }}>Cancelar</button></div>
+                </div>`;
+
+              return html`
+                <div key=${r.id} style=${{ padding:'10px 12px', borderRadius:12, background:'#FFF', border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc }}>
+                  <div style=${{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:6 }}>
+                    <span style=${{ fontSize:12, fontWeight:800, color:hc, minWidth:28 }}>R${idx+1}</span>
+                    <div style=${{ flex:1 }}>
+                      <p style=${{ fontSize:12, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
+                      ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
+                    </div>
+                    <span style=${{ fontSize:11, fontWeight:600, color:'#007AFF' }}>${r.owner}</span>
+                  </div>
+                  <!-- Voting -->
+                  <div style=${{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+                    <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
+                      <span style=${{ fontSize:10, color:'#86868B', fontWeight:600, minWidth:50 }}>Impacto:</span>
+                      ${RISK_LEVELS.map(l => {
+                        const myVote = r.impactVotes?.[user.id];
+                        const count = Object.values(r.impactVotes||{}).filter(v=>v===l.id).length;
+                        return html`<button key=${l.id} onClick=${()=>voteImpact(r.id,l.id)} style=${{ padding:'2px 7px', borderRadius:5, border:myVote===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:myVote===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color }}>${l.label}${count>0?' '+count:''}</button>`;
+                      })}
+                    </div>
+                    <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
+                      <span style=${{ fontSize:10, color:'#86868B', fontWeight:600, minWidth:35 }}>Prob:</span>
+                      ${RISK_LEVELS.map(l => {
+                        const myVote = r.probVotes?.[user.id];
+                        const count = Object.values(r.probVotes||{}).filter(v=>v===l.id).length;
+                        return html`<button key=${l.id} onClick=${()=>voteProb(r.id,l.id)} style=${{ padding:'2px 7px', borderRadius:5, border:myVote===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:myVote===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color }}>${l.label}${count>0?' '+count:''}</button>`;
+                      })}
+                    </div>
+                    <div style=${{ display:'flex', gap:3, marginLeft:'auto' }}>
+                      <select value=${r.status} onChange=${e=>updateStatus(r.id,e.target.value)} style=${{ padding:'3px 6px', borderRadius:5, border:'1px solid '+st.color+'30', background:st.color+'10', color:st.color, fontSize:9, fontWeight:600, outline:'none' }}>
+                        ${RISK_STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+                      </select>
+                      <button onClick=${()=>{setEId(r.id);setEF({text:r.text,mitigation:r.mitigation,owner:r.owner})}} style=${{ border:'none', background:'none', fontSize:12, color:'#86868B', cursor:'pointer' }}>✏️</button>
+                      <button onClick=${()=>delRisk(r.id)} style=${{ border:'none', background:'none', fontSize:12, color:'#C7C7CC', cursor:'pointer' }}>✕</button>
+                    </div>
+                  </div>
+                </div>`;
+            })}
+          </div>
+          ${mitigatedRisks.length > 0 && html`
+            <details style=${{ marginTop:12 }}>
+              <summary style=${{ fontSize:11, color:'#86868B', cursor:'pointer', fontWeight:600 }}>✅ Mitigados (${mitigatedRisks.length})</summary>
+              <div style=${{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
+                ${mitigatedRisks.map(r => html`
+                  <div key=${r.id} style=${{ padding:'6px 10px', borderRadius:8, background:'#F0FFF4', border:'1px solid #34C75920', fontSize:11, color:'#86868B', textDecoration:'line-through', display:'flex', justifyContent:'space-between' }}>
+                    <span>${r.text}</span><span>🛡️ ${r.mitigation}</span>
+                  </div>
+                `)}
+              </div>
+            </details>
+          `}
+        </div>
+      </div>
+
+      <!-- Bad/Stop notes to convert -->
+      ${badStopNotes.length > 0 && html`
+        <div style=${{ ...cS, padding:'18px' }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas Bad/Stop — clic para convertir en riesgo</h4>
+          <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para añadir / quitar del registro</p>
+          <div style=${{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            ${badStopNotes.slice(0,10).map(n => {
+              const ct = CATS.find(c=>c.id===n.category);
+              const linked = risks.some(r => r.fromNote === n.id);
+              return html`<button key=${n.id} onClick=${()=>toggleFromNote(n)} style=${{ padding:'8px 10px', borderRadius:9, background:linked?'#1D1D1F':ct.bg, border:'1px solid '+(linked?'#1D1D1F':ct.color+'18'), textAlign:'left', maxWidth:220, transition:'all .2s' }}>
+                <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}><span style=${{ fontSize:10 }}>${ct.emoji}</span><span style=${{ fontSize:10, fontWeight:700, color:linked?'#FFF':ct.color }}>👍 ${n.voters?.length||0}</span>${linked&&html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700 }}>✓ Riesgo</span>`}</div>
+                <p style=${{ fontSize:10, color:linked?'#CCC':'#1D1D1F', lineHeight:1.3, margin:0 }}>${n.text}</p>
+              </button>`;
+            })}
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+/* ═══ PHASE 6: DASHBOARD + PDF ═══ */
+function P6({ notes, actions, risks, users, user, obj, tasks }) {
   // Build ranking from notes (not from online users — so it works even if someone disconnects)
   const authorMap = {};
   notes.forEach(n => {
@@ -1047,6 +1282,7 @@ function P5({ notes, actions, users, user, obj, tasks }) {
   const mx=ranking[0]?.score||1;
   const tN=notes.length; const tV=notes.reduce((s,n)=>s+(n.voters?.length||0),0);
   const tD=tasks.filter(t=>t.done).length; const aD=actions.filter(a=>a.status==='done').length;
+  const openRisks=risks.filter(r=>r.status!=='mitigated');
   const medals=['🥇','🥈','🥉']; const priO={high:3,medium:2,low:1};
   const objL=obj.met===true?'Cumplido ✅':obj.met===false?'No cumplido ❌':obj.met==='partial'?'Parcial ⚠️':'Sin evaluar';
 
@@ -1058,7 +1294,7 @@ function P5({ notes, actions, users, user, obj, tasks }) {
 <div style="text-align:center;margin-bottom:8px"><span style="font-size:32px">🔄</span></div>
 <h1 style="text-align:center">RetroFlow — ${SALA_DISPLAY}</h1>
 <p style="text-align:center;color:#86868B;font-size:13px;margin-bottom:24px">${fd(new Date())}</p>
-<div class="sum"><div class="cd"><div class="v" style="color:#007AFF">${tN}</div><div class="l">Notas</div></div><div class="cd"><div class="v" style="color:#FF9500">${tV}</div><div class="l">Votos</div></div><div class="cd"><div class="v" style="color:#34C759">${aD}/${actions.length}</div><div class="l">Accionables</div></div><div class="cd"><div class="v" style="color:${obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'};font-size:14px">${objL}</div><div class="l">Objetivo</div></div></div>
+<div class="sum"><div class="cd"><div class="v" style="color:#007AFF">${tN}</div><div class="l">Notas</div></div><div class="cd"><div class="v" style="color:#FF9500">${tV}</div><div class="l">Votos</div></div><div class="cd"><div class="v" style="color:#34C759">${aD}/${actions.length}</div><div class="l">Accionables</div></div><div class="cd"><div class="v" style="color:#FF3B30">${openRisks.length}</div><div class="l">Riesgos</div></div><div class="cd"><div class="v" style="color:${obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'};font-size:14px">${objL}</div><div class="l">Objetivo</div></div></div>
 ${obj.text?'<h2>🎯 Objetivo</h2><p style="margin-bottom:16px">'+obj.text+'</p>':''}
 <h2>📋 Tareas (${tD}/${tasks.length})</h2><div class="br"><div class="fl" style="width:${tasks.length?(tD/tasks.length)*100:0}%;background:linear-gradient(90deg,#34C759,#007AFF)"></div></div>
 ${tasks.map(t=>'<div class="tk'+(t.done?' dn':'')+'">'+(t.done?'✅':'⬜')+' '+t.text+'</div>').join('')}
@@ -1066,6 +1302,8 @@ ${tasks.map(t=>'<div class="tk'+(t.done?' dn':'')+'">'+(t.done?'✅':'⬜')+' '+
 ${nc.map(c=>c.notes.length===0?'':'<div class="ct '+c.id+'"><h3 style="font-size:14px;font-weight:700;margin-bottom:8px">'+c.emoji+' '+c.label+' ('+c.notes.length+')</h3>'+c.notes.map(n=>'<div class="nt"><div style="flex:1">'+n.text+'</div><div style="font-size:11px;color:#86868B;white-space:nowrap;margin-left:12px">'+n.userAvatar+' '+n.userName+' · 👍 '+(n.voters?.length||0)+'</div></div>').join('')+'</div>').join('')}
 <h2>🎯 Accionables</h2>
 ${sa.length===0?'<p style="color:#86868B">No se definieron accionables</p>':sa.map(a=>{const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1];const st=STS.find(s=>s.id===a.status);return'<div class="ac"><div style="font-size:16px;width:24px;text-align:center">'+pr.icon+'</div><div style="flex:1"><strong>'+a.text+'</strong><div style="font-size:11px;color:#86868B">'+a.owner+(a.date?' · 📅 '+fd(a.date):'')+'</div></div><span class="bg" style="background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></div>'}).join('')}
+<h2>⚠️ Riesgos (${openRisks.length} abiertos)</h2>
+${risks.length===0?'<p style="color:#86868B">No se identificaron riesgos</p>':risks.map((r,i)=>{const imp=getRiskLevel(r.impactVotes);const prob=getRiskLevel(r.probVotes);const hc=getHeatColor(imp,prob);const st=RISK_STATUS.find(s=>s.id===r.status)||RISK_STATUS[0];return'<div class="ac" style="border-left:4px solid '+hc+'"><div style="font-weight:800;color:'+hc+';min-width:28px">R'+(i+1)+'</div><div style="flex:1"><strong>'+r.text+'</strong>'+(r.mitigation?'<div style="font-size:11px;color:#86868B">🛡️ '+r.mitigation+'</div>':'')+'<div style="font-size:11px;color:#86868B">Impacto: '+imp.label+' · Prob: '+prob.label+' · Owner: '+r.owner+'</div></div><span class="bg" style="background:'+st.color+'20;color:'+st.color+'">'+st.label+'</span></div>'}).join('')}
 <h2>🏆 Ranking</h2><p style="font-size:11px;color:#86868B;margin-bottom:12px">Tarjetas aportadas + votos recibidos</p>
 ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;text-align:center;font-size:18px">'+(i<3?medals[i]:(i+1)+'º')+'</div><div><strong>'+r.avatar+' '+r.name+'</strong> <span style="font-weight:800;color:#FFB800">'+r.score+' pts</span><div style="font-size:10px;color:#86868B">📝 '+r.tarjetas+' tarjetas · 👍 '+r.votosRecibidos+' votos recibidos</div></div></div>').join('')}
 <div style="margin-top:32px;text-align:center;color:#C7C7CC;font-size:11px">RetroFlow · ${new Date().toLocaleString('es-ES')}</div>
@@ -1079,8 +1317,8 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;text-align:center;f
       <div style=${{ display:'flex', justifyContent:'flex-end' }}>
         <button onClick=${exportPDF} style=${{ ...bP, background:'#007AFF', display:'flex', alignItems:'center', gap:6 }}>📄 Descargar informe PDF</button>
       </div>
-      <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
-        ${[{l:'Notas',v:tN,i:'📝',c:'#007AFF'},{l:'Votos',v:tV,i:'👍',c:'#FF9500'},{l:'Accionables',v:aD+'/'+actions.length,i:'🎯',c:'#34C759'},{l:'Objetivo',v:objL,i:'🏁',c:obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'}].map((s,i)=>html`
+      <div style=${{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10 }}>
+        ${[{l:'Notas',v:tN,i:'📝',c:'#007AFF'},{l:'Votos',v:tV,i:'👍',c:'#FF9500'},{l:'Accionables',v:aD+'/'+actions.length,i:'🎯',c:'#34C759'},{l:'Riesgos abiertos',v:openRisks.length,i:'⚠️',c:openRisks.length>0?'#FF3B30':'#34C759'},{l:'Objetivo',v:objL,i:'🏁',c:obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'}].map((s,i)=>html`
           <div key=${i} style=${{ ...cS, padding:18, textAlign:'center' }}><div style=${{ fontSize:24, marginBottom:6 }}>${s.i}</div><div style=${{ fontSize:24, fontWeight:800, color:s.c }}>${s.v}</div><div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${s.l}</div></div>`)}
       </div>
       <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
