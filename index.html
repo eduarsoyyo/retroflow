@@ -242,15 +242,18 @@ function useRealtime(user) {
 
 /* ═══ APP ═══ */
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => params.has('sala') ? loadUser() : null);
+
+  const handleJoin = (u) => { saveUser(u); setUser(u); };
+  const handleLogout = () => { clearUser(); setUser(null); };
 
   // No sala → admin sees picker, others see "pide el enlace"
   if (!params.has('sala')) {
     if (IS_ADMIN) return html`<${RoomPicker} />`;
     return html`<${NeedLink} />`;
   }
-  if (!user) return html`<${Login} onJoin=${setUser} />`;
-  return html`<${RetroBoard} user=${user} />`;
+  if (!user) return html`<${Login} onJoin=${handleJoin} />`;
+  return html`<${RetroBoard} user=${user} onLogout=${handleLogout} />`;
 }
 
 /* ═══ NEED LINK SCREEN ═══ */
@@ -279,14 +282,32 @@ const DEFAULT_ROOMS = [
 ];
 
 function loadRooms() {
+  try { const s = localStorage.getItem('rf-rooms'); return s ? JSON.parse(s) : DEFAULT_ROOMS; } catch { return DEFAULT_ROOMS; }
+}
+function saveRooms(rooms) {
+  try { localStorage.setItem('rf-rooms', JSON.stringify(rooms)); } catch {}
+}
+function loadMetrics() {
+  try { return JSON.parse(localStorage.getItem('rf-metrics') || '{}'); } catch { return {}; }
+}
+function saveMetricEntry(sala, entry) {
   try {
-    const saved = localStorage.getItem('retroflow-rooms');
-    return saved ? JSON.parse(saved) : DEFAULT_ROOMS;
-  } catch { return DEFAULT_ROOMS; }
+    const m = loadMetrics();
+    if (!m[sala]) m[sala] = [];
+    m[sala].push(entry);
+    localStorage.setItem('rf-metrics', JSON.stringify(m));
+  } catch {}
 }
 
-function saveRooms(rooms) {
-  try { localStorage.setItem('retroflow-rooms', JSON.stringify(rooms)); } catch {}
+// ── User identity: persist per sala so you don't duplicate ──
+function loadUser() {
+  try { const s = localStorage.getItem('rf-user-' + SALA); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveUser(user) {
+  try { localStorage.setItem('rf-user-' + SALA, JSON.stringify(user)); } catch {}
+}
+function clearUser() {
+  try { localStorage.removeItem('rf-user-' + SALA); } catch {}
 }
 
 function RoomPicker() {
@@ -294,15 +315,16 @@ function RoomPicker() {
   const [tipo, setTipo] = useState('agile');
   const [rooms, setRooms] = useState(loadRooms);
   const [tab, setTab] = useState('dashboard');
-  const [metrics] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('retroflow-metrics') || '{}'); } catch { return {}; }
-  });
+  const [metrics] = useState(loadMetrics);
 
   const go = (slug, t) => { window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(slug) + '&tipo=' + (t || 'agile'); };
   const create = () => {
     if (!room.trim()) return;
     const slug = room.trim().toLowerCase().replace(/\s+/g, '-');
-    if (!rooms.find(r => r.slug === slug)) { const u = [...rooms, { name: room.trim(), slug, tipo }]; setRooms(u); saveRooms(u); }
+    if (!rooms.find(r => r.slug === slug)) {
+      const u = [...rooms, { name: room.trim(), slug, tipo }];
+      setRooms(u); saveRooms(u);
+    }
     go(slug, tipo);
   };
   const remove = (slug) => { const u = rooms.filter(r => r.slug !== slug); setRooms(u); saveRooms(u); };
@@ -651,7 +673,7 @@ function Login({ onJoin }) {
 }
 
 /* ═══ RETRO BOARD ═══ */
-function RetroBoard({ user }) {
+function RetroBoard({ user, onLogout }) {
   const { state, upd, online, cursors, moveCursor, reset } = useRealtime(user);
   const [phase, setPhase] = useState(0);
   const [timer, setTimer] = useState(900);
@@ -698,13 +720,11 @@ function RetroBoard({ user }) {
     a.click();
     URL.revokeObjectURL(a.href);
 
-    // Log metrics for admin dashboard
+    // Save metrics to localStorage for admin dashboard
     try {
-      const metrics = JSON.parse(localStorage.getItem('retroflow-metrics') || '{}');
-      if (!metrics[SALA]) metrics[SALA] = [];
       const participants = [...new Set(state.notes.map(n => n.userId))];
       const participantNames = [...new Set(state.notes.map(n => n.userName))];
-      metrics[SALA].push({
+      saveMetricEntry(SALA, {
         date: new Date().toISOString(),
         notes: state.notes.length,
         participants: participants.length,
@@ -712,11 +732,10 @@ function RetroBoard({ user }) {
         actions: state.actions.length,
         actionsDone: state.actions.filter(a => a.status === 'done').length,
         votes: state.notes.reduce((s, n) => s + (n.voters?.length || 0), 0),
-        objective: state.obj?.met || null,
+        objective: state.obj?.met != null ? String(state.obj.met) : null,
         tasksDone: state.tasks.filter(t => t.done).length,
         tasksTotal: state.tasks.length,
       });
-      localStorage.setItem('retroflow-metrics', JSON.stringify(metrics));
     } catch {}
   };
 
@@ -792,6 +811,7 @@ function RetroBoard({ user }) {
         <div style=${{ display:'flex', alignItems:'center' }}>
           ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:28, height:28, borderRadius:14, background:u.color, border:'2px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, marginLeft:i>0?-5:0, zIndex:10-i }}>${u.avatar}</div>`)}
           ${uList.length>0 && html`<span style=${{ fontSize:11, color:'#86868B', marginLeft:8 }}>${uList.length} online</span>`}
+          <button onClick=${onLogout} style=${{ marginLeft:6, padding:'3px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, color:'#86868B', cursor:'pointer' }} title="Cambiar usuario">👤 ${user.name} ✕</button>
         </div>
       </header>
       <div style=${{ padding:'8px 18px', display:'flex', gap:4, flexShrink:0, background:'#FFF', borderBottom:'1px solid #E5E5EA', overflowX:'auto' }}>
