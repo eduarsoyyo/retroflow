@@ -377,13 +377,26 @@ function RoomPicker() {
   const allParticipants = [...new Set(allEntries.flatMap(e => e.participantNames || []))];
   const actionRate = totalActions > 0 ? Math.round((totalActionsDone / totalActions) * 100) : 0;
 
+  // Risk metrics across all salas
+  const allRisks = rooms.flatMap(r => {
+    try { const s = localStorage.getItem('rf-risks-' + r.slug); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  const totalRisksDetected = allRisks.length;
+  const totalRisksMitigated = allRisks.filter(r => r.status === 'mitigated').length;
+  const totalRisksOpen = allRisks.filter(r => r.status !== 'mitigated').length;
+
   const salaStats = rooms.map(r => {
     const rm = metrics[r.slug] || [];
+    let salaRisks = [];
+    try { const s = localStorage.getItem('rf-risks-' + r.slug); salaRisks = s ? JSON.parse(s) : []; } catch {}
     return { ...r, retros: rm.length,
       notes: rm.reduce((s, e) => s + (e.notes || 0), 0),
       actions: rm.reduce((s, e) => s + (e.actions || 0), 0),
       done: rm.reduce((s, e) => s + (e.actionsDone || 0), 0),
       votes: rm.reduce((s, e) => s + (e.votes || 0), 0),
+      risksOpen: salaRisks.filter(x => x.status !== 'mitigated').length,
+      risksMitigated: salaRisks.filter(x => x.status === 'mitigated').length,
+      risksTotal: salaRisks.length,
       parts: [...new Set(rm.flatMap(e => e.participantNames || []))],
       avgP: rm.length > 0 ? (rm.reduce((s, e) => s + (e.participants || 0), 0) / rm.length).toFixed(1) : 0,
       last: rm.length > 0 ? rm[rm.length - 1] : null, entries: rm };
@@ -413,10 +426,10 @@ function RoomPicker() {
         ${tab === 'dashboard' ? html`
           ${totalRetros === 0 ? html`
             <!-- Empty state KPIs -->
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:16 }}>
+            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
               ${[
-                {l:'Retros',i:'📊'},{l:'Notas',i:'📝'},{l:'Votos',i:'👍'},
-                {l:'Accionables',i:'🎯'},{l:'Completados',i:'✅'},{l:'Personas',i:'👥'},
+                {l:'Proyectos',i:'📂'},{l:'Retros',i:'📊'},{l:'Notas',i:'📝'},{l:'Votos',i:'👍'},
+                {l:'Accionables',i:'🎯'},{l:'Completados',i:'✅'},{l:'Riesgos',i:'⚠️'},{l:'Personas',i:'👥'},
               ].map((k,i) => html`
                 <div key=${i} style=${{ ...cS, padding:'14px 8px', textAlign:'center', opacity:0.5 }}>
                   <div style=${{ fontSize:18, marginBottom:4 }}>${k.i}</div>
@@ -471,13 +484,15 @@ function RoomPicker() {
             </div>
           ` : html`
             <!-- KPIs -->
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:16 }}>
+            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
               ${[
+                {v:rooms.length,l:'Proyectos',c:'#5856D6',i:'📂'},
                 {v:totalRetros,l:'Retros',c:'#007AFF',i:'📊'},
                 {v:totalNotes,l:'Notas',c:'#34C759',i:'📝'},
                 {v:totalVotes,l:'Votos',c:'#FF9500',i:'👍'},
                 {v:totalActions,l:'Accionables',c:'#5856D6',i:'🎯'},
                 {v:actionRate+'%',l:'Completados',c:actionRate>50?'#34C759':'#FF9500',i:'✅'},
+                {v:totalRisksDetected,l:'Riesgos ('+totalRisksMitigated+' mitigados)',c:totalRisksOpen>0?'#FF3B30':'#34C759',i:'⚠️'},
                 {v:allParticipants.length,l:'Personas',c:'#FF2D55',i:'👥'},
               ].map((k,i) => html`
                 <div key=${i} style=${{ ...cS, padding:'14px 8px', textAlign:'center' }}>
@@ -578,7 +593,7 @@ function RoomPicker() {
                 <table style=${{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
                   <thead>
                     <tr style=${{ borderBottom:'2px solid #E5E5EA' }}>
-                      ${['Proyecto','Tipo','Retros','Notas','Votos','Accionables','% Hecho','Participantes','Última'].map(h=>html`
+                      ${['Proyecto','Tipo','Retros','Notas','Votos','Accionables','% Hecho','Riesgos','Participantes','Última'].map(h=>html`
                         <th key=${h} style=${{ padding:'7px 8px', textAlign:'left', fontWeight:700, color:'#86868B', fontSize:9, textTransform:'uppercase' }}>${h}</th>
                       `)}
                     </tr>
@@ -604,6 +619,12 @@ function RoomPicker() {
                               </div>
                               <span style=${{ fontSize:10, fontWeight:600, color:cr>=70?'#34C759':cr>=40?'#FF9500':'#FF3B30' }}>${cr}%</span>
                             </div>
+                          </td>
+                          <td style=${{ padding:'8px' }}>
+                            ${s.risksTotal > 0 ? html`
+                              <span style=${{ fontWeight:600, color:s.risksOpen>0?'#FF3B30':'#34C759' }}>${s.risksOpen}</span>
+                              <span style=${{ fontSize:9, color:'#86868B' }}>/${s.risksTotal}</span>
+                            ` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>—</span>`}
                           </td>
                           <td style=${{ padding:'8px' }}><span style=${{ fontWeight:600 }}>${s.parts.length}</span> <span style=${{ fontSize:9, color:'#86868B' }}>(${s.avgP}/retro)</span></td>
                           <td style=${{ padding:'8px', color:'#86868B', fontSize:10 }}>${s.last?fd(s.last.date):'—'}</td>
