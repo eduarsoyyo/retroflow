@@ -263,7 +263,7 @@ function useRealtime(user) {
 function App() {
   const [user, setUser] = useState(() => params.has('sala') ? loadUser() : null);
 
-  const handleJoin = (u) => { saveUser(u); setUser(u); };
+  const handleJoin = (u) => { saveUser(u); registerUser(u); setUser(u); };
   const handleLogout = () => { clearUser(); setUser(null); };
 
   // No sala → admin sees picker, others see "pide el enlace"
@@ -327,6 +327,25 @@ function saveUser(user) {
 }
 function clearUser() {
   try { localStorage.removeItem('rf-user-' + SALA); } catch {}
+}
+
+// ── User registry per sala (for admin visibility + duplicate prevention) ──
+function loadUserRegistry(sala) {
+  try { const s = localStorage.getItem('rf-reg-' + (sala || SALA)); return s ? JSON.parse(s) : []; } catch { return []; }
+}
+function registerUser(user) {
+  try {
+    const reg = loadUserRegistry();
+    const existing = reg.findIndex(u => u.id === user.id);
+    if (existing >= 0) reg[existing] = { ...reg[existing], name: user.name, avatar: user.avatar, color: user.color, lastSeen: new Date().toISOString() };
+    else reg.push({ id: user.id, name: user.name, avatar: user.avatar, color: user.color, firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString() });
+    localStorage.setItem('rf-reg-' + SALA, JSON.stringify(reg));
+  } catch {}
+}
+function isNameTaken(name) {
+  const reg = loadUserRegistry();
+  const saved = loadUser();
+  return reg.some(u => u.name.toLowerCase() === name.toLowerCase() && (!saved || u.id !== saved.id));
 }
 
 // ── Risk persistence per sala (survives across retros) ──
@@ -686,6 +705,7 @@ function RoomPicker() {
                 const rm=metrics[r.slug]||[];
                 const rTipo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
                 const link=window.location.origin+window.location.pathname+'?sala='+r.slug+'&tipo='+(r.tipo||'agile');
+                const users = loadUserRegistry(r.slug);
                 return html`
                 <div key=${r.slug} style=${{ ...cS }}>
                   <div style=${{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px' }}>
@@ -700,14 +720,32 @@ function RoomPicker() {
                     <button onClick=${()=>remove(r.slug)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC', flexShrink:0, padding:'4px' }}>✕</button>
                   </div>
                   ${rm.length>0 && html`
-                    <div style=${{ padding:'0 16px 12px', display:'flex', gap:12, flexWrap:'wrap' }}>
+                    <div style=${{ padding:'0 16px 8px', display:'flex', gap:12, flexWrap:'wrap' }}>
                       <span style=${{ fontSize:11, color:'#86868B' }}>📊 ${rm.length} retros</span>
                       <span style=${{ fontSize:11, color:'#86868B' }}>📝 ${rm.reduce((s,e)=>s+(e.notes||0),0)} notas</span>
                       <span style=${{ fontSize:11, color:'#86868B' }}>👥 ${[...new Set(rm.flatMap(e=>e.participantNames||[]))].length} personas</span>
                       <span style=${{ fontSize:11, color:'#86868B' }}>📅 ${fd(rm[rm.length-1].date)}</span>
                     </div>
                   `}
-                  ${rm.length===0 && html`<div style=${{ padding:'0 16px 12px' }}><span style=${{ fontSize:11, color:'#C7C7CC' }}>Sin retros guardadas</span></div>`}
+                  ${rm.length===0 && html`<div style=${{ padding:'0 16px 8px' }}><span style=${{ fontSize:11, color:'#C7C7CC' }}>Sin retros guardadas</span></div>`}
+                  ${users.length > 0 && html`
+                    <div style=${{ padding:'0 16px 12px' }}>
+                      <details>
+                        <summary style=${{ fontSize:11, color:'#86868B', cursor:'pointer', fontWeight:600 }}>👥 Usuarios registrados (${users.length})</summary>
+                        <div style=${{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
+                          ${users.map(u => html`
+                            <div key=${u.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:8, background:'#F9F9FB' }}>
+                              <div style=${{ width:24, height:24, borderRadius:12, background:u.color||'#007AFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>${u.avatar||'👤'}</div>
+                              <div style=${{ flex:1 }}>
+                                <span style=${{ fontSize:12, fontWeight:600 }}>${u.name}</span>
+                              </div>
+                              <span style=${{ fontSize:9, color:'#C7C7CC' }}>${u.lastSeen ? fd(u.lastSeen) : ''}</span>
+                            </div>
+                          `)}
+                        </div>
+                      </details>
+                    </div>
+                  `}
                 </div>`;
               })}
             </div>
@@ -723,7 +761,25 @@ function Login({ onJoin }) {
   const [nm, setNm] = useState('');
   const [av, setAv] = useState(AVATARS[Math.floor(Math.random()*12)]);
   const [col, setCol] = useState(COLRS[Math.floor(Math.random()*8)]);
-  const go = () => nm.trim() && onJoin({ id:uid(), name:nm.trim(), avatar:av, color:col });
+  const [warn, setWarn] = useState(null);
+
+  const handleName = (val) => { setNm(val); setWarn(null); };
+
+  const go = () => {
+    if (!nm.trim()) return;
+    const taken = isNameTaken(nm.trim());
+    if (taken && !warn) {
+      setWarn(nm.trim());
+      return;
+    }
+    onJoin({ id: uid(), name: nm.trim(), avatar: av, color: col });
+  };
+
+  const recoverIdentity = () => {
+    const reg = loadUserRegistry();
+    const found = reg.find(u => u.name.toLowerCase() === nm.trim().toLowerCase());
+    if (found) onJoin({ id: found.id, name: found.name, avatar: found.avatar, color: found.color });
+  };
 
   return html`
     <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -733,8 +789,17 @@ function Login({ onJoin }) {
           <h1 class="wm" style=${{ fontSize:30, marginBottom:3 }}>revelio</h1>
           <p style=${{ color:'#86868B', fontSize:14 }}>Revela lo que tu equipo necesita</p>
         </div>
-        <input value=${nm} onInput=${e=>setNm(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}
-          placeholder="Tu nombre..." style=${{ ...iS, marginBottom:18, textAlign:'center', fontSize:16, background:'#FFF' }} />
+        <input value=${nm} onInput=${e=>handleName(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}
+          placeholder="Tu nombre..." style=${{ ...iS, marginBottom: warn ? 8 : 18, textAlign:'center', fontSize:16, background:'#FFF', borderColor: warn ? '#FF9500' : '#E5E5EA' }} />
+        ${warn && html`
+          <div style=${{ background:'#FFF8EB', border:'1.5px solid #FF950030', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
+            <p style=${{ fontSize:12, color:'#FF9500', fontWeight:600, marginBottom:6 }}>⚠️ "${warn}" ya existe en esta sala</p>
+            <div style=${{ display:'flex', gap:6 }}>
+              <button onClick=${recoverIdentity} style=${{ ...bP, padding:'7px 14px', fontSize:11, background:'#007AFF', flex:1 }}>Soy yo, recuperar</button>
+              <button onClick=${()=>{setWarn(null);go()}} style=${{ ...bS, padding:'7px 14px', fontSize:11, flex:1 }}>Entrar como nuevo</button>
+            </div>
+          </div>
+        `}
         <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Avatar</p>
         <div style=${{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:14 }}>
           ${AVATARS.map(a => html`<button key=${a} onClick=${()=>setAv(a)} style=${{ width:40, height:40, borderRadius:11, border:av===a?'2.5px solid '+col:'2px solid #E5E5EA', background:av===a?col+'10':'#FFF', fontSize:19, display:'flex', alignItems:'center', justifyContent:'center' }}>${a}</button>`)}
