@@ -1,22 +1,29 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>revelio</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/comfortaa@5.0.18/latin-400.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-36 -36 72 72'><rect x='-36' y='-36' width='72' height='72' rx='18' fill='%235856D6'/><circle cx='0' cy='0' r='6' fill='white'/><circle cx='0' cy='0' r='15' fill='none' stroke='white' stroke-width='2.5' opacity='0.8'/><circle cx='0' cy='0' r='24' fill='none' stroke='white' stroke-width='2' opacity='0.5'/></svg>">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>revelio — retrospectiva mágica</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&display=swap">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #F5F5F7; color: #1D1D1F; }
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
-  input:focus, textarea:focus, select:focus { border-color: #007AFF !important; outline: none; }
-  button { font-family: inherit; cursor: pointer; }
-  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-  .hl { transition: transform .15s, box-shadow .15s; }
-  .hl:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.07); }
-  .wm { font-family: 'Comfortaa', sans-serif; font-weight: 400; letter-spacing: 2px; background: linear-gradient(90deg,#007AFF,#5856D6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: inline-block; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,'Segoe UI',sans-serif; background:#F2F2F7; color:#1D1D1F; min-height:100vh; }
+  @keyframes fadeIn  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeInScale { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+  @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes spin    { to{transform:rotate(360deg)} }
+  .hl { transition:transform .15s,box-shadow .15s; }
+  .hl:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.08); }
+  .card { background:#FFF; border-radius:16px; padding:18px; box-shadow:0 2px 12px rgba(0,0,0,.05); animation:fadeIn .25s ease; }
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#C7C7CC; border-radius:3px; }
+  input,textarea,select { font-family:inherit; }
+  button { font-family:inherit; }
+  details > summary { list-style:none; }
+  details > summary::-webkit-details-marker { display:none; }
 </style>
 <script type="importmap">
 {
@@ -36,1609 +43,1239 @@ import { h, render } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import htm from 'htm';
 import { createClient } from '@supabase/supabase-js';
-
 const html = htm.bind(h);
 
-/* ═══ CREDENCIALES SUPABASE ═══ */
+/* ══════════════════════════════════════════════
+   SUPABASE
+══════════════════════════════════════════════ */
 const SUPABASE_URL = 'https://lvsfrynsnyofroscaxhl.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ZYRlCDmIE80AYrZWEeeWnw_hXWcg2rA';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ═══ CONSTANTS ═══ */
+/* ══════════════════════════════════════════════
+   URL PARAMS
+══════════════════════════════════════════════ */
+const params    = new URLSearchParams(location.search);
+const SALA_PARAM = params.get('sala');
+const SALA      = SALA_PARAM || 'general';
+const TIPO      = params.get('tipo') || 'agile';
+const IS_ADMIN  = params.has('admin');
+
+/* ══════════════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════════════ */
 const CATS = [
-  { id:'good', label:'Good', emoji:'✅', color:'#34C759', bg:'#F0FFF4' },
-  { id:'bad', label:'Bad', emoji:'❌', color:'#FF3B30', bg:'#FFF5F5' },
-  { id:'start', label:'Start', emoji:'🚀', color:'#007AFF', bg:'#EBF5FF' },
-  { id:'stop', label:'Stop', emoji:'🛑', color:'#FF9500', bg:'#FFF8EB' },
+  { id:'good',  label:'Bien',    emoji:'✅', color:'#34C759', bg:'#F0FFF4' },
+  { id:'bad',   label:'Mejorar', emoji:'❌', color:'#FF3B30', bg:'#FFF5F5' },
+  { id:'start', label:'Empezar', emoji:'🚀', color:'#007AFF', bg:'#EBF5FF' },
+  { id:'stop',  label:'Parar',   emoji:'🛑', color:'#FF9500', bg:'#FFF8EB' },
 ];
 const STS = [
-  { id:'pending', label:'Pendiente', color:'#FF9500', bg:'#FFF8EB' },
-  { id:'progress', label:'En progreso', color:'#007AFF', bg:'#EBF5FF' },
-  { id:'done', label:'Completado', color:'#34C759', bg:'#F0FFF4' },
-  { id:'discarded', label:'Descartado', color:'#8E8E93', bg:'#F2F2F7' },
+  { id:'pending',   label:'Pendiente',   color:'#FF9500', bg:'#FFF8EB' },
+  { id:'progress',  label:'En progreso', color:'#007AFF', bg:'#EBF5FF' },
+  { id:'done',      label:'Completado',  color:'#34C759', bg:'#F0FFF4' },
+  { id:'discarded', label:'Descartado',  color:'#8E8E93', bg:'#F2F2F7' },
 ];
 const PRIS = [
-  { id:'high', label:'Alta', icon:'🔴', color:'#FF3B30' },
+  { id:'high',   label:'Alta',  icon:'🔴', color:'#FF3B30' },
   { id:'medium', label:'Media', icon:'🟡', color:'#FF9500' },
-  { id:'low', label:'Baja', icon:'🟢', color:'#34C759' },
+  { id:'low',    label:'Baja',  icon:'🟢', color:'#34C759' },
 ];
 const PHASES = [
-  { id:'review', label:'Repaso Inicial', icon:'📋' },
-  { id:'individual', label:'Análisis Individual', icon:'✍️' },
-  { id:'discuss', label:'Puesta en Común', icon:'💬' },
-  { id:'risks', label:'Riesgos', icon:'⚠️' },
-  { id:'actions', label:'Accionables', icon:'🎯' },
-  { id:'dashboard', label:'Dashboard', icon:'📊' },
+  { id:'review',     label:'Repaso',      icon:'📋', hp:'Pensadero'         },
+  { id:'individual', label:'Análisis',    icon:'✍️',  hp:'Revelio notae!'    },
+  { id:'discuss',    label:'En Común',    icon:'💬', hp:'Priori Incantatem' },
+  { id:'risks',      label:'Riesgos',     icon:'⚠️',  hp:'Mapa Merodeador'   },
+  { id:'actions',    label:'Accionables', icon:'🎯', hp:'Expecto Patronum'   },
+  { id:'dashboard',  label:'Dashboard',   icon:'📊', hp:'Sombrero Selector'  },
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
-const REACTIONS = ['🔥','💡','❤️','😂','🎯','🤯'];
-const COLRS = ['#007AFF','#FF3B30','#34C759','#FF9500','#AF52DE','#FF2D55','#5856D6','#00C7BE'];
-const BADGES = [
-  { id:'first',label:'Primera Nota',icon:'🏅',c:s=>s.n>=1 },
-  { id:'prolific',label:'Prolífico',icon:'📝',c:s=>s.n>=5 },
-  { id:'voter',label:'Votante',icon:'🗳️',c:s=>s.vg>=3 },
-  { id:'hero',label:'Action Hero',icon:'⚡',c:s=>s.a>=1 },
-  { id:'balanced',label:'Equilibrado',icon:'⚖️',c:s=>s.cats>=4 },
-  { id:'star',label:'Superstar',icon:'⭐',c:s=>s.n>=8&&s.vg>=5 },
-];
-
-const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fd = d => d ? new Date(d).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '';
-
-/* ═══ STYLES ═══ */
-const gl = { background:'rgba(255,255,255,0.78)', backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)', border:'1px solid rgba(0,0,0,0.05)' };
-const bP = { padding:'11px 22px', borderRadius:12, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:14, fontWeight:600 };
-const bS = { padding:'10px 18px', borderRadius:12, border:'1.5px solid #E5E5EA', background:'#FFF', color:'#1D1D1F', fontSize:13, fontWeight:600 };
-const iS = { padding:'12px 16px', borderRadius:12, border:'1.5px solid #E5E5EA', fontSize:14, outline:'none', fontFamily:'inherit', width:'100%', boxSizing:'border-box', background:'#FAFAFA' };
-const cS = { background:'#FFF', borderRadius:20, border:'1.5px solid #E5E5EA', overflow:'hidden' };
-
-/* ═══ ROOM FROM URL ═══ */
-const params = new URLSearchParams(window.location.search);
-const SALA = params.get('sala') || 'general';
-const SALA_DISPLAY = SALA.charAt(0).toUpperCase() + SALA.slice(1);
-const TIPO = params.get('tipo') || 'agile';
-const IS_ADMIN = params.has('admin');
+const COLORS  = ['#007AFF','#FF3B30','#34C759','#FF9500','#AF52DE','#FF2D55','#5856D6','#00C7BE'];
+const EMOJIS  = ['❤️','👍','😂','😮','🔥','💡','⚠️','💯'];
 
 const TASK_TEMPLATES = {
-  agile: {
-    label: 'Agile / Scrum', icon: '🏃', color: '#007AFF',
-    tasks: [
-      'Completar historias de usuario planificadas',
-      'Resolver bugs / incidencias del sprint',
-      'Code reviews pendientes',
-      'Testing / QA de entregables',
-      'Actualizar documentación',
-      'Preparar demo del sprint',
-      'Actualizar y refinar backlog',
-    ]
-  },
-  waterfall: {
-    label: 'Waterfall', icon: '🏗️', color: '#5856D6',
-    tasks: [
-      'Revisar entregables de la fase actual',
-      'Validar cumplimiento de requisitos',
-      'Verificar documentación de diseño / técnica',
-      'Comprobar trazabilidad requisitos → pruebas',
-      'Revisar plan de proyecto vs. avance real',
-      'Gestionar solicitudes de cambio (CCB)',
-      'Preparar entregables de la siguiente fase',
-    ]
-  },
-  itil: {
-    label: 'ITIL / Servicio', icon: '🛎️', color: '#FF9500',
-    tasks: [
-      'Revisar SLAs y cumplimiento de niveles de servicio',
-      'Analizar incidencias recurrentes (gestión de problemas)',
-      'Revisar backlog de peticiones de servicio',
-      'Validar cambios implementados (PIR)',
-      'Actualizar CMDB / base de conocimiento',
-      'Revisar capacity y disponibilidad',
-      'Seguimiento de mejoras continuas (CSI)',
-    ]
-  },
-  kanban: {
-    label: 'Kanban', icon: '📋', color: '#34C759',
-    tasks: [
-      'Revisar WIP limits y cumplimiento',
-      'Analizar cuellos de botella detectados',
-      'Revisar lead time y cycle time',
-      'Validar entregables completados',
-      'Priorizar y refinar el backlog',
-      'Actualizar tablero y políticas de flujo',
-      'Identificar bloqueos y dependencias',
-    ]
-  },
+  agile:     { label:'Agile / Scrum',      icon:'🔄', color:'#007AFF',
+    tasks:['Completar historias planificadas','Resolver bugs del sprint','Code reviews','Testing / QA','Actualizar documentación','Preparar demo del sprint','Refinar backlog'] },
+  waterfall: { label:'Waterfall / PMO',    icon:'📐', color:'#5856D6',
+    tasks:['Cumplir hitos del plan','Actualizar cronograma','Gestionar dependencias','Control de cambios','Entregables revisados','Actas y minutas','Informe de estado'] },
+  itil:      { label:'ITIL / Operaciones', icon:'🛠️', color:'#34C759',
+    tasks:['SLAs cumplidos','Incidencias resueltas','Cambios sin incidente','CAB ejecutado','CMDB actualizada','Reportes de servicio','Revisión de problemas'] },
+  kanban:    { label:'Kanban / Flujo',     icon:'📌', color:'#FF9500',
+    tasks:['WIP límites respetados','Cycle time objetivo','Bloqueos resueltos','Tablero actualizado','Métricas de flujo','Mejora identificada','Entrega continua'] },
 };
 
-const TIPO_INFO = TASK_TEMPLATES[TIPO] || TASK_TEMPLATES.agile;
-const DEFAULT_TASKS = TIPO_INFO.tasks.map(t => ({ id: uid(), text: t, done: false }));
+/* ══════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════ */
+const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const fd   = d  => d ? new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}) : '';
+const fdt  = d  => d ? new Date(d).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
+const mkTasks = (tipo) => (TASK_TEMPLATES[tipo] || TASK_TEMPLATES.agile).tasks.map(t=>({id:uid(),text:t,done:false}));
 
-/* ═══ REALTIME STATE ═══ */
+/* ══════════════════════════════════════════════
+   SUPABASE DB LAYER
+══════════════════════════════════════════════ */
+
+// ── Rooms ──
+async function dbLoadRooms() {
+  try { const {data} = await supabase.from('rooms').select('*').order('created_at'); return data||[]; }
+  catch { return []; }
+}
+async function dbSaveRoom(slug, name, tipo) {
+  try { await supabase.from('rooms').upsert({slug,name,tipo}); } catch {}
+}
+async function dbDeleteRoom(slug) {
+  try { await supabase.from('rooms').delete().eq('slug',slug); } catch {}
+}
+
+// ── Retros (auto-save model) ──
+async function dbGetActiveRetro(sala) {
+  try {
+    const {data} = await supabase.from('retros')
+      .select('*').eq('sala',sala).eq('status','active')
+      .order('created_at',{ascending:false}).limit(1);
+    return data?.[0] || null;
+  } catch { return null; }
+}
+async function dbCreateRetro(sala, tipo, userId) {
+  try {
+    const {data} = await supabase.from('retros')
+      .insert({sala, tipo, status:'active', data:{}, created_by:userId})
+      .select().single();
+    return data;
+  } catch { return null; }
+}
+async function dbAutoSave(retroId, stateData) {
+  if (!retroId) return false;
+  try {
+    const {error} = await supabase.from('retros')
+      .update({data:stateData, updated_at:new Date().toISOString()})
+      .eq('id',retroId);
+    return !error;
+  } catch { return false; }
+}
+async function dbCloseRetro(retroId) {
+  if (!retroId) return;
+  try {
+    await supabase.from('retros')
+      .update({status:'closed', updated_at:new Date().toISOString()})
+      .eq('id',retroId);
+  } catch {}
+}
+async function dbGetRetrosForSala(sala) {
+  try {
+    const {data} = await supabase.from('retros')
+      .select('id,sala,tipo,status,created_at,updated_at,data')
+      .eq('sala',sala).order('created_at',{ascending:false}).limit(30);
+    return data||[];
+  } catch { return []; }
+}
+async function dbGetAllRetros() {
+  try {
+    const {data} = await supabase.from('retros')
+      .select('id,sala,tipo,status,created_at,updated_at,data')
+      .order('created_at',{ascending:false});
+    return data||[];
+  } catch { return []; }
+}
+
+// ── Risks (persist across retros) ──
+async function dbLoadRisks(sala) {
+  try {
+    const {data} = await supabase.from('risks').select('*').eq('sala',sala).order('created_at');
+    if (!data) return [];
+    return data.map(r=>({
+      id:r.id, text:r.text, mitigation:r.mitigation||'', owner:r.owner||'Sin asignar',
+      status:r.status||'open', impactVotes:r.impact_votes||{}, probVotes:r.prob_votes||{},
+      fromNote:r.from_note, createdBy:r.created_by,
+    }));
+  } catch { return []; }
+}
+async function dbUpsertRisk(sala, risk) {
+  try {
+    await supabase.from('risks').upsert({
+      id:risk.id, sala, text:risk.text, mitigation:risk.mitigation||'',
+      owner:risk.owner||'Sin asignar', status:risk.status||'open',
+      impact_votes:risk.impactVotes||{}, prob_votes:risk.probVotes||{},
+      from_note:risk.fromNote||null, created_by:risk.createdBy||null,
+    });
+  } catch {}
+}
+async function dbDeleteRisk(id) {
+  try { await supabase.from('risks').delete().eq('id',id); } catch {}
+}
+
+/* ══════════════════════════════════════════════
+   USER AUTH (localStorage)
+══════════════════════════════════════════════ */
+const getUser  = () => { try { return JSON.parse(localStorage.getItem('revelio_user')); } catch { return null; } };
+const saveUser = (u) => localStorage.setItem('revelio_user', JSON.stringify(u));
+
+/* ══════════════════════════════════════════════
+   REALTIME HOOK WITH AUTO-SAVE
+══════════════════════════════════════════════ */
 function useRealtime(user) {
-  const [state, setState] = useState({ notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks() });
-  const [online, setOnline] = useState({});
-  const [cursors, setCursors] = useState({});
-  const chRef = useRef(null);
-  const stRef = useRef(state);
-  const cursRef = useRef({});
-  stRef.current = state;
+  const [retroId,   setRetroId]   = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [saving,    setSaving]    = useState(false);
+  const [online,    setOnline]    = useState({});
+  const [cursors,   setCursors]   = useState({});
+  const [risks,     setRisks]     = useState([]);
 
+  const tpl = TASK_TEMPLATES[TIPO] || TASK_TEMPLATES.agile;
+  const [state, setState] = useState({
+    notes:[], tasks:mkTasks(TIPO), actions:[], obj:{text:'',met:null}
+  });
+
+  const chRef  = useRef(null);
+  const stRef  = useRef(state);
+  const ridRef = useRef(retroId);
+  const timer  = useRef(null);
+  stRef.current  = state;
+  ridRef.current = retroId;
+
+  // ── Load active retro + risks on mount ──
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel('retro-' + SALA, { config:{ presence:{ key:user.id } } });
+    (async () => {
+      const [retro, loadedRisks] = await Promise.all([
+        dbGetActiveRetro(SALA),
+        dbLoadRisks(SALA),
+      ]);
+      let rid = retro?.id;
+      if (!retro) {
+        const created = await dbCreateRetro(SALA, TIPO, user.id);
+        rid = created?.id;
+      } else if (retro.data && Object.keys(retro.data).length > 0) {
+        setState(prev => ({...prev, ...retro.data,
+          // Ensure tasks exist even if not in saved data
+          tasks: retro.data.tasks?.length ? retro.data.tasks : prev.tasks,
+        }));
+        setLastSaved(retro.updated_at || retro.created_at);
+      }
+      if (rid) setRetroId(rid);
+      setRisks(loadedRisks);
+    })();
+  }, [user]);
 
-    // Presence: only for online users
-    ch.on('presence', { event:'sync' }, () => {
+  // ── Debounced auto-save (2s after last change) ──
+  useEffect(() => {
+    if (!retroId) return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      setSaving(true);
+      const ok = await dbAutoSave(retroId, stRef.current);
+      setSaving(false);
+      if (ok) setLastSaved(new Date().toISOString());
+    }, 2000);
+    return () => clearTimeout(timer.current);
+  }, [state, retroId]);
+
+  // ── Supabase Realtime channel ──
+  useEffect(() => {
+    if (!user) return;
+    const ch = supabase.channel(`revelio-${SALA}`, {config:{presence:{key:user.id}}});
+
+    ch.on('presence', {event:'sync'}, () => {
       const ps = ch.presenceState();
       const u = {};
-      Object.entries(ps).forEach(([k, arr]) => {
-        if (arr.length > 0) {
-          u[k] = { name:arr[0].name, avatar:arr[0].avatar, color:arr[0].color };
-        }
+      Object.entries(ps).forEach(([k,arr]) => {
+        if (arr.length > 0) u[k] = {name:arr[0].name, avatar:arr[0].avatar, color:arr[0].color};
       });
       setOnline(u);
     });
 
-    // Broadcast: cursor positions (fast, no rate limit)
-    ch.on('broadcast', { event:'cursor' }, ({ payload }) => {
+    ch.on('broadcast', {event:'cursor'}, ({payload}) => {
       if (payload.id === user.id) return;
-      cursRef.current = { ...cursRef.current, [payload.id]: { x:payload.x, y:payload.y, name:payload.name, avatar:payload.avatar, color:payload.color, ts:Date.now() } };
-      setCursors({ ...cursRef.current });
+      setCursors(prev => ({...prev, [payload.id]:{x:payload.x, y:payload.y, name:payload.name, avatar:payload.avatar, color:payload.color}}));
+      // Remove cursor after 4s inactivity
+      clearTimeout(window['__ct_'+payload.id]);
+      window['__ct_'+payload.id] = setTimeout(() => setCursors(prev => { const n={...prev}; delete n[payload.id]; return n; }), 4000);
     });
 
-    // Broadcast: state sync
-    ch.on('broadcast', { event:'sync' }, ({ payload }) => {
+    ch.on('broadcast', {event:'sync'}, ({payload}) => {
       if (payload.from === user.id) return;
-      setState(prev => ({ ...prev, [payload.key]: payload.data }));
+      if (payload.key === 'risks') {
+        setRisks(payload.data);
+      } else {
+        setState(prev => ({...prev, [payload.key]: payload.data}));
+      }
     });
 
-    ch.on('broadcast', { event:'req' }, ({ payload }) => {
+    ch.on('broadcast', {event:'req'}, ({payload}) => {
       if (payload.from === user.id) return;
       const s = stRef.current;
-      Object.keys(s).forEach(k => {
-        ch.send({ type:'broadcast', event:'sync', payload:{ key:k, data:s[k], from:user.id } });
-      });
+      Object.keys(s).forEach(k =>
+        ch.send({type:'broadcast', event:'sync', payload:{key:k, data:s[k], from:user.id}})
+      );
     });
 
     ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
-        await ch.track({ name:user.name, avatar:user.avatar, color:user.color });
-        setTimeout(() => ch.send({ type:'broadcast', event:'req', payload:{ from:user.id } }), 600);
+        await ch.track({name:user.name, avatar:user.avatar, color:user.color});
+        setTimeout(() => ch.send({type:'broadcast', event:'req', payload:{from:user.id}}), 700);
       }
     });
 
-    // Clean stale cursors every 3s
-    const cleanIv = setInterval(() => {
-      const now = Date.now();
-      let changed = false;
-      const c = { ...cursRef.current };
-      Object.keys(c).forEach(k => { if (now - c[k].ts > 5000) { delete c[k]; changed = true; } });
-      if (changed) { cursRef.current = c; setCursors(c); }
-    }, 3000);
-
     chRef.current = ch;
-    return () => { supabase.removeChannel(ch); clearInterval(cleanIv); };
+    return () => { clearTimeout(timer.current); supabase.removeChannel(ch); };
   }, [user]);
 
+  // ── Broadcast state update ──
   const upd = useCallback((key, data) => {
-    setState(prev => ({ ...prev, [key]:data }));
-    if (chRef.current && user) chRef.current.send({ type:'broadcast', event:'sync', payload:{ key, data, from:user.id } });
+    setState(prev => ({...prev, [key]:data}));
+    chRef.current?.send({type:'broadcast', event:'sync', payload:{key, data, from:user?.id}});
   }, [user]);
 
+  // ── Broadcast risk update ──
+  const updRisk = useCallback((newRisks) => {
+    setRisks(newRisks);
+    chRef.current?.send({type:'broadcast', event:'sync', payload:{key:'risks', data:newRisks, from:user?.id}});
+  }, [user]);
+
+  // ── Cursor broadcast ──
   const moveCursor = useCallback((x, y) => {
-    if (chRef.current && user) {
-      chRef.current.send({ type:'broadcast', event:'cursor', payload:{ id:user.id, x, y, name:user.name, avatar:user.avatar, color:user.color } });
-    }
+    chRef.current?.send({type:'broadcast', event:'cursor', payload:{id:user?.id, x, y, name:user?.name, avatar:user?.avatar, color:user?.color}});
   }, [user]);
 
-  const reset = useCallback(() => {
-    const currentRisks = stRef.current.risks || [];
-    const openActions = (stRef.current.actions || []).filter(a => a.status !== 'done' && a.status !== 'discarded');
-    const fresh = { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:openActions, obj:{text:'',met:null}, risks:currentRisks };
-    setState(fresh);
-    if (chRef.current && user) {
-      Object.keys(fresh).forEach(k => {
-        chRef.current.send({ type:'broadcast', event:'sync', payload:{ key:k, data:fresh[k], from:user.id } });
-      });
+  // ── New retro ──
+  const newRetro = useCallback(async () => {
+    await dbCloseRetro(ridRef.current);
+    const fresh = await dbCreateRetro(SALA, TIPO, user?.id);
+    if (fresh) {
+      setRetroId(fresh.id);
+      setLastSaved(null);
+      const freshState = {notes:[], tasks:mkTasks(TIPO), actions:[], obj:{text:'',met:null}};
+      setState(freshState);
+      ['notes','tasks','actions','obj'].forEach(k =>
+        chRef.current?.send({type:'broadcast', event:'sync', payload:{key:k, data:freshState[k], from:user?.id}})
+      );
     }
+    return !!fresh;
   }, [user]);
 
-  return { state, upd, online, cursors, moveCursor, reset };
+  return { state, upd, risks, updRisk, moveCursor, retroId, saving, lastSaved, online, cursors, newRetro };
 }
 
-/* ═══ APP ═══ */
-function App() {
-  const [user, setUser] = useState(() => params.has('sala') ? loadUser() : null);
-
-  const handleJoin = (u) => { saveUser(u); registerUser(u); setUser(u); };
-  const handleLogout = () => { clearUser(); setUser(null); };
-
-  // No sala → admin sees picker, others see "pide el enlace"
-  if (!params.has('sala')) {
-    if (IS_ADMIN) return html`<${RoomPicker} />`;
-    return html`<${NeedLink} />`;
-  }
-  if (!user) return html`<${Login} onJoin=${handleJoin} />`;
-  return html`<${RetroBoard} user=${user} onLogout=${handleLogout} />`;
-}
-
-/* ═══ NEED LINK SCREEN ═══ */
-function NeedLink() {
-  const phases = [
-    { icon:'📋', name:'Pensadero', desc:'Revisa el objetivo y las tareas. Como el Pensieve de Dumbledore: mira atrás antes de avanzar.', spell:'Memoria revelio!' },
-    { icon:'✍️', name:'Revelio', desc:'Cada mago escribe sus notas en Good, Bad, Start y Stop. Anónimo hasta la puesta en común.', spell:'Revelio notae!' },
-    { icon:'💬', name:'Priori Incantatem', desc:'Las varitas se conectan. Debatid, votad y descubrid qué piensa el equipo de verdad.', spell:'Connectum ideas!' },
-    { icon:'⚠️', name:'Mapa del Merodeador', desc:'Detecta riesgos ocultos antes de que se conviertan en Voldemorts. Vota impacto y probabilidad.', spell:'Juro que mis intenciones no son buenas!' },
-    { icon:'🎯', name:'Expecto Patronum', desc:'Convoca acciones protectoras. Asigna responsable, fecha y prioridad a cada accionable.', spell:'Patronum actionem!' },
-    { icon:'📊', name:'El Sombrero Seleccionador', desc:'Ranking, métricas y el informe PDF. ¿Quién ha sido el MVP de esta retro?', spell:'Sorteo finalem!' },
-  ];
-
-  return html`
-    <div style=${{ minHeight:'100vh', background:'#F5F5F7' }}>
-      <!-- Hero -->
-      <div style=${{ textAlign:'center', padding:'60px 20px 40px' }}>
-        <h1 class="wm" style=${{ fontSize:48, marginBottom:8, lineHeight:1.1 }}>revelio</h1>
-        <p style=${{ fontSize:18, color:'#86868B', maxWidth:440, margin:'0 auto 8px', lineHeight:1.5 }}>El hechizo que revela lo que tu equipo necesita decir (pero no sabe cómo)</p>
-        <p style=${{ fontSize:13, color:'#C7C7CC' }}>Retrospectivas colaborativas en tiempo real. Sin cuentas, sin setup, sin excusas.</p>
-      </div>
-
-      <!-- How it works -->
-      <div style=${{ maxWidth:700, margin:'0 auto', padding:'0 20px 40px' }}>
-        <h2 style=${{ textAlign:'center', fontSize:16, fontWeight:700, marginBottom:24, color:'#1D1D1F' }}>¿Cómo funciona? 6 hechizos en 45 minutos</h2>
-        <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
-          ${phases.map((p, i) => html`
-            <div key=${i} style=${{ ...gl, borderRadius:16, padding:'18px 22px', display:'flex', gap:16, alignItems:'flex-start', boxShadow:'0 2px 12px rgba(0,0,0,0.03)', border:'1px solid rgba(0,0,0,0.04)' }}>
-              <div style=${{ width:44, height:44, borderRadius:14, background:'linear-gradient(135deg,#007AFF,#5856D6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>${p.icon}</div>
-              <div style=${{ flex:1 }}>
-                <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                  <span style=${{ fontSize:11, fontWeight:700, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:6 }}>${i+1}/6</span>
-                  <span style=${{ fontSize:15, fontWeight:700 }}>${p.name}</span>
-                </div>
-                <p style=${{ fontSize:13, color:'#6E6E73', lineHeight:1.5, margin:0 }}>${p.desc}</p>
-                <p style=${{ fontSize:10, color:'#C7C7CC', fontStyle:'italic', marginTop:4 }}>✨ "${p.spell}"</p>
-              </div>
-            </div>
-          `)}
-        </div>
-      </div>
-
-      <!-- Features -->
-      <div style=${{ background:'#FFF', padding:'40px 20px', borderTop:'1px solid #E5E5EA' }}>
-        <div style=${{ maxWidth:600, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, textAlign:'center' }}>
-          ${[
-            { icon:'🧙', title:'Tiempo real', desc:'Ves las notas y cursores de todos al instante. Magia.' },
-            { icon:'🗳️', title:'Voto secreto', desc:'Vota impacto, prioridad y riesgos. Democracia mágica.' },
-            { icon:'📄', title:'PDF y backup', desc:'Descarga el informe. Los datos nunca se quedan en la nube.' },
-          ].map((f,i) => html`
-            <div key=${i} style=${{ padding:'16px 12px' }}>
-              <div style=${{ fontSize:28, marginBottom:8 }}>${f.icon}</div>
-              <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>${f.title}</h3>
-              <p style=${{ fontSize:11, color:'#86868B', lineHeight:1.4 }}>${f.desc}</p>
-            </div>
-          `)}
-        </div>
-      </div>
-
-      <!-- CTA -->
-      <div style=${{ textAlign:'center', padding:'40px 20px 60px' }}>
-        <div style=${{ fontSize:40, marginBottom:12 }}>🪄</div>
-        <h2 style=${{ fontSize:18, fontWeight:700, marginBottom:8 }}>¿Listo para la retro?</h2>
-        <p style=${{ fontSize:14, color:'#86868B', marginBottom:4 }}>Pide a tu Scrum Master el enlace de tu sala.</p>
-        <p style=${{ fontSize:12, color:'#C7C7CC' }}>El enlace es algo como: <code style=${{ background:'#F2F2F7', padding:'2px 8px', borderRadius:4 }}>${window.location.host}?sala=tu-proyecto</code></p>
-        <p style=${{ fontSize:11, color:'#C7C7CC', marginTop:20 }}>Hecho con ✨ y sin Horcruxes</p>
-      </div>
-    </div>
-  `;
-}
-
-/* ═══ ROOM PICKER ═══ */
-const DEFAULT_ROOMS = [
-  { name: 'VWFS - Impulso Fleet', slug: 'vwfs', tipo: 'agile' },
-  { name: 'Endesa - Billing Boost', slug: 'endesa', tipo: 'waterfall' },
-  { name: 'ADA - OTDP', slug: 'ada', tipo: 'itil' },
-];
-
-function loadRooms() {
-  try { const s = localStorage.getItem('rf-rooms'); return s ? JSON.parse(s) : DEFAULT_ROOMS; } catch { return DEFAULT_ROOMS; }
-}
-function saveRooms(rooms) {
-  try { localStorage.setItem('rf-rooms', JSON.stringify(rooms)); } catch {}
-}
-function loadMetrics() {
-  try { return JSON.parse(localStorage.getItem('rf-metrics') || '{}'); } catch { return {}; }
-}
-function saveMetricEntry(sala, entry) {
-  try {
-    const m = loadMetrics();
-    if (!m[sala]) m[sala] = [];
-    m[sala].push(entry);
-    localStorage.setItem('rf-metrics', JSON.stringify(m));
-  } catch {}
-}
-
-// ── User identity: persist per sala so you don't duplicate ──
-function loadUser() {
-  try { const s = localStorage.getItem('rf-user-' + SALA); return s ? JSON.parse(s) : null; } catch { return null; }
-}
-function saveUser(user) {
-  try { localStorage.setItem('rf-user-' + SALA, JSON.stringify(user)); } catch {}
-}
-function clearUser() {
-  try { localStorage.removeItem('rf-user-' + SALA); } catch {}
-}
-
-// ── User registry per sala (for admin visibility + duplicate prevention) ──
-function loadUserRegistry(sala) {
-  try { const s = localStorage.getItem('rf-reg-' + (sala || SALA)); return s ? JSON.parse(s) : []; } catch { return []; }
-}
-function registerUser(user) {
-  try {
-    const reg = loadUserRegistry();
-    const existing = reg.findIndex(u => u.id === user.id);
-    if (existing >= 0) reg[existing] = { ...reg[existing], name: user.name, avatar: user.avatar, color: user.color, lastSeen: new Date().toISOString() };
-    else reg.push({ id: user.id, name: user.name, avatar: user.avatar, color: user.color, firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString() });
-    localStorage.setItem('rf-reg-' + SALA, JSON.stringify(reg));
-  } catch {}
-}
-function isNameTaken(name) {
-  const reg = loadUserRegistry();
-  const saved = loadUser();
-  return reg.some(u => u.name.toLowerCase() === name.toLowerCase() && (!saved || u.id !== saved.id));
-}
-
-// ── Risk persistence per sala (survives across retros) ──
-function loadRisks() {
-  try { const s = localStorage.getItem('rf-risks-' + SALA); return s ? JSON.parse(s) : []; } catch { return []; }
-}
-function saveRisks(risks) {
-  try { localStorage.setItem('rf-risks-' + SALA, JSON.stringify(risks)); } catch {}
-}
-
-const RISK_LEVELS = [
-  { id: 'alto', label: 'Alto', color: '#FF3B30', val: 3 },
-  { id: 'medio', label: 'Medio', color: '#FF9500', val: 2 },
-  { id: 'bajo', label: 'Bajo', color: '#34C759', val: 1 },
-];
-const RISK_STATUS = [
-  { id: 'open', label: 'Abierto', color: '#FF3B30' },
-  { id: 'mitigating', label: 'Mitigando', color: '#FF9500' },
-  { id: 'mitigated', label: 'Mitigado', color: '#34C759' },
-  { id: 'accepted', label: 'Aceptado', color: '#8E8E93' },
-];
-
-function getRiskLevel(votes) {
-  if (!votes || Object.keys(votes).length === 0) return RISK_LEVELS[1];
-  const counts = { alto: 0, medio: 0, bajo: 0 };
-  Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
-  const max = Math.max(counts.alto, counts.medio, counts.bajo);
-  if (counts.alto === max) return RISK_LEVELS[0];
-  if (counts.medio === max) return RISK_LEVELS[1];
-  return RISK_LEVELS[2];
-}
-
-function getHeatColor(impLvl, probLvl) {
-  const score = impLvl.val * probLvl.val;
-  if (score >= 6) return '#FF3B30';
-  if (score >= 3) return '#FF9500';
-  return '#34C759';
-}
-
-function RoomPicker() {
-  const [room, setRoom] = useState('');
-  const [tipo, setTipo] = useState('agile');
-  const [rooms, setRooms] = useState(loadRooms);
-  const [tab, setTab] = useState('dashboard');
-  const [metrics] = useState(loadMetrics);
-  const [filterProject, setFilterProject] = useState('all');
-
-  const go = (slug, t) => { window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(slug) + '&tipo=' + (t || 'agile'); };
-  const create = () => {
-    if (!room.trim()) return;
-    const slug = room.trim().toLowerCase().replace(/\s+/g, '-');
-    if (!rooms.find(r => r.slug === slug)) {
-      const u = [...rooms, { name: room.trim(), slug, tipo }];
-      setRooms(u); saveRooms(u);
-    }
-    go(slug, tipo);
-  };
-  const remove = (slug) => { const u = rooms.filter(r => r.slug !== slug); setRooms(u); saveRooms(u); };
-
-  // Filtered metrics
-  const filteredMetrics = filterProject === 'all' ? metrics : { [filterProject]: metrics[filterProject] || [] };
-  const allEntries = Object.values(filteredMetrics).flat();
-  const totalRetros = allEntries.length;
-  const totalNotes = allEntries.reduce((s, e) => s + (e.notes || 0), 0);
-  const totalActions = allEntries.reduce((s, e) => s + (e.actions || 0), 0);
-  const totalActionsDone = allEntries.reduce((s, e) => s + (e.actionsDone || 0), 0);
-  const totalVotes = allEntries.reduce((s, e) => s + (e.votes || 0), 0);
-  const allParticipants = [...new Set(allEntries.flatMap(e => e.participantNames || []))];
-  const actionRate = totalActions > 0 ? Math.round((totalActionsDone / totalActions) * 100) : 0;
-
-  // Risk metrics across all salas
-  const filteredRooms = filterProject === 'all' ? rooms : rooms.filter(r => r.slug === filterProject);
-  const allRisks = filteredRooms.flatMap(r => {
-    try { const s = localStorage.getItem('rf-risks-' + r.slug); return s ? JSON.parse(s) : []; } catch { return []; }
-  });
-  const totalRisksDetected = allRisks.length;
-  const totalRisksMitigated = allRisks.filter(r => r.status === 'mitigated').length;
-  const totalRisksOpen = allRisks.filter(r => r.status !== 'mitigated').length;
-
-  const salaStats = rooms.map(r => {
-    const rm = metrics[r.slug] || [];
-    let salaRisks = [];
-    try { const s = localStorage.getItem('rf-risks-' + r.slug); salaRisks = s ? JSON.parse(s) : []; } catch {}
-    return { ...r, retros: rm.length,
-      notes: rm.reduce((s, e) => s + (e.notes || 0), 0),
-      actions: rm.reduce((s, e) => s + (e.actions || 0), 0),
-      done: rm.reduce((s, e) => s + (e.actionsDone || 0), 0),
-      votes: rm.reduce((s, e) => s + (e.votes || 0), 0),
-      risksOpen: salaRisks.filter(x => x.status !== 'mitigated').length,
-      risksMitigated: salaRisks.filter(x => x.status === 'mitigated').length,
-      risksTotal: salaRisks.length,
-      parts: [...new Set(rm.flatMap(e => e.participantNames || []))],
-      avgP: rm.length > 0 ? (rm.reduce((s, e) => s + (e.participants || 0), 0) / rm.length).toFixed(1) : 0,
-      last: rm.length > 0 ? rm[rm.length - 1] : null, entries: rm };
-  });
-
-  const trend = allEntries.sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-12);
-  const trendMax = Math.max(...trend.map(t => t.notes), 1);
-  const partTrend = [...trend];
-  const partMax = Math.max(...partTrend.map(t => t.participants), 1);
-  const bc = (i) => ['#007AFF','#34C759','#FF9500','#AF52DE','#FF2D55','#5856D6','#00C7BE','#FF3B30'][i % 8];
-
-  return html`
-    <div style=${{ minHeight:'100vh', background:'#F5F5F7', padding:'24px 16px' }}>
-      <div style=${{ maxWidth:960, margin:'0 auto' }}>
-        <div style=${{ textAlign:'center', marginBottom:20 }}>
-          
-          <h1 class="wm" style=${{ fontSize:28, marginBottom:2 }}>revelio</h1>
-          <p style=${{ color:'#86868B', fontSize:13 }}>Panel de administración</p>
-        </div>
-
-        <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'}].map(t => html`
-            <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
-          `)}
-        </div>
-
-        ${tab === 'dashboard' ? html`
-          <!-- Project filter -->
-          <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-            <span style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>Filtrar:</span>
-            <button onClick=${()=>setFilterProject('all')} style=${{ padding:'5px 12px', borderRadius:8, border:filterProject==='all'?'none':'1.5px solid #E5E5EA', background:filterProject==='all'?'#1D1D1F':'#FFF', color:filterProject==='all'?'#FFF':'#6E6E73', fontSize:11, fontWeight:600 }}>Todos</button>
-            ${rooms.map(r => html`
-              <button key=${r.slug} onClick=${()=>setFilterProject(r.slug)} style=${{ padding:'5px 12px', borderRadius:8, border:filterProject===r.slug?'none':'1.5px solid #E5E5EA', background:filterProject===r.slug?'#007AFF':'#FFF', color:filterProject===r.slug?'#FFF':'#6E6E73', fontSize:11, fontWeight:600 }}>${r.name}</button>
-            `)}
-          </div>
-
-          ${totalRetros === 0 ? html`
-            <!-- Empty state KPIs -->
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
-              ${[
-                {l:'Proyectos',i:'📂'},{l:'Retros',i:'📊'},{l:'Notas',i:'📝'},{l:'Votos',i:'👍'},
-                {l:'Accionables',i:'🎯'},{l:'Completados',i:'✅'},{l:'Riesgos',i:'⚠️'},{l:'Personas',i:'👥'},
-              ].map((k,i) => html`
-                <div key=${i} style=${{ ...cS, padding:'14px 8px', textAlign:'center', opacity:0.5 }}>
-                  <div style=${{ fontSize:18, marginBottom:4 }}>${k.i}</div>
-                  <div style=${{ fontSize:22, fontWeight:800, color:'#C7C7CC' }}>—</div>
-                  <div style=${{ fontSize:9, color:'#C7C7CC', marginTop:2 }}>${k.l}</div>
-                </div>
-              `)}
-            </div>
-            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-              <div style=${{ ...cS, padding:'16px 18px', opacity:0.5 }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8, color:'#86868B' }}>📈 Notas por retro</h3>
-                <div style=${{ display:'flex', alignItems:'flex-end', gap:6, height:80, justifyContent:'center' }}>
-                  ${[30,50,20,70,40,60].map((h,i) => html`<div key=${i} style=${{ width:20, height:h+'%', background:'#E5E5EA', borderRadius:'3px 3px 0 0' }} />`)}
-                </div>
-                <p style=${{ fontSize:10, color:'#C7C7CC', textAlign:'center', marginTop:10 }}>Sin datos aún</p>
-              </div>
-              <div style=${{ ...cS, padding:'16px 18px', opacity:0.5 }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8, color:'#86868B' }}>👥 Participantes por retro</h3>
-                <div style=${{ display:'flex', alignItems:'flex-end', gap:6, height:80, justifyContent:'center' }}>
-                  ${[40,60,30,50,70,45].map((h,i) => html`<div key=${i} style=${{ width:20, height:h+'%', background:'#E5E5EA', borderRadius:'3px 3px 0 0' }} />`)}
-                </div>
-                <p style=${{ fontSize:10, color:'#C7C7CC', textAlign:'center', marginTop:10 }}>Sin datos aún</p>
-              </div>
-            </div>
-            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-              <div style=${{ ...cS, padding:'16px 18px', opacity:0.5 }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:12, color:'#86868B' }}>🎯 Accionables</h3>
-                <div style=${{ display:'flex', alignItems:'center', gap:20 }}>
-                  <div style=${{ position:'relative', width:85, height:85 }}>
-                    <svg viewBox="0 0 36 36" style=${{ width:85, height:85 }}>
-                      <circle cx="18" cy="18" r="15.915" fill="none" stroke="#F2F2F7" stroke-width="3" />
-                    </svg>
-                    <div style=${{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', fontSize:14, fontWeight:800, color:'#C7C7CC' }}>—</div>
-                  </div>
-                  <p style=${{ fontSize:11, color:'#C7C7CC' }}>Sin datos aún</p>
-                </div>
-              </div>
-              <div style=${{ ...cS, padding:'16px 18px', opacity:0.5 }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:12, color:'#86868B' }}>📂 Notas por proyecto</h3>
-                <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-                  ${['Proyecto A','Proyecto B','Proyecto C'].map((p,i) => html`
-                    <div key=${i}><div style=${{ display:'flex', justifyContent:'space-between', marginBottom:2 }}><span style=${{ fontSize:11, color:'#C7C7CC' }}>${p}</span></div>
-                    <div style=${{ height:7, background:'#F2F2F7', borderRadius:4 }} /></div>
-                  `)}
-                </div>
-                <p style=${{ fontSize:10, color:'#C7C7CC', textAlign:'center', marginTop:10 }}>Sin datos aún</p>
-              </div>
-            </div>
-            <div style=${{ ...cS, padding:'16px 18px', opacity:0.5 }}>
-              <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8, color:'#86868B' }}>📋 Portfolio de proyectos</h3>
-              <p style=${{ fontSize:12, color:'#C7C7CC', textAlign:'center', padding:'20px 0' }}>Los datos del portfolio aparecen cuando guardes retros con 💾</p>
-            </div>
-          ` : html`
-            <!-- KPIs -->
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
-              ${[
-                {v:rooms.length,l:'Proyectos',c:'#5856D6',i:'📂'},
-                {v:totalRetros,l:'Retros',c:'#007AFF',i:'📊'},
-                {v:totalNotes,l:'Notas',c:'#34C759',i:'📝'},
-                {v:totalVotes,l:'Votos',c:'#FF9500',i:'👍'},
-                {v:totalActions,l:'Accionables',c:'#5856D6',i:'🎯'},
-                {v:actionRate+'%',l:'Completados',c:actionRate>50?'#34C759':'#FF9500',i:'✅'},
-                {v:totalRisksDetected,l:'Riesgos ('+totalRisksMitigated+' mitigados)',c:totalRisksOpen>0?'#FF3B30':'#34C759',i:'⚠️'},
-                {v:allParticipants.length,l:'Personas',c:'#FF2D55',i:'👥'},
-              ].map((k,i) => html`
-                <div key=${i} style=${{ ...cS, padding:'14px 8px', textAlign:'center' }}>
-                  <div style=${{ fontSize:18, marginBottom:4 }}>${k.i}</div>
-                  <div style=${{ fontSize:22, fontWeight:800, color:k.c }}>${k.v}</div>
-                  <div style=${{ fontSize:9, color:'#86868B', marginTop:2 }}>${k.l}</div>
-                </div>
-              `)}
-            </div>
-
-            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-              <!-- Notes trend -->
-              <div style=${{ ...cS, padding:'16px 18px' }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:2 }}>📈 Notas por retro</h3>
-                <p style=${{ fontSize:10, color:'#86868B', marginBottom:12 }}>Últimas ${trend.length} sesiones</p>
-                <div style=${{ display:'flex', alignItems:'flex-end', gap:3, height:110 }}>
-                  ${trend.map((t, i) => {
-                    const h = (t.notes / trendMax) * 100;
-                    const d = new Date(t.date);
-                    return html`
-                      <div key=${i} style=${{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-                        <span style=${{ fontSize:8, fontWeight:700 }}>${t.notes}</span>
-                        <div style=${{ width:'100%', height:h+'%', minHeight:3, background:'linear-gradient(180deg,#007AFF,#5856D6)', borderRadius:'3px 3px 0 0', transition:'height .5s' }} />
-                        <span style=${{ fontSize:7, color:'#86868B' }}>${d.getDate()}/${d.getMonth()+1}</span>
-                      </div>`;
-                  })}
-                </div>
-              </div>
-
-              <!-- Participation trend -->
-              <div style=${{ ...cS, padding:'16px 18px' }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:2 }}>👥 Participantes por retro</h3>
-                <p style=${{ fontSize:10, color:'#86868B', marginBottom:12 }}>Últimas ${partTrend.length} sesiones</p>
-                <div style=${{ display:'flex', alignItems:'flex-end', gap:3, height:110 }}>
-                  ${partTrend.map((t, i) => {
-                    const h = (t.participants / partMax) * 100;
-                    const d = new Date(t.date);
-                    return html`
-                      <div key=${i} style=${{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-                        <span style=${{ fontSize:8, fontWeight:700 }}>${t.participants}</span>
-                        <div style=${{ width:'100%', height:h+'%', minHeight:3, background:'linear-gradient(180deg,#34C759,#00C7BE)', borderRadius:'3px 3px 0 0', transition:'height .5s' }} />
-                        <span style=${{ fontSize:7, color:'#86868B' }}>${d.getDate()}/${d.getMonth()+1}</span>
-                      </div>`;
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-              <!-- Donut: actions -->
-              <div style=${{ ...cS, padding:'16px 18px' }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>🎯 Accionables</h3>
-                <div style=${{ display:'flex', alignItems:'center', gap:20 }}>
-                  <div style=${{ position:'relative', width:85, height:85, flexShrink:0 }}>
-                    <svg viewBox="0 0 36 36" style=${{ width:85, height:85, transform:'rotate(-90deg)' }}>
-                      <circle cx="18" cy="18" r="15.915" fill="none" stroke="#F2F2F7" stroke-width="3" />
-                      <circle cx="18" cy="18" r="15.915" fill="none" stroke="#34C759" stroke-width="3"
-                        stroke-dasharray=${actionRate+' '+(100-actionRate)} stroke-linecap="round" />
-                    </svg>
-                    <div style=${{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center' }}>
-                      <div style=${{ fontSize:16, fontWeight:800, color:'#34C759' }}>${actionRate}%</div>
-                    </div>
-                  </div>
-                  <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-                    <div><span style=${{ fontSize:18, fontWeight:800, color:'#5856D6' }}>${totalActions}</span><span style=${{ fontSize:10, color:'#86868B', marginLeft:4 }}>creados</span></div>
-                    <div><span style=${{ fontSize:18, fontWeight:800, color:'#34C759' }}>${totalActionsDone}</span><span style=${{ fontSize:10, color:'#86868B', marginLeft:4 }}>completados</span></div>
-                    <div><span style=${{ fontSize:18, fontWeight:800, color:'#FF9500' }}>${totalActions-totalActionsDone}</span><span style=${{ fontSize:10, color:'#86868B', marginLeft:4 }}>pendientes</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Horizontal bars: notes per sala -->
-              <div style=${{ ...cS, padding:'16px 18px' }}>
-                <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>📂 Notas por proyecto</h3>
-                <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
-                  ${salaStats.filter(s=>s.notes>0).sort((a,b)=>b.notes-a.notes).map((s,i) => {
-                    const mx = Math.max(...salaStats.map(x=>x.notes),1);
-                    const w = (s.notes/mx)*100;
-                    return html`
-                      <div key=${s.slug}>
-                        <div style=${{ display:'flex', justifyContent:'space-between', marginBottom:2 }}>
-                          <span style=${{ fontSize:11, fontWeight:600 }}>${s.name}</span>
-                          <span style=${{ fontSize:11, fontWeight:700, color:bc(i) }}>${s.notes}</span>
-                        </div>
-                        <div style=${{ height:7, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}>
-                          <div style=${{ height:'100%', width:w+'%', background:bc(i), borderRadius:4, transition:'width .5s' }} />
-                        </div>
-                      </div>`;
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <!-- Portfolio table -->
-            <div style=${{ ...cS, padding:'16px 18px', marginBottom:12 }}>
-              <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>📋 Portfolio de proyectos</h3>
-              <div style=${{ overflowX:'auto' }}>
-                <table style=${{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
-                  <thead>
-                    <tr style=${{ borderBottom:'2px solid #E5E5EA' }}>
-                      ${['Proyecto','Tipo','Retros','Notas','Votos','Accionables','% Hecho','Riesgos','Participantes','Última'].map(h=>html`
-                        <th key=${h} style=${{ padding:'7px 8px', textAlign:'left', fontWeight:700, color:'#86868B', fontSize:9, textTransform:'uppercase' }}>${h}</th>
-                      `)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${salaStats.map((s,i) => {
-                      const cr = s.actions>0 ? Math.round((s.done/s.actions)*100) : 0;
-                      const rTipo = TASK_TEMPLATES[s.tipo] || TASK_TEMPLATES.agile;
-                      return html`
-                        <tr key=${s.slug} style=${{ borderBottom:'1px solid #F2F2F7' }}>
-                          <td style=${{ padding:'8px', fontWeight:600 }}>
-                            <button onClick=${()=>go(s.slug, s.tipo)} style=${{ border:'none', background:'none', cursor:'pointer', fontWeight:600, color:'#007AFF', fontSize:11, padding:0 }}>${s.name}</button>
-                          </td>
-                          <td style=${{ padding:'8px' }}><span style=${{ fontSize:9, fontWeight:600, color:rTipo.color, background:rTipo.color+'10', padding:'2px 6px', borderRadius:4 }}>${rTipo.icon} ${rTipo.label}</span></td>
-                          <td style=${{ padding:'8px' }}><span style=${{ fontWeight:700, color:'#007AFF' }}>${s.retros}</span></td>
-                          <td style=${{ padding:'8px', fontWeight:600 }}>${s.notes}</td>
-                          <td style=${{ padding:'8px' }}>${s.votes}</td>
-                          <td style=${{ padding:'8px' }}>${s.done}/${s.actions}</td>
-                          <td style=${{ padding:'8px' }}>
-                            <div style=${{ display:'flex', alignItems:'center', gap:5 }}>
-                              <div style=${{ width:40, height:5, background:'#F2F2F7', borderRadius:3, overflow:'hidden' }}>
-                                <div style=${{ height:'100%', width:cr+'%', background:cr>=70?'#34C759':cr>=40?'#FF9500':'#FF3B30', borderRadius:3 }} />
-                              </div>
-                              <span style=${{ fontSize:10, fontWeight:600, color:cr>=70?'#34C759':cr>=40?'#FF9500':'#FF3B30' }}>${cr}%</span>
-                            </div>
-                          </td>
-                          <td style=${{ padding:'8px' }}>
-                            ${s.risksTotal > 0 ? html`
-                              <span style=${{ fontWeight:600, color:s.risksOpen>0?'#FF3B30':'#34C759' }}>${s.risksOpen}</span>
-                              <span style=${{ fontSize:9, color:'#86868B' }}>/${s.risksTotal}</span>
-                            ` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>—</span>`}
-                          </td>
-                          <td style=${{ padding:'8px' }}><span style=${{ fontWeight:600 }}>${s.parts.length}</span> <span style=${{ fontSize:9, color:'#86868B' }}>(${s.avgP}/retro)</span></td>
-                          <td style=${{ padding:'8px', color:'#86868B', fontSize:10 }}>${s.last?fd(s.last.date):'—'}</td>
-                        </tr>`;
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Participants -->
-            <div style=${{ ...cS, padding:'16px 18px' }}>
-              <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8 }}>👥 Participantes (${allParticipants.length})</h3>
-              <div style=${{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                ${allParticipants.map(p=>html`<span key=${p} style=${{ padding:'3px 9px', borderRadius:7, background:'#F2F2F7', fontSize:11, fontWeight:600 }}>${p}</span>`)}
-              </div>
-            </div>
-          `}
-
-        ` : html`
-          <!-- SALAS TAB -->
-          <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Crear nueva sala</p>
-          <div style=${{ display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' }}>
-            <input value=${room} onInput=${e=>setRoom(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&create()}
-              placeholder="Nombre del proyecto..." style=${{ ...iS, flex:2, minWidth:160, fontSize:15, background:'#FFF' }} />
-            <button onClick=${create} style=${{ ...bP, padding:'12px 20px' }}>Crear →</button>
-          </div>
-          <p style=${{ fontSize:10, color:'#86868B', marginBottom:6 }}>Metodología (define las tareas precargadas)</p>
-          <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:20 }}>
-            ${Object.entries(TASK_TEMPLATES).map(([k, v]) => html`
-              <button key=${k} onClick=${()=>setTipo(k)}
-                style=${{ padding:'10px 8px', borderRadius:12, border:tipo===k?'2px solid '+v.color:'1.5px solid #E5E5EA', background:tipo===k?v.color+'10':'#FFF', textAlign:'center', transition:'all .15s' }}>
-                <div style=${{ fontSize:20, marginBottom:4 }}>${v.icon}</div>
-                <div style=${{ fontSize:11, fontWeight:700, color:tipo===k?v.color:'#6E6E73' }}>${v.label}</div>
-              </button>
-            `)}
-          </div>
-          ${rooms.length>0 && html`
-            <p style=${{ fontSize:11, color:'#86868B', marginBottom:10, fontWeight:600, textTransform:'uppercase' }}>Salas (${rooms.length})</p>
-            <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-              ${rooms.map(r => {
-                const rm=metrics[r.slug]||[];
-                const rTipo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
-                const link=window.location.origin+window.location.pathname+'?sala='+r.slug+'&tipo='+(r.tipo||'agile');
-                const users = loadUserRegistry(r.slug);
-                return html`
-                <div key=${r.slug} style=${{ ...cS }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px' }}>
-                    <button onClick=${()=>go(r.slug, r.tipo)} style=${{ display:'flex', alignItems:'center', gap:10, flex:1, textAlign:'left', border:'none', background:'none', cursor:'pointer', padding:0 }}>
-                      <div style=${{ width:38, height:38, borderRadius:12, background:'linear-gradient(135deg,'+rTipo.color+','+rTipo.color+'99)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>${rTipo.icon}</div>
-                      <div>
-                        <span style=${{ fontSize:14, fontWeight:600, color:'#1D1D1F' }}>${r.name} <span style=${{ fontSize:9, fontWeight:500, color:rTipo.color, background:rTipo.color+'10', padding:'1px 6px', borderRadius:4 }}>${rTipo.label}</span></span>
-                        <div style=${{ fontSize:11, color:'#86868B' }}>${window.location.host}?sala=${r.slug}</div>
-                      </div>
-                    </button>
-                    <button onClick=${()=>{navigator.clipboard.writeText(link)}} style=${{ ...bS, padding:'6px 8px', fontSize:10, flexShrink:0 }}>📋</button>
-                    <button onClick=${()=>remove(r.slug)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC', flexShrink:0, padding:'4px' }}>✕</button>
-                  </div>
-                  ${rm.length>0 && html`
-                    <div style=${{ padding:'0 16px 8px', display:'flex', gap:12, flexWrap:'wrap' }}>
-                      <span style=${{ fontSize:11, color:'#86868B' }}>📊 ${rm.length} retros</span>
-                      <span style=${{ fontSize:11, color:'#86868B' }}>📝 ${rm.reduce((s,e)=>s+(e.notes||0),0)} notas</span>
-                      <span style=${{ fontSize:11, color:'#86868B' }}>👥 ${[...new Set(rm.flatMap(e=>e.participantNames||[]))].length} personas</span>
-                      <span style=${{ fontSize:11, color:'#86868B' }}>📅 ${fd(rm[rm.length-1].date)}</span>
-                    </div>
-                  `}
-                  ${rm.length===0 && html`<div style=${{ padding:'0 16px 8px' }}><span style=${{ fontSize:11, color:'#C7C7CC' }}>Sin retros guardadas</span></div>`}
-                  ${users.length > 0 && html`
-                    <div style=${{ padding:'0 16px 12px' }}>
-                      <details>
-                        <summary style=${{ fontSize:11, color:'#86868B', cursor:'pointer', fontWeight:600 }}>👥 Usuarios registrados (${users.length})</summary>
-                        <div style=${{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
-                          ${users.map(u => html`
-                            <div key=${u.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:8, background:'#F9F9FB' }}>
-                              <div style=${{ width:24, height:24, borderRadius:12, background:u.color||'#007AFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>${u.avatar||'👤'}</div>
-                              <div style=${{ flex:1 }}>
-                                <span style=${{ fontSize:12, fontWeight:600 }}>${u.name}</span>
-                              </div>
-                              <span style=${{ fontSize:9, color:'#C7C7CC' }}>${u.lastSeen ? fd(u.lastSeen) : ''}</span>
-                            </div>
-                          `)}
-                        </div>
-                      </details>
-                    </div>
-                  `}
-                </div>`;
-              })}
-            </div>
-          `}
-          <p style=${{ fontSize:11, color:'#C7C7CC', marginTop:16, textAlign:'center' }}>Las métricas se actualizan al guardar retros (💾)</p>
-        `}
-      </div>
-    </div>
-  `;
-}
-/* ═══ LOGIN ═══ */
+/* ══════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════ */
 function Login({ onJoin }) {
-  const [nm, setNm] = useState('');
-  const [av, setAv] = useState(AVATARS[Math.floor(Math.random()*12)]);
-  const [col, setCol] = useState(COLRS[Math.floor(Math.random()*8)]);
-  const [warn, setWarn] = useState(null);
+  const stored = getUser();
+  const [name, setName] = useState('');
+  const [av,   setAv]   = useState(AVATARS[Math.floor(Math.random()*AVATARS.length)]);
+  const [col,  setCol]  = useState(COLORS[Math.floor(Math.random()*COLORS.length)]);
 
-  const handleName = (val) => { setNm(val); setWarn(null); };
+  // Auto-login if stored and not admin
+  if (stored && !IS_ADMIN) {
+    return html`
+      <div style=${{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea,#764ba2)'}}>
+        <div class="card" style=${{maxWidth:340,width:'90%',textAlign:'center',padding:36,animation:'fadeInScale .3s ease'}}>
+          <div style=${{fontSize:48,marginBottom:8}}>${stored.avatar}</div>
+          <div style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:22,background:'linear-gradient(90deg,#007AFF,#5856D6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',marginBottom:4}}>revelio</div>
+          <p style=${{fontWeight:700,fontSize:17,marginBottom:2}}>${stored.name}</p>
+          <p style=${{color:'#86868B',fontSize:12,marginBottom:20}}>
+            Sala: <b>${SALA}</b> · ${(TASK_TEMPLATES[TIPO]||TASK_TEMPLATES.agile).icon} ${(TASK_TEMPLATES[TIPO]||TASK_TEMPLATES.agile).label}
+          </p>
+          <button onClick=${()=>onJoin(stored)} style=${{background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',border:'none',borderRadius:12,padding:'13px 0',fontSize:15,fontWeight:600,cursor:'pointer',width:'100%',marginBottom:10}}>
+            ✨ Entrar como ${stored.name}
+          </button>
+          <button onClick=${()=>{localStorage.removeItem('revelio_user');location.reload();}} style=${{background:'none',border:'none',color:'#86868B',fontSize:13,cursor:'pointer'}}>
+            Cambiar usuario
+          </button>
+        </div>
+      </div>`;
+  }
 
-  const go = () => {
-    if (!nm.trim()) return;
-    const taken = isNameTaken(nm.trim());
-    if (taken && !warn) {
-      setWarn(nm.trim());
-      return;
-    }
-    onJoin({ id: uid(), name: nm.trim(), avatar: av, color: col });
-  };
-
-  const recoverIdentity = () => {
-    const reg = loadUserRegistry();
-    const found = reg.find(u => u.name.toLowerCase() === nm.trim().toLowerCase());
-    if (found) onJoin({ id: found.id, name: found.name, avatar: found.avatar, color: found.color });
+  const join = () => {
+    if (!name.trim()) return;
+    const u = {id:uid(), name:name.trim(), avatar:av, color:col};
+    saveUser(u);
+    onJoin(u);
   };
 
   return html`
-    <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style=${{ ...gl, borderRadius:28, padding:'44px 38px', maxWidth:420, width:'100%', boxShadow:'0 8px 60px rgba(0,0,0,0.06)' }}>
-        <div style=${{ textAlign:'center', marginBottom:28 }}>
-          <h1 class="wm" style=${{ fontSize:30, marginBottom:3 }}>revelio</h1>
-          <p style=${{ color:'#86868B', fontSize:14 }}>Sala: <strong style=${{ color:'#007AFF' }}>${SALA_DISPLAY}</strong></p>
+    <div style=${{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea,#764ba2)'}}>
+      <div class="card" style=${{maxWidth:360,width:'90%',padding:32,animation:'fadeInScale .3s ease'}}>
+        <div style=${{textAlign:'center',marginBottom:20}}>
+          <div style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:26,background:'linear-gradient(90deg,#007AFF,#5856D6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>revelio</div>
+          <p style=${{color:'#86868B',fontSize:12,marginTop:4}}>Sala: <b>${SALA}</b> · ${(TASK_TEMPLATES[TIPO]||TASK_TEMPLATES.agile).icon} ${(TASK_TEMPLATES[TIPO]||TASK_TEMPLATES.agile).label}</p>
         </div>
-        <input value=${nm} onInput=${e=>handleName(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}
-          placeholder="¿Cómo te llamas, mago?" style=${{ ...iS, marginBottom: warn ? 8 : 18, textAlign:'center', fontSize:16, background:'#FFF', borderColor: warn ? '#FF9500' : '#E5E5EA' }} />
-        ${warn && html`
-          <div style=${{ background:'#FFF8EB', border:'1.5px solid #FF950030', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
-            <p style=${{ fontSize:12, color:'#FF9500', fontWeight:600, marginBottom:6 }}>⚠️ "${warn}" ya existe en esta sala</p>
-            <div style=${{ display:'flex', gap:6 }}>
-              <button onClick=${recoverIdentity} style=${{ ...bP, padding:'7px 14px', fontSize:11, background:'#007AFF', flex:1 }}>Soy yo, recuperar</button>
-              <button onClick=${()=>{setWarn(null);go()}} style=${{ ...bS, padding:'7px 14px', fontSize:11, flex:1 }}>Entrar como nuevo</button>
-            </div>
-          </div>
-        `}
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Tu patronus</p>
-        <div style=${{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:14 }}>
-          ${AVATARS.map(a => html`<button key=${a} onClick=${()=>setAv(a)} style=${{ width:40, height:40, borderRadius:11, border:av===a?'2.5px solid '+col:'2px solid #E5E5EA', background:av===a?col+'10':'#FFF', fontSize:19, display:'flex', alignItems:'center', justifyContent:'center' }}>${a}</button>`)}
+        <div style=${{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center',marginBottom:14}}>
+          ${AVATARS.map(a => html`
+            <button key=${a} onClick=${()=>setAv(a)} style=${{fontSize:20,cursor:'pointer',border:av===a?'2px solid #007AFF':'2px solid transparent',borderRadius:8,padding:'3px 5px',background:'none',transition:'border-color .15s'}}>
+              ${a}
+            </button>
+          `)}
         </div>
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Casa</p>
-        <div style=${{ display:'flex', gap:5, marginBottom:24 }}>
-          ${COLRS.map(c => html`<button key=${c} onClick=${()=>setCol(c)} style=${{ width:28, height:28, borderRadius:14, background:c, border:col===c?'3px solid #1D1D1F':'3px solid transparent', transform:col===c?'scale(1.15)':'scale(1)', transition:'all .15s' }} />`)}
+        <div style=${{display:'flex',gap:6,justifyContent:'center',marginBottom:14}}>
+          ${COLORS.map(c => html`
+            <button key=${c} onClick=${()=>setCol(c)} style=${{width:22,height:22,borderRadius:'50%',background:c,border:col===c?'3px solid #1D1D1F':'3px solid transparent',cursor:'pointer',transition:'border-color .15s'}}></button>
+          `)}
         </div>
-        <button onClick=${go} style=${{ ...bP, width:'100%', padding:14, fontSize:16 }}>🪄 Revelio!</button>
+        <input placeholder="Tu nombre..." value=${name} onInput=${e=>setName(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&join()}
+          style=${{width:'100%',padding:'11px 14px',borderRadius:12,border:'1.5px solid #E5E5EA',fontSize:14,outline:'none',marginBottom:12}} />
+        <button onClick=${join} style=${{width:'100%',background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',border:'none',borderRadius:12,padding:'13px',fontSize:15,fontWeight:600,cursor:'pointer'}}>
+          ✨ Entrar
+        </button>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-/* ═══ RETRO BOARD ═══ */
-function RetroBoard({ user, onLogout }) {
-  const { state, upd, online, cursors, moveCursor, reset } = useRealtime(user);
-  const [phase, setPhase] = useState(0);
-  const [timer, setTimer] = useState(900);
-  const [running, setRunning] = useState(false);
-  const [showReset, setShowReset] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-  const [toast, setToast] = useState(null);
-  const tRef = useRef(null);
-  const bRef = useRef(null);
+/* ══════════════════════════════════════════════
+   RETRO BOARD
+══════════════════════════════════════════════ */
+function RetroBoard({ user }) {
+  const { state, upd, risks, updRisk, moveCursor, retroId, saving, lastSaved, online, cursors, newRetro } = useRealtime(user);
+  const [phase,        setPhase]       = useState('review');
+  const [showGuide,    setShowGuide]   = useState(false);
+  const [newRetroModal,setNewRetroModal] = useState(false);
+  const [toast,        setToast]       = useState(null);
+  const tipoInfo = TASK_TEMPLATES[TIPO] || TASK_TEMPLATES.agile;
 
-  const SAVE_QUOTES = [
-    '✨ Mischief managed! Retro guardada.',
-    '🪄 Accio backup! Archivo descargado.',
-    '🧙 Dumbledore estaría orgulloso. Guardado.',
-    '⚡ Más rápido que un Nimbus 2000. Listo.',
-    '🦉 Una lechuza lleva tu retro a buen puerto.',
-    '🔮 El Pensadero ha registrado esta sesión.',
-  ];
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const showMsg = (msg) => { setToast(msg); setTimeout(()=>setToast(null), 2600); };
 
-  useEffect(() => {
-    if (!running) return;
-    tRef.current = setInterval(() => setTimer(p => { if(p<=0){setRunning(false);return 0} return p-1 }), 1000);
-    return () => clearInterval(tRef.current);
-  }, [running]);
-
-  useEffect(() => {
-    if (!bRef.current) return;
-    let last = 0;
-    const h = e => {
-      if (Date.now()-last<400) return; last=Date.now();
-      const r = bRef.current.getBoundingClientRect();
-      const x = ((e.clientX-r.left)/r.width)*100, y = ((e.clientY-r.top)/r.height)*100;
-      if (x>=0&&x<=100&&y>=0&&y<=100) moveCursor(x,y);
-    };
-    const el = bRef.current;
-    el.addEventListener('mousemove',h);
-    return () => el.removeEventListener('mousemove',h);
-  }, [moveCursor, phase]);
-
-  const fmt = s => Math.floor(s/60).toString().padStart(2,'0')+':'+(s%60).toString().padStart(2,'0');
-  const uList = Object.entries(online);
-  const sN = d => upd('notes',d);
-  const sT = d => upd('tasks',d);
-  const sA = d => upd('actions',d);
-  const sO = d => upd('obj',d);
-  const sR = d => { upd('risks',d); saveRisks(d); };
-
-  const fileRef = useRef(null);
-
-  const saveRetro = () => {
-    const data = { sala: SALA, date: new Date().toISOString(), ...state };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'retro-' + SALA + '-' + new Date().toISOString().split('T')[0] + '.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-
-    // Save metrics to localStorage for admin dashboard
-    try {
-      const participants = [...new Set(state.notes.map(n => n.userId))];
-      const participantNames = [...new Set(state.notes.map(n => n.userName))];
-      saveMetricEntry(SALA, {
-        date: new Date().toISOString(),
-        notes: state.notes.length,
-        participants: participants.length,
-        participantNames,
-        actions: state.actions.length,
-        actionsDone: state.actions.filter(a => a.status === 'done').length,
-        votes: state.notes.reduce((s, n) => s + (n.voters?.length || 0), 0),
-        objective: state.obj?.met != null ? String(state.obj.met) : null,
-        tasksDone: state.tasks.filter(t => t.done).length,
-        tasksTotal: state.tasks.length,
-      });
-    } catch {}
-    showToast(SAVE_QUOTES[Math.floor(Math.random()*SAVE_QUOTES.length)]);
+  const handleNewRetro = async () => {
+    const ok = await newRetro();
+    setNewRetroModal(false);
+    if (ok) showMsg('🆕 Nueva retro iniciada');
   };
 
-  const loadRetro = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (data.notes) upd('notes', data.notes);
-        if (data.tasks) upd('tasks', data.tasks);
-        if (data.actions) upd('actions', data.actions);
-        if (data.obj) upd('obj', data.obj);
-        if (data.risks) { upd('risks', data.risks); saveRisks(data.risks); }
-      } catch (err) { console.error('Error cargando retro:', err); }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
+  const onlineArr = Object.entries(online).map(([k,v])=>({id:k,...v}));
 
   const content = () => {
-    if (phase===0) return html`<${P1} tasks=${state.tasks} sT=${sT} obj=${state.obj} sO=${sO} user=${user} />`;
-    if (phase===1) return html`<${Board} notes=${state.notes} sN=${sN} user=${user} filter="all" />`;
-    if (phase===2) return html`<${P3} notes=${state.notes} sN=${sN} user=${user} />`;
-    if (phase===3) return html`<${P5Risks} risks=${state.risks} sR=${sR} notes=${state.notes} user=${user} />`;
-    if (phase===4) return html`<${P4} notes=${state.notes} actions=${state.actions} risks=${state.risks} sA=${sA} user=${user} />`;
-    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} />`;
-    return null;
+    switch (phase) {
+      case 'review':     return html`<${PhaseReview}     state=${state} upd=${upd} user=${user} showMsg=${showMsg} />`;
+      case 'individual': return html`<${PhaseNotes}      state=${state} upd=${upd} user=${user} showMsg=${showMsg} />`;
+      case 'discuss':    return html`<${PhaseDiscuss}    state=${state} upd=${upd} user=${user} risks=${risks} updRisk=${updRisk} showMsg=${showMsg} />`;
+      case 'risks':      return html`<${PhaseRisks}      risks=${risks} updRisk=${updRisk} user=${user} showMsg=${showMsg} />`;
+      case 'actions':    return html`<${PhaseActions}    state=${state} upd=${upd} user=${user} showMsg=${showMsg} />`;
+      case 'dashboard':  return html`<${PhaseDashboard}  state=${state} risks=${risks} saving=${saving} lastSaved=${lastSaved} tipoInfo=${tipoInfo} />`;
+      default: return null;
+    }
   };
 
   return html`
-    <div ref=${bRef} style=${{ display:'flex', flexDirection:'column', height:'100vh', position:'relative' }}>
-      ${Object.entries(cursors).map(([id,c])=>html`
-        <div key=${id} style=${{ position:'fixed', left:c.x+'%', top:c.y+'%', pointerEvents:'none', zIndex:9999, transition:'left .4s ease-out, top .4s ease-out' }}>
-          <svg width="16" height="16" viewBox="0 0 20 20"><path d="M3 2L17 10L10 11L7 18L3 2Z" fill=${c.color} stroke="#FFF" stroke-width="1.5"/></svg>
-          <span style=${{ position:'absolute', left:14, top:10, background:c.color, color:'#FFF', fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:4, whiteSpace:'nowrap' }}>${c.avatar} ${c.name}</span>
+    <div style=${{height:'100vh',display:'flex',flexDirection:'column',position:'relative'}} onMouseMove=${e=>moveCursor(e.clientX/window.innerWidth*100, e.clientY/window.innerHeight*100)}>
+
+      <!-- ── HEADER ── -->
+      <div style=${{background:'rgba(255,255,255,.93)',backdropFilter:'blur(14px)',borderBottom:'1px solid #E5E5EA',padding:'8px 14px',display:'flex',alignItems:'center',gap:10,zIndex:100,flexShrink:0}}>
+        <div style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:17,background:'linear-gradient(90deg,#007AFF,#5856D6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',flexShrink:0}}>revelio</div>
+        <div style=${{fontSize:11,color:'#86868B',flex:1,minWidth:0}}>
+          <span style=${{fontWeight:700,color:'#1D1D1F'}}>${SALA}</span>
+          <span style=${{margin:'0 5px'}}>·</span>
+          <span>${tipoInfo.icon} ${tipoInfo.label}</span>
+          <span style=${{margin:'0 5px'}}>·</span>
+          <span style=${{color:saving?'#FF9500':'#34C759',fontWeight:600}}>
+            ${saving
+              ? html`<span style=${{animation:'pulse 1s infinite'}}>⏳ Guardando…</span>`
+              : lastSaved
+                ? `✅ ${fdt(lastSaved)}`
+                : '⏳ Iniciando…'
+            }
+          </span>
+        </div>
+        <!-- Online avatars -->
+        <div style=${{display:'flex',gap:3,alignItems:'center'}}>
+          ${onlineArr.slice(0,5).map(u => html`
+            <div key=${u.id} title=${u.name} style=${{width:26,height:26,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,border:'2px solid #FFF',boxShadow:'0 1px 4px rgba(0,0,0,.1)',cursor:'default'}}>${u.avatar}</div>
+          `)}
+          ${onlineArr.length > 5 && html`<div style=${{width:26,height:26,borderRadius:'50%',background:'#8E8E93',color:'#FFF',fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>+${onlineArr.length-5}</div>`}
+        </div>
+        <button onClick=${()=>setShowGuide(true)} title="Libro de Hechizos" style=${{background:'none',border:'none',cursor:'pointer',fontSize:17,padding:'2px 4px'}}>📖</button>
+        <button onClick=${()=>setNewRetroModal(true)} title="Nueva retro" style=${{background:'none',border:'1px solid #E5E5EA',borderRadius:8,padding:'3px 9px',fontSize:11,cursor:'pointer',color:'#1D1D1F',fontWeight:500}}>🆕</button>
+        <button onClick=${()=>location.href='?admin'} title="Admin" style=${{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'2px 4px'}}>🏰</button>
+        <div style=${{fontSize:15,cursor:'default'}} title=${user.name}>${user.avatar}</div>
+      </div>
+
+      <!-- ── PHASE NAV ── -->
+      <div style=${{background:'#FFF',borderBottom:'1px solid #E5E5EA',display:'flex',overflowX:'auto',flexShrink:0,paddingLeft:6}}>
+        ${PHASES.map((p,i) => html`
+          <button key=${p.id} onClick=${()=>setPhase(p.id)} style=${{
+            padding:'9px 12px',border:'none',background:'none',cursor:'pointer',
+            borderBottom:phase===p.id?'2.5px solid #007AFF':'2.5px solid transparent',
+            color:phase===p.id?'#007AFF':'#86868B',fontWeight:phase===p.id?700:400,
+            fontSize:11,whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4,transition:'color .15s'
+          }}>
+            <span>${p.icon}</span><span>${i+1}. ${p.label}</span>
+          </button>
+        `)}
+      </div>
+
+      <!-- ── CONTENT ── -->
+      <div style=${{flex:1,overflowY:'auto',padding:'14px 16px'}}>
+        ${content()}
+      </div>
+
+      <!-- ── CURSORS ── -->
+      ${Object.entries(cursors).map(([id,c]) => html`
+        <div key=${id} style=${{position:'fixed',left:c.x+'%',top:c.y+'%',pointerEvents:'none',zIndex:500,transform:'translate(-50%,-50%)',transition:'left .1s,top .1s'}}>
+          <div style=${{fontSize:16}}>${c.avatar}</div>
+          <div style=${{background:c.color,color:'#FFF',fontSize:9,fontWeight:600,padding:'1px 5px',borderRadius:4,whiteSpace:'nowrap',marginTop:2}}>${c.name}</div>
         </div>
       `)}
-      <header style=${{ ...gl, padding:'9px 18px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(0,0,0,0.06)', flexShrink:0, zIndex:100 }}>
-        <div style=${{ display:'flex', alignItems:'center', gap:10 }}>
-          
-          <div>
-            <h2 style=${{ fontSize:16, fontWeight:700 }}><span class="wm" style=${{ fontSize:18 }}>revelio</span> <span style=${{ fontSize:12, fontWeight:500, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:6, marginLeft:4 }}>${SALA_DISPLAY}</span> <span style=${{ fontSize:10, fontWeight:500, color:TIPO_INFO.color, background:TIPO_INFO.color+'10', padding:'2px 6px', borderRadius:5, marginLeft:2 }}>${TIPO_INFO.icon} ${TIPO_INFO.label}</span></h2>
-            <span style=${{ fontSize:11, color:'#86868B' }}>${fd(new Date().toISOString())}</span>
-          </div>
-          <button onClick=${()=>setShowReset(true)} style=${{ marginLeft:12, padding:'5px 10px', borderRadius:8, border:'1.5px solid #FF3B3040', background:'#FFF', color:'#FF3B30', fontSize:11, fontWeight:600 }}>🗑 Nueva</button>
-          <button onClick=${saveRetro} style=${{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #34C75940', background:'#FFF', color:'#34C759', fontSize:11, fontWeight:600 }}>💾 Guardar</button>
-          <button onClick=${()=>fileRef.current.click()} style=${{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #007AFF40', background:'#FFF', color:'#007AFF', fontSize:11, fontWeight:600 }}>📂 Cargar</button>
-          <input ref=${fileRef} type="file" accept=".json" onChange=${loadRetro} style=${{ display:'none' }} />
-          <button onClick=${()=>setShowGuide(true)} style=${{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #5856D640', background:'#FFF', color:'#5856D6', fontSize:11, fontWeight:600 }}>📖 Guía</button>
+
+      <!-- ── TOAST ── -->
+      ${toast && html`
+        <div style=${{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1D1D1F',color:'#FFF',padding:'11px 22px',borderRadius:14,fontSize:13,fontWeight:600,boxShadow:'0 8px 30px rgba(0,0,0,.18)',zIndex:400,animation:'fadeIn .25s',whiteSpace:'nowrap'}}>
+          ${toast}
         </div>
-        ${showReset && html`
-          <div style=${{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.3)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }} onClick=${()=>setShowReset(false)}>
-            <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:20, padding:'28px 32px', maxWidth:380, width:'90%', boxShadow:'0 20px 60px rgba(0,0,0,0.15)', textAlign:'center' }}>
-              <div style=${{ fontSize:36, marginBottom:12 }}>🗑</div>
-              <h3 style=${{ fontSize:18, fontWeight:700, marginBottom:8 }}>¿Nueva retrospectiva?</h3>
-              <p style=${{ fontSize:13, color:'#86868B', marginBottom:20 }}>Se borran notas, tareas y objetivo. Los accionables abiertos y los riesgos se mantienen.</p>
-              <div style=${{ display:'flex', gap:8, justifyContent:'center' }}>
-                <button onClick=${()=>setShowReset(false)} style=${{ ...bS, padding:'10px 20px' }}>Cancelar</button>
-                <button onClick=${()=>{reset();setShowReset(false);setPhase(0);setTimer(900);setRunning(false)}} style=${{ ...bP, padding:'10px 20px', background:'#FF3B30' }}>Borrar y empezar</button>
-              </div>
-            </div>
+      `}
+
+      <!-- ── NEW RETRO MODAL ── -->
+      ${newRetroModal && html`
+        <div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:800,padding:16}} onClick=${()=>setNewRetroModal(false)}>
+          <div class="card" style=${{maxWidth:380,width:'100%',textAlign:'center',padding:32,animation:'fadeInScale .2s ease'}} onClick=${e=>e.stopPropagation()}>
+            <div style=${{fontSize:42,marginBottom:12}}>🆕</div>
+            <h3 style=${{fontSize:17,fontWeight:700,marginBottom:8}}>Nueva retro</h3>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22,lineHeight:1.5}}>
+              La retro actual se cerrará y quedará guardada en el historial.<br/>
+              Las notas y accionables se resetean.<br/>
+              Los <b>riesgos abiertos</b> se mantienen.
+            </p>
+            <button onClick=${handleNewRetro} style=${{width:'100%',background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',border:'none',borderRadius:12,padding:'13px',fontSize:14,fontWeight:600,cursor:'pointer',marginBottom:8}}>
+              ✨ Iniciar nueva retro
+            </button>
+            <button onClick=${()=>setNewRetroModal(false)} style=${{background:'none',border:'none',color:'#86868B',cursor:'pointer',fontSize:13}}>Cancelar</button>
           </div>
-        `}
-        ${showGuide && html`
-          <div style=${{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.4)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }} onClick=${()=>setShowGuide(false)}>
-            <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:22, maxWidth:600, width:'100%', maxHeight:'85vh', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.2)', display:'flex', flexDirection:'column' }}>
-              <div style=${{ padding:'24px 28px 16px', borderBottom:'1px solid #E5E5EA', flexShrink:0 }}>
-                <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <div><h2 style=${{ fontSize:20, fontWeight:700 }}>📖 Libro de Hechizos</h2><p style=${{ fontSize:12, color:'#86868B' }}>Todo lo que necesitas para dominar revelio</p></div>
-                  <button onClick=${()=>setShowGuide(false)} style=${{ width:30, height:30, borderRadius:15, border:'none', background:'#F2F2F7', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-                </div>
+        </div>
+      `}
+
+      <!-- ── GUIDE MODAL ── -->
+      ${showGuide && html`<${GuideModal} onClose=${()=>setShowGuide(false)} />`}
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   PHASE: REVIEW
+══════════════════════════════════════════════ */
+function PhaseReview({ state, upd, user, showMsg }) {
+  const { tasks, obj } = state;
+  const done = tasks.filter(t=>t.done).length;
+  const pct  = tasks.length ? Math.round(done/tasks.length*100) : 0;
+  const [nt, setNt] = useState('');
+
+  const toggle = id => upd('tasks', tasks.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const del    = id => upd('tasks', tasks.filter(t=>t.id!==id));
+  const add    = () => { if (!nt.trim()) return; upd('tasks',[...tasks,{id:uid(),text:nt.trim(),done:false}]); setNt(''); };
+  const setObj = (field,val) => upd('obj',{...obj,[field]:val});
+
+  return html`
+    <div style=${{maxWidth:680,margin:'0 auto',display:'flex',flexDirection:'column',gap:12}}>
+      <div class="card">
+        <h3 style=${{fontSize:14,fontWeight:700,marginBottom:10}}>🎯 Objetivo del Sprint</h3>
+        <textarea value=${obj.text||''} onInput=${e=>setObj('text',e.target.value)} placeholder="¿Cuál era el objetivo del sprint?" rows=2
+          style=${{width:'100%',padding:'10px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,resize:'none',outline:'none',fontFamily:'inherit',lineHeight:1.5}} />
+        <div style=${{display:'flex',gap:8,marginTop:8}}>
+          ${[['met','✅ Cumplido','#34C759'],['partial','⚠️ Parcial','#FF9500'],['unmet','❌ No cumplido','#FF3B30']].map(([v,l,c])=>html`
+            <button key=${v} onClick=${()=>setObj('met',obj.met===v?null:v)} style=${{
+              flex:1,padding:'7px',borderRadius:10,border:obj.met===v?`2px solid ${c}`:'2px solid #E5E5EA',
+              background:obj.met===v?c+'18':'#FFF',color:obj.met===v?c:'#86868B',fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .15s'
+            }}>${l}</button>
+          `)}
+        </div>
+      </div>
+
+      <div class="card">
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+          <h3 style=${{fontSize:14,fontWeight:700}}>📋 Tareas del Sprint</h3>
+          <span style=${{fontSize:13,fontWeight:700,color:pct===100?'#34C759':'#007AFF'}}>${done}/${tasks.length} · ${pct}%</span>
+        </div>
+        <div style=${{height:7,background:'#F2F2F7',borderRadius:4,marginBottom:12,overflow:'hidden'}}>
+          <div style=${{height:'100%',width:pct+'%',background:pct===100?'#34C759':'linear-gradient(90deg,#007AFF,#5856D6)',borderRadius:4,transition:'width .4s ease'}}></div>
+        </div>
+        ${tasks.map(t => html`
+          <div key=${t.id} style=${{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid #F2F2F7',cursor:'pointer'}} onClick=${()=>toggle(t.id)}>
+            <div style=${{width:20,height:20,borderRadius:6,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',border:t.done?'none':'2px solid #C7C7CC',background:t.done?'#34C759':'transparent',transition:'all .15s'}}>
+              ${t.done && html`<span style=${{color:'#FFF',fontSize:11,fontWeight:700}}>✓</span>`}
+            </div>
+            <span style=${{flex:1,fontSize:13,textDecoration:t.done?'line-through':'none',color:t.done?'#86868B':'#1D1D1F',transition:'color .15s'}}>${t.text}</span>
+            <button onClick=${e=>{e.stopPropagation();del(t.id);}} style=${{background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#C7C7CC',opacity:0,transition:'opacity .15s'}}
+              onMouseOver=${e=>e.currentTarget.style.opacity=1} onMouseOut=${e=>e.currentTarget.style.opacity=0}>✕</button>
+          </div>
+        `)}
+        <div style=${{display:'flex',gap:8,marginTop:10}}>
+          <input value=${nt} onInput=${e=>setNt(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'){add();}}}
+            placeholder="Añadir tarea…" style=${{flex:1,padding:'8px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none'}} />
+          <button onClick=${add} style=${{padding:'8px 14px',background:'#007AFF',color:'#FFF',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:16}}>+</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   PHASE: NOTES
+══════════════════════════════════════════════ */
+function PhaseNotes({ state, upd, user, showMsg }) {
+  const { notes } = state;
+  const [cat,  setCat]  = useState('good');
+  const [text, setText] = useState('');
+
+  const add = () => {
+    if (!text.trim()) return;
+    const n = {id:uid(), text:text.trim(), category:cat, userId:user.id, userName:user.name, userAvatar:user.avatar, userColor:user.color, voters:[], reactions:{}};
+    upd('notes', [...notes, n]);
+    setText('');
+    showMsg('📝 Nota añadida ✨');
+  };
+
+  const vote = id => {
+    upd('notes', notes.map(n => {
+      if (n.id !== id) return n;
+      const vs = n.voters||[];
+      return {...n, voters: vs.includes(user.id) ? vs.filter(v=>v!==user.id) : [...vs,user.id]};
+    }));
+  };
+
+  const react = (id, emoji) => {
+    upd('notes', notes.map(n => {
+      if (n.id !== id) return n;
+      const rs = {...(n.reactions||{})};
+      if (!rs[emoji]) rs[emoji] = [];
+      rs[emoji] = rs[emoji].includes(user.id) ? rs[emoji].filter(i=>i!==user.id) : [...rs[emoji],user.id];
+      if (!rs[emoji].length) delete rs[emoji];
+      return {...n, reactions:rs};
+    }));
+  };
+
+  const del = id => upd('notes', notes.filter(n=>n.id!==id));
+
+  return html`
+    <div style=${{maxWidth:920,margin:'0 auto'}}>
+      <div class="card" style=${{marginBottom:14}}>
+        <div style=${{display:'flex',gap:7,marginBottom:10}}>
+          ${CATS.map(c => html`
+            <button key=${c.id} onClick=${()=>setCat(c.id)} style=${{
+              flex:1,padding:'7px 4px',borderRadius:10,border:cat===c.id?`2px solid ${c.color}`:'2px solid #E5E5EA',
+              background:cat===c.id?c.bg:'#FFF',color:cat===c.id?c.color:'#86868B',fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .15s'
+            }}>${c.emoji} ${c.label}</button>
+          `)}
+        </div>
+        <div style=${{display:'flex',gap:8}}>
+          <textarea value=${text} onInput=${e=>setText(e.target.value)} placeholder="Escribe tu nota… (Enter para añadir)" rows=2
+            onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();add();}}}
+            style=${{flex:1,padding:'10px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,resize:'none',outline:'none',fontFamily:'inherit'}} />
+          <button onClick=${add} style=${{padding:'0 18px',background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:18}}>+</button>
+        </div>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12}}>
+        ${CATS.map(c => {
+          const cn = [...notes.filter(n=>n.category===c.id)].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0));
+          return html`
+            <div key=${c.id} style=${{background:c.bg,borderRadius:14,padding:13,border:`1.5px solid ${c.color}28`}}>
+              <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                <span style=${{fontSize:15}}>${c.emoji}</span>
+                <span style=${{fontWeight:700,color:c.color,fontSize:12}}>${c.label}</span>
+                <span style=${{marginLeft:'auto',background:c.color+'20',color:c.color,fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:6}}>${cn.length}</span>
               </div>
-              <div style=${{ padding:'20px 28px 28px', overflowY:'auto', flex:1 }}>
-                <h3 style=${{ fontSize:14, fontWeight:700, color:'#007AFF', marginBottom:12 }}>🧙 Para el equipo</h3>
-                <div style=${{ marginBottom:14 }}><h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>1. Entra con el enlace</h4><p style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.5 }}>Tu SM te dará una URL tipo <code style=${{ background:'#F2F2F7', padding:'1px 5px', borderRadius:3, fontSize:11 }}>?sala=mi-proyecto</code>. Pon tu nombre, elige patronus y casa. Clic en 🪄 Revelio!</p></div>
-                <div style=${{ marginBottom:14 }}><h4 style=${{ fontSize:13, fontWeight:700, marginBottom:6 }}>2. Las 6 fases</h4>
-                  <div style=${{ display:'flex', flexDirection:'column', gap:5 }}>
-                    ${[
-                      {i:'📋',t:'Repaso Inicial',d:'Revisa objetivo y tareas. Marca las completadas.'},
-                      {i:'✍️',t:'Análisis Individual',d:'Escribe notas en Good/Bad/Start/Stop. Arrastra entre columnas. Las tuyas tienen borde grueso.'},
-                      {i:'💬',t:'Puesta en Común',d:'Filtra por categoría o "Mis notas". Vota con 👍. Reacciona con emojis rápidos (🔥💡❤️😂🎯🤯).'},
-                      {i:'⚠️',t:'Riesgos',d:'Crea riesgos o convierte notas Bad/Stop. Vota impacto y probabilidad. El mapa de calor se actualiza en tiempo real.'},
-                      {i:'🎯',t:'Accionables',d:'Crea acciones o convierte notas/riesgos en accionables. Asigna responsable, fecha y prioridad.'},
-                      {i:'📊',t:'Dashboard',d:'Ranking, métricas y descarga del informe PDF con todo.'},
-                    ].map((p,i)=>html`<div key=${i} style=${{ padding:'7px 10px', borderRadius:8, background:'#F9F9FB', border:'1px solid #E5E5EA' }}><span style=${{ fontSize:12, fontWeight:700 }}>${p.i} ${p.t}</span><p style=${{ fontSize:11, color:'#6E6E73', margin:'2px 0 0', lineHeight:1.4 }}>${p.d}</p></div>`)}
+              ${cn.map(n => html`
+                <div key=${n.id} class="hl" style=${{background:'#FFF',borderRadius:10,padding:10,marginBottom:8,boxShadow:'0 1px 4px rgba(0,0,0,.05)'}}>
+                  <p style=${{fontSize:12,lineHeight:1.45,marginBottom:6}}>${n.text}</p>
+                  <div style=${{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                    <span style=${{fontSize:11}}>${n.userAvatar}</span>
+                    <span style=${{fontSize:10,color:'#86868B'}}>${n.userName}</span>
+                    <button onClick=${()=>vote(n.id)} style=${{
+                      marginLeft:'auto',padding:'2px 8px',borderRadius:6,border:'none',fontSize:10,fontWeight:700,cursor:'pointer',
+                      background:(n.voters||[]).includes(user.id)?c.color+'22':'#F2F2F7',
+                      color:(n.voters||[]).includes(user.id)?c.color:'#86868B',
+                    }}>▲ ${n.voters?.length||0}</button>
+                    ${n.userId===user.id && html`<button onClick=${()=>del(n.id)} style=${{background:'none',border:'none',cursor:'pointer',fontSize:11,color:'#C7C7CC'}}>✕</button>`}
+                  </div>
+                  <div style=${{display:'flex',gap:3,marginTop:5,flexWrap:'wrap'}}>
+                    ${EMOJIS.map(e => html`
+                      <button key=${e} onClick=${()=>react(n.id,e)} style=${{
+                        padding:'1px 5px',borderRadius:5,border:'none',cursor:'pointer',fontSize:10,
+                        background:(n.reactions?.[e]||[]).includes(user.id)?'#007AFF18':'#F2F2F7',
+                      }}>${e}${(n.reactions?.[e]||[]).length>0?' '+n.reactions[e].length:''}</button>
+                    `)}
                   </div>
                 </div>
-                <div style=${{ marginBottom:14 }}><h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>3. Tips rápidos</h4>
-                  <div style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.7 }}><p>✏️ Edita tus notas con el lápiz, elimina con ✕</p><p>🔄 Si cierras y vuelves al enlace, entras automáticamente</p><p>👤 Cambia de usuario con el botón de tu nombre arriba a la derecha</p><p>⏱️ Timer con presets de 5, 10, 15 y 20 minutos</p></div>
+              `)}
+              ${cn.length===0 && html`<p style=${{color:c.color,fontSize:11,opacity:.5,textAlign:'center',padding:'10px 0'}}>Sin notas</p>`}
+            </div>`;
+        })}
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   PHASE: DISCUSS
+══════════════════════════════════════════════ */
+function PhaseDiscuss({ state, upd, user, risks, updRisk, showMsg }) {
+  const { notes } = state;
+  const top = [...notes].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0));
+
+  const toRisk = note => {
+    const r = {id:uid(), text:note.text, mitigation:'', owner:'Sin asignar', status:'open', impactVotes:{}, probVotes:{}, fromNote:note.id, createdBy:user.id};
+    const nr = [...risks, r];
+    updRisk(nr);
+    dbUpsertRisk(SALA, r);
+    showMsg('⚠️ Convertida en riesgo');
+  };
+  const toAction = note => {
+    upd('actions', [...state.actions, {id:uid(), text:note.text, owner:'Sin asignar', status:'pending', priority:'medium'}]);
+    showMsg('🎯 Convertida en accionable');
+  };
+
+  return html`
+    <div style=${{maxWidth:680,margin:'0 auto'}}>
+      <div class="card">
+        <h3 style=${{fontSize:14,fontWeight:700,marginBottom:4}}>💬 Notas más votadas</h3>
+        <p style=${{fontSize:11,color:'#86868B',marginBottom:14}}>Debatid cada nota. Convertid las más relevantes en riesgos o accionables.</p>
+        ${top.length===0 && html`<p style=${{color:'#86868B',textAlign:'center',padding:24,fontSize:13}}>Aún no hay notas 📝</p>`}
+        ${top.map((n,i) => {
+          const cat = CATS.find(c=>c.id===n.category)||CATS[0];
+          return html`
+            <div key=${n.id} style=${{display:'flex',gap:12,padding:'11px 0',borderBottom:'1px solid #F2F2F7',alignItems:'flex-start'}}>
+              <div style=${{fontWeight:800,fontSize:13,color:'#C7C7CC',minWidth:18,paddingTop:2}}>${i+1}</div>
+              <div style=${{flex:1}}>
+                <div style=${{display:'flex',gap:5,marginBottom:4,alignItems:'center'}}>
+                  <span style=${{background:cat.bg,color:cat.color,fontSize:10,padding:'1px 6px',borderRadius:4,fontWeight:700}}>${cat.emoji} ${cat.label}</span>
+                  <span style=${{fontSize:10,color:'#86868B'}}>▲ ${n.voters?.length||0} votos</span>
                 </div>
-                <div style=${{ height:1, background:'#E5E5EA', margin:'16px 0' }} />
-                <h3 style=${{ fontSize:14, fontWeight:700, color:'#5856D6', marginBottom:12 }}>🏰 Para el Scrum Master</h3>
-                <div style=${{ marginBottom:14 }}><h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>Panel admin</h4>
-                  <p style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.5, marginBottom:6 }}>Accede con <code style=${{ background:'#F2F2F7', padding:'1px 5px', borderRadius:3, fontSize:11 }}>?admin</code> al final de la URL.</p>
-                  <div style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.7 }}><p>📂 <strong>Crear salas</strong> — Nombre + metodología (Agile/Waterfall/ITIL/Kanban)</p><p>📋 <strong>Copiar enlace</strong> — Botón 📋 en cada sala para Slack/Teams</p><p>📊 <strong>Dashboard</strong> — KPIs, gráficos, tabla portfolio. Filtra por proyecto</p><p>👥 <strong>Usuarios</strong> — Quién ha entrado y cuándo en cada sala</p></div>
-                </div>
-                <div style=${{ marginBottom:14 }}><h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>Datos y persistencia</h4>
-                  <div style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.7 }}><p>💾 <strong>Guardar</strong> — JSON + métricas para el dashboard</p><p>📂 <strong>Cargar</strong> — Restaura una retro desde JSON</p><p>📄 <strong>PDF</strong> — Informe completo desde el Dashboard</p><p>🗑 <strong>Nueva retro</strong> — Borra notas y tareas. Accionables abiertos y riesgos se mantienen</p></div>
-                </div>
-                <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
-                  <div style=${{ padding:'10px', borderRadius:8, background:'#F0FFF4', border:'1px solid #34C75920' }}><p style=${{ fontSize:11, fontWeight:700, color:'#34C759', marginBottom:4 }}>Se mantiene entre retros</p><p style=${{ fontSize:11, color:'#6E6E73', lineHeight:1.5 }}>⚠️ Riesgos abiertos<br/>🎯 Accionables pendientes<br/>👤 Identidad del usuario<br/>📊 Métricas del admin</p></div>
-                  <div style=${{ padding:'10px', borderRadius:8, background:'#FFF5F5', border:'1px solid #FF3B3020' }}><p style=${{ fontSize:11, fontWeight:700, color:'#FF3B30', marginBottom:4 }}>Se resetea</p><p style=${{ fontSize:11, color:'#6E6E73', lineHeight:1.5 }}>📝 Notas del tablero<br/>📋 Tareas de la iteración<br/>🎯 Objetivo<br/>✅ Accionables completados</p></div>
-                </div>
-                <div style=${{ textAlign:'center', padding:'8px 0 0', color:'#C7C7CC', fontSize:11 }}><p>Hecho con ✨ y sin Horcruxes</p></div>
+                <p style=${{fontSize:13,lineHeight:1.4}}>${n.text}</p>
               </div>
-            </div>
-          </div>
-        `}
-        <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
-          <div style=${{ background:running?'#1D1D1F':'#F2F2F7', color:running?'#FFF':'#1D1D1F', borderRadius:10, padding:'6px 10px', display:'flex', alignItems:'center', gap:5 }}>
-            ${!running && html`<div style=${{ display:'flex', gap:2 }}>
-              ${[5,10,15,20].map(m => html`<button key=${m} onClick=${()=>{setTimer(m*60);setRunning(false)}} style=${{ padding:'3px 6px', borderRadius:6, border:'none', background:timer===m*60?'#007AFF':'transparent', color:timer===m*60?'#FFF':running?'#FFF':'#86868B', fontSize:10, fontWeight:600 }}>${m}'</button>`)}
-            </div>`}
-            <span style=${{ fontSize:18, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:52, textAlign:'center' }}>${fmt(timer)}</span>
-            <button onClick=${()=>setRunning(!running)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>${running?'⏸':'▶'}</button>
-            <button onClick=${()=>{setTimer(900);setRunning(false)}} style=${{ width:26, height:26, borderRadius:13, border:'none', background:'rgba(128,128,128,0.12)', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>↺</button>
-          </div>
-        </div>
-        <div style=${{ display:'flex', alignItems:'center' }}>
-          ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:28, height:28, borderRadius:14, background:u.color, border:'2px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, marginLeft:i>0?-5:0, zIndex:10-i }}>${u.avatar}</div>`)}
-          ${uList.length>0 && html`<span style=${{ fontSize:11, color:'#86868B', marginLeft:8 }}>${uList.length} online</span>`}
-          <button onClick=${onLogout} style=${{ marginLeft:6, padding:'3px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, color:'#86868B', cursor:'pointer' }} title="Cambiar usuario">👤 ${user.name} ✕</button>
-        </div>
-      </header>
-      <div style=${{ padding:'8px 18px', display:'flex', gap:4, flexShrink:0, background:'#FFF', borderBottom:'1px solid #E5E5EA', overflowX:'auto' }}>
-        ${PHASES.map((p,i)=>html`<button key=${p.id} onClick=${()=>setPhase(i)} style=${{ padding:'8px 14px', borderRadius:9, border:phase===i?'none':'1.5px solid #E5E5EA', background:phase===i?'#1D1D1F':'#FFF', color:phase===i?'#FFF':'#6E6E73', fontSize:12, fontWeight:600, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>${p.icon} ${p.label}</button>`)}
+              <div style=${{display:'flex',flexDirection:'column',gap:4}}>
+                <button onClick=${()=>toRisk(n)} style=${{padding:'4px 8px',borderRadius:7,border:'1px solid #FF9500',color:'#FF9500',background:'#FFF8EB',fontSize:10,cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>⚠️ Riesgo</button>
+                <button onClick=${()=>toAction(n)} style=${{padding:'4px 8px',borderRadius:7,border:'1px solid #007AFF',color:'#007AFF',background:'#EBF5FF',fontSize:10,cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>🎯 Acción</button>
+              </div>
+            </div>`;
+        })}
       </div>
-      <div style=${{ flex:1, overflowY:'auto', padding:'14px 18px' }}>${content()}</div>
-      ${toast && html`
-        <div style=${{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1D1D1F', color:'#FFF', padding:'12px 24px', borderRadius:14, fontSize:14, fontWeight:600, boxShadow:'0 8px 30px rgba(0,0,0,0.15)', zIndex:300, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8 }}>${toast}</div>
-      `}
-    </div>
-  `;
+    </div>`;
 }
 
-/* ═══ PHASE 1: REVIEW ═══ */
-function P1({ tasks, sT, obj, sO, user }) {
-  const [nt, setNt] = useState('');
-  const [eId, setEId] = useState(null);
-  const [eVal, setEVal] = useState('');
-  const add = () => { if(!nt.trim())return; sT([...tasks,{id:uid(),text:nt.trim(),done:false}]); setNt(''); };
-  const tog = id => sT(tasks.map(t=>t.id===id?{...t,done:!t.done}:t));
-  const del = id => sT(tasks.filter(t=>t.id!==id));
-  const saveE = () => { if(!eVal.trim())del(eId); else sT(tasks.map(t=>t.id===eId?{...t,text:eVal.trim()}:t)); setEId(null); };
-  const dc = tasks.filter(t=>t.done).length;
+/* ══════════════════════════════════════════════
+   PHASE: RISKS
+══════════════════════════════════════════════ */
+function PhaseRisks({ risks, updRisk, user, showMsg }) {
+  const [newText, setNewText] = useState('');
+  const [editId,  setEditId]  = useState(null);
+
+  const add = () => {
+    if (!newText.trim()) return;
+    const r = {id:uid(), text:newText.trim(), mitigation:'', owner:'Sin asignar', status:'open', impactVotes:{}, probVotes:{}, createdBy:user.id};
+    const nr = [...risks, r];
+    updRisk(nr);
+    dbUpsertRisk(SALA, r);
+    setNewText('');
+    showMsg('⚠️ Riesgo añadido');
+  };
+
+  const upd = (id, field, val) => {
+    const nr = risks.map(r=>r.id===id?{...r,[field]:val}:r);
+    updRisk(nr);
+    const r = nr.find(r=>r.id===id);
+    if (r) dbUpsertRisk(SALA, r);
+  };
+
+  const vote = (id, field, val) => {
+    const nr = risks.map(r => {
+      if (r.id!==id) return r;
+      const vs = {...(r[field]||{})};
+      vs[user.id] = val;
+      return {...r, [field]:vs};
+    });
+    updRisk(nr);
+    const r = nr.find(r=>r.id===id);
+    if (r) dbUpsertRisk(SALA, r);
+  };
+
+  const close = id => {
+    const nr = risks.map(r=>r.id===id?{...r,status:'mitigated'}:r);
+    updRisk(nr);
+    dbUpsertRisk(SALA, nr.find(r=>r.id===id));
+    showMsg('✅ Riesgo mitigado');
+  };
+
+  const del = id => { updRisk(risks.filter(r=>r.id!==id)); dbDeleteRisk(id); showMsg('🗑️ Riesgo eliminado'); };
+
+  const avg = v => { const vs=Object.values(v||{}); return vs.length?Math.round(vs.reduce((a,b)=>a+b,0)/vs.length):0; };
+  const scoreColor = s => s>=15?'#FF3B30':s>=6?'#FF9500':'#34C759';
+
+  const open = risks.filter(r=>r.status==='open');
+  const mit  = risks.filter(r=>r.status==='mitigated');
 
   return html`
-    <div style=${{ maxWidth:860, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
-      <div style=${{ ...cS, padding:22 }}>
-        <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:12 }}>🎯 Objetivo de la iteración</h3>
-        <textarea value=${obj.text} onInput=${e=>sO({...obj,text:e.target.value})} placeholder="¿Cuál era el objetivo principal?" style=${{ ...iS, height:52, resize:'none' }} />
-        <div style=${{ display:'flex', gap:6, marginTop:10 }}>
-          ${[{v:true,l:'✅ Cumplido',c:'#34C759'},{v:false,l:'❌ No cumplido',c:'#FF3B30'},{v:'partial',l:'⚠️ Parcial',c:'#FF9500'}].map(o=>html`
-            <button key=${String(o.v)} onClick=${()=>sO({...obj,met:o.v})} style=${{ padding:'7px 14px', borderRadius:9, border:obj.met===o.v?'2px solid '+o.c:'1.5px solid #E5E5EA', background:obj.met===o.v?o.c+'10':'#FFF', fontSize:12, fontWeight:600, color:obj.met===o.v?o.c:'#6E6E73' }}>${o.l}</button>
-          `)}
-        </div>
+    <div style=${{maxWidth:780,margin:'0 auto'}}>
+      <div style=${{display:'flex',gap:8,marginBottom:12}}>
+        <input value=${newText} onInput=${e=>setNewText(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&add()}
+          placeholder="Describir riesgo…" style=${{flex:1,padding:'10px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none'}} />
+        <button onClick=${add} style=${{padding:'0 16px',background:'#FF9500',color:'#FFF',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:16}}>+</button>
       </div>
-      <div style=${{ ...cS, padding:22 }}>
-        <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-          <h3 style=${{ fontSize:15, fontWeight:700 }}>📋 Tareas de la iteración</h3>
-          <span style=${{ fontSize:11, fontWeight:700, color:dc===tasks.length&&tasks.length>0?'#34C759':'#86868B', background:'#F2F2F7', padding:'3px 8px', borderRadius:6 }}>${dc}/${tasks.length}</span>
-        </div>
-        ${tasks.length>0 && html`<div style=${{ height:5, background:'#F2F2F7', borderRadius:3, marginBottom:12, overflow:'hidden' }}><div style=${{ height:'100%', width:(tasks.length?(dc/tasks.length)*100:0)+'%', background:'linear-gradient(90deg,#34C759,#007AFF)', borderRadius:3, transition:'width .3s' }} /></div>`}
-        <div style=${{ display:'flex', gap:6, marginBottom:12 }}><input value=${nt} onInput=${e=>setNt(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&add()} placeholder="Añadir tarea..." style=${{ ...iS, flex:1 }} /><button onClick=${add} style=${{ ...bP, padding:'10px 14px' }}>+</button></div>
-        <div style=${{ display:'flex', flexDirection:'column', gap:5 }}>
-          ${tasks.map(t=>html`
-            <div key=${t.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:10, background:t.done?'#F0FFF4':'#F9F9FB', border:'1px solid '+(t.done?'#34C75922':'#E5E5EA') }}>
-              <div onClick=${()=>tog(t.id)} style=${{ width:20, height:20, borderRadius:6, border:t.done?'none':'2px solid #C7C7CC', background:t.done?'#34C759':'#FFF', display:'flex', alignItems:'center', justifyContent:'center', color:'#FFF', fontSize:11, flexShrink:0, cursor:'pointer' }}>${t.done&&'✓'}</div>
-              ${eId===t.id
-                ? html`<div style=${{ flex:1, display:'flex', gap:4 }}><input autofocus value=${eVal} onInput=${e=>setEVal(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')saveE();if(e.key==='Escape')setEId(null)}} style=${{ ...iS, padding:'6px 10px', fontSize:13, flex:1 }} /><button onClick=${saveE} style=${{ ...bP, padding:'6px 12px', fontSize:12 }}>✓</button></div>`
-                : html`<span onDblClick=${()=>{setEId(t.id);setEVal(t.text)}} style=${{ fontSize:13, color:t.done?'#86868B':'#1D1D1F', textDecoration:t.done?'line-through':'none', flex:1, cursor:'text' }} title="Doble clic para editar">${t.text}</span>`}
-              <button onClick=${()=>del(t.id)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC', padding:'2px 4px', flexShrink:0 }}>✕</button>
-            </div>
-          `)}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-/* ═══ BOARD ═══ */
-function Board({ notes, sN, user, filter }) {
-  const [act, setAct] = useState(null);
-  const [txt, setTxt] = useState('');
-  const [eId, setEId] = useState(null);
-  const [eVal, setEVal] = useState('');
-  const [dragId, setDragId] = useState(null);
-  const [overCat, setOverCat] = useState(null);
-
-  const addN = c => { if(!txt.trim())return; sN([...notes,{id:uid(),text:txt.trim(),category:c,userId:user.id,userName:user.name,userAvatar:user.avatar,userColor:user.color,voters:[],reactions:{}}]); setTxt(''); setAct(null); };
-  const vote = nid => sN(notes.map(n=>{if(n.id!==nid)return n;const v=n.voters||[];return{...n,voters:v.includes(user.id)?v.filter(x=>x!==user.id):[...v,user.id]}}));
-  const react = (nid, emoji) => sN(notes.map(n=>{if(n.id!==nid)return n;const r={...(n.reactions||{})};if(!r[emoji])r[emoji]=[];r[emoji]=r[emoji].includes(user.id)?r[emoji].filter(x=>x!==user.id):[...r[emoji],user.id];if(r[emoji].length===0)delete r[emoji];return{...n,reactions:r}}));
-  const delN = nid => sN(notes.filter(n=>n.id!==nid));
-  const saveE = () => { if(!eVal.trim())delN(eId); else sN(notes.map(n=>n.id===eId?{...n,text:eVal.trim()}:n)); setEId(null); };
-  const drop = (e,c) => { e.preventDefault(); setOverCat(null); if(dragId)sN(notes.map(n=>n.id===dragId?{...n,category:c}:n)); setDragId(null); };
-
-  let fil = notes;
-  if(filter==='mine') fil=notes.filter(n=>n.userId===user.id);
-  else if(CATS.some(c=>c.id===filter)) fil=notes.filter(n=>n.category===filter);
-  const cats2 = CATS.some(c=>c.id===filter)?CATS.filter(c=>c.id===filter):CATS;
-
-  return html`
-    <div style=${{ display:'grid', gridTemplateColumns:cats2.length===1?'1fr':'repeat(4,1fr)', gap:10, height:'100%' }}>
-      ${cats2.map(cat => {
-        const cn = fil.filter(n=>n.category===cat.id).sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0));
+      ${open.map(r => {
+        const ai = avg(r.impactVotes), ap = avg(r.probVotes), score = ai*ap;
+        const sc  = scoreColor(score);
         return html`
-          <div key=${cat.id} onDragOver=${e=>{e.preventDefault();setOverCat(cat.id)}} onDragLeave=${()=>setOverCat(null)} onDrop=${e=>drop(e,cat.id)}
-            style=${{ ...cS, display:'flex', flexDirection:'column', borderColor:overCat===cat.id?'#007AFF':'#E5E5EA', background:overCat===cat.id?'#007AFF04':'#FFF', transition:'all .2s' }}>
-            <div style=${{ padding:'12px 14px 9px', background:cat.color+'06', borderBottom:'2.5px solid '+cat.color }}>
-              <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <div style=${{ display:'flex', alignItems:'center', gap:6 }}><span style=${{ fontSize:16 }}>${cat.emoji}</span><span style=${{ fontSize:14, fontWeight:700 }}>${cat.label}</span></div>
-                <span style=${{ background:cat.color+'15', color:cat.color, fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:6 }}>${cn.length}</span>
+          <div key=${r.id} class="hl" style=${{background:'#FFF',borderRadius:14,padding:15,marginBottom:10,boxShadow:'0 2px 10px rgba(0,0,0,.05)',borderLeft:`4px solid ${sc}`}}>
+            <div style=${{display:'flex',gap:12,alignItems:'flex-start'}}>
+              <div style=${{flex:1}}>
+                ${editId===r.id
+                  ? html`<input value=${r.text} onInput=${e=>upd(r.id,'text',e.target.value)} onBlur=${()=>setEditId(null)} autoFocus
+                      style=${{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:13,outline:'none',fontFamily:'inherit'}} />`
+                  : html`<p style=${{fontSize:13,fontWeight:600,marginBottom:6,cursor:'text'}} onDblClick=${()=>setEditId(r.id)}>${r.text} <span style=${{fontSize:10,color:'#86868B',fontWeight:400}}>dbl-clic para editar</span></p>`
+                }
+                <div style=${{display:'flex',gap:6,marginBottom:6,flexWrap:'wrap',alignItems:'center'}}>
+                  <span style=${{fontSize:10,color:'#86868B',fontWeight:600}}>Impacto:</span>
+                  ${[1,2,3,4,5].map(v=>html`<button key=${v} onClick=${()=>vote(r.id,'impactVotes',v)} style=${{width:22,height:22,borderRadius:5,border:'none',cursor:'pointer',fontSize:10,fontWeight:700,background:r.impactVotes?.[user.id]===v?'#FF3B30':'#F2F2F7',color:r.impactVotes?.[user.id]===v?'#FFF':'#86868B'}}>${v}</button>`)}
+                  <span style=${{fontSize:10,color:'#86868B',marginLeft:2}}>avg: ${ai}</span>
+                  <span style=${{fontSize:10,color:'#86868B',fontWeight:600,marginLeft:8}}>Prob:</span>
+                  ${[1,2,3,4,5].map(v=>html`<button key=${v} onClick=${()=>vote(r.id,'probVotes',v)} style=${{width:22,height:22,borderRadius:5,border:'none',cursor:'pointer',fontSize:10,fontWeight:700,background:r.probVotes?.[user.id]===v?'#5856D6':'#F2F2F7',color:r.probVotes?.[user.id]===v?'#FFF':'#86868B'}}>${v}</button>`)}
+                  <span style=${{fontSize:10,color:'#86868B',marginLeft:2}}>avg: ${ap}</span>
+                </div>
+                <input value=${r.mitigation||''} onInput=${e=>upd(r.id,'mitigation',e.target.value)} placeholder="Plan de mitigación…"
+                  style=${{width:'100%',padding:'5px 10px',borderRadius:8,border:'1px solid #E5E5EA',fontSize:12,outline:'none',marginBottom:5}} />
+                <div style=${{display:'flex',alignItems:'center',gap:6}}>
+                  <span style=${{fontSize:10,color:'#86868B'}}>Responsable:</span>
+                  <input value=${r.owner||''} onInput=${e=>upd(r.id,'owner',e.target.value)} placeholder="Sin asignar"
+                    style=${{padding:'3px 8px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none',width:130}} />
+                </div>
+              </div>
+              <div style=${{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6,flexShrink:0}}>
+                <div style=${{background:sc,color:'#FFF',borderRadius:8,padding:'4px 10px',fontSize:11,fontWeight:700}}>Score ${score}</div>
+                <button onClick=${()=>close(r.id)} style=${{padding:'4px 9px',borderRadius:7,border:'1px solid #34C759',color:'#34C759',background:'#F0FFF4',fontSize:10,cursor:'pointer',fontWeight:600}}>✅ Mitigar</button>
+                <button onClick=${()=>del(r.id)} style=${{background:'none',border:'none',color:'#C7C7CC',cursor:'pointer',fontSize:12}}>🗑️</button>
               </div>
             </div>
-            <div style=${{ flex:1, padding:'7px 8px', overflowY:'auto', display:'flex', flexDirection:'column', gap:6, minHeight:60 }}>
-              ${cn.map(note => {
-                const voted=note.voters?.includes(user.id); const mine=note.userId===user.id;
-                return html`
-                  <div key=${note.id} draggable=${true} onDragStart=${e=>{setDragId(note.id);e.dataTransfer.effectAllowed='move'}}
-                    style=${{ background:cat.bg, borderRadius:12, padding:'10px 12px', border:'1px solid '+cat.color+'15', borderLeft:mine?'3px solid '+cat.color:'1px solid '+cat.color+'15', cursor:'grab', opacity:dragId===note.id?0.4:1 }}>
-                    ${eId===note.id
-                      ? html`<div>
-                          <textarea autofocus value=${eVal} onInput=${e=>setEVal(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveE()}if(e.key==='Escape')setEId(null)}} style=${{ ...iS, height:48, resize:'none', fontSize:12, padding:'8px 10px' }} />
-                          <div style=${{ display:'flex', gap:4, marginTop:4 }}>
-                            <button onClick=${saveE} style=${{ ...bP, padding:'5px 12px', fontSize:11, background:cat.color }}>Guardar</button>
-                            <button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'5px 10px', fontSize:11 }}>Cancelar</button>
-                          </div>
-                        </div>`
-                      : html`
-                        <p style=${{ marginBottom:5, fontSize:12, lineHeight:1.4 }}>${note.text}</p>
-                        ${Object.keys(note.reactions||{}).length > 0 && html`
-                          <div style=${{ display:'flex', gap:3, marginBottom:5, flexWrap:'wrap' }}>
-                            ${Object.entries(note.reactions||{}).map(([emoji, users]) => users.length > 0 && html`
-                              <span key=${emoji} onClick=${()=>react(note.id, emoji)} style=${{ padding:'1px 5px', borderRadius:6, background:users.includes(user.id)?cat.color+'20':'#F2F2F7', border:users.includes(user.id)?'1px solid '+cat.color+'40':'1px solid transparent', fontSize:10, cursor:'pointer' }}>${emoji} ${users.length}</span>
-                            `)}
-                          </div>
-                        `}
-                        <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                          <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
-                            <span style=${{ fontSize:12 }}>${note.userAvatar}</span>
-                            <span style=${{ fontSize:10, color:'#86868B' }}>${note.userName}</span>
-                          </div>
-                          <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
-                            ${REACTIONS.map(emoji => html`<button key=${emoji} onClick=${()=>react(note.id, emoji)} style=${{ border:'none', background:'none', fontSize:10, padding:'1px', cursor:'pointer', opacity:0.4, transition:'opacity .15s' }} onMouseOver=${e=>{e.target.style.opacity=1}} onMouseOut=${e=>{e.target.style.opacity=0.4}}>${emoji}</button>`)}
-                            <button onClick=${()=>vote(note.id)} style=${{ display:'flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:6, border:'none', background:voted?cat.color:cat.color+'12', color:voted?'#FFF':cat.color, fontSize:10, fontWeight:700, marginLeft:3 }}>👍 ${note.voters?.length||0}</button>
-                            ${mine && html`
-                              <button onClick=${()=>{setEId(note.id);setEVal(note.text)}} style=${{ border:'none', background:'none', fontSize:12, cursor:'pointer', color:'#86868B', padding:'2px' }} title="Editar">✏️</button>
-                              <button onClick=${()=>delN(note.id)} style=${{ border:'none', background:'none', fontSize:12, cursor:'pointer', color:'#C7C7CC', padding:'2px' }} title="Eliminar">✕</button>
-                            `}
-                          </div>
-                        </div>
-                      `
-                    }
-                  </div>`;
-              })}
-            </div>
-            ${act===cat.id
-              ? html`<div style=${{ padding:'7px 8px 8px', borderTop:'1px solid #F2F2F7' }}><textarea autofocus value=${txt} onInput=${e=>setTxt(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addN(cat.id)}}} placeholder="Tu reflexión..." style=${{ ...iS, height:52, resize:'none', fontSize:12 }} /><div style=${{ display:'flex', gap:5, marginTop:5 }}><button onClick=${()=>addN(cat.id)} style=${{ ...bP, flex:1, padding:'7px', fontSize:12, background:cat.color }}>Añadir</button><button onClick=${()=>{setAct(null);setTxt('')}} style=${{ ...bS, padding:'7px 10px', fontSize:11 }}>✕</button></div></div>`
-              : html`<button onClick=${()=>{setAct(cat.id);setTxt('')}} style=${{ margin:'5px 8px 8px', padding:'8px', borderRadius:9, border:'1.5px dashed '+cat.color+'30', background:'transparent', color:cat.color, fontSize:12, fontWeight:600 }}>+ Añadir nota</button>`}
           </div>`;
       })}
-    </div>
-  `;
-}
-
-/* ═══ PHASE 3 ═══ */
-function P3({ notes, sN, user }) {
-  const [f, setF] = useState('all');
-  const fi = [{id:'all',label:'📋 Todas',color:'#1D1D1F'},{id:'mine',label:'👤 Mis notas',color:'#5856D6'},...CATS.map(c=>({id:c.id,label:c.emoji+' '+c.label,color:c.color}))];
-  return html`
-    <div style=${{ display:'flex', flexDirection:'column', gap:10, height:'100%' }}>
-      <div style=${{ display:'flex', gap:5, flexWrap:'wrap' }}>${fi.map(x=>html`<button key=${x.id} onClick=${()=>setF(x.id)} style=${{ padding:'7px 12px', borderRadius:9, border:f===x.id?'none':'1.5px solid #E5E5EA', background:f===x.id?x.color:'#FFF', color:f===x.id?'#FFF':'#6E6E73', fontSize:12, fontWeight:600 }}>${x.label}</button>`)}</div>
-      <div style=${{ flex:1 }}><${Board} notes=${notes} sN=${sN} user=${user} filter=${f} /></div>
-    </div>
-  `;
-}
-
-/* ═══ PHASE 4: ACTIONS ═══ */
-function P4({ notes, actions, risks, sA, user }) {
-  const [form, setForm] = useState({text:'',owner:'',date:'',priority:'medium'});
-  const [eId, setEId] = useState(null);
-  const [eF, setEF] = useState({});
-  const [actFilter, setActFilter] = useState('all');
-  const topN = [...notes].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0)).slice(0,12);
-  const openRisks = (risks||[]).filter(r => r.status !== 'mitigated');
-  const addA = fn => {
-    const t=fn?fn.text:form.text; if(!t.trim())return;
-    const vs=fn?(fn.voters?.length||0):0; const pri=fn?(vs>=5?'high':vs>=2?'medium':'low'):form.priority;
-    sA([...actions,{id:uid(),text:t.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:pri,voteScore:vs,createdBy:user.id,fromCategory:fn?.category||null,noteId:fn?.id||null,riskId:null}]);
-    if(!fn)setForm({text:'',owner:'',date:'',priority:'medium'});
-  };
-  const addAFromRisk = r => {
-    const imp = getRiskLevel(r.impactVotes);
-    const pri = imp.id==='alto'?'high':imp.id==='medio'?'medium':'low';
-    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'Sin asignar',date:'',status:'pending',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id}]);
-  };
-  const togN = n => { const ex=actions.find(a=>a.noteId===n.id); if(ex)sA(actions.filter(a=>a.noteId!==n.id)); else addA(n); };
-  const togR = r => { const ex=actions.find(a=>a.riskId===r.id); if(ex)sA(actions.filter(a=>a.riskId!==r.id)); else addAFromRisk(r); };
-  const upSt = (id,st) => sA(actions.map(a=>a.id===id?{...a,status:st}:a));
-  const delA = id => sA(actions.filter(a=>a.id!==id));
-  const saveEA = () => { sA(actions.map(a=>a.id===eId?{...a,...eF}:a)); setEId(null); };
-  const priO = {high:3,medium:2,low:1};
-
-  return html`
-    <div style=${{ maxWidth:1000, margin:'0 auto' }}>
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14 }}>
-        <div style=${{ ...cS, padding:22 }}>
-          <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <h3 style=${{ fontSize:17, fontWeight:700 }}>🎯 Accionables</h3>
-            <div style=${{ display:'flex', gap:4 }}>
-              ${[{id:'all',label:'Todos'},{id:'mine',label:'👤 Mis accionables'},{id:'done',label:'✅ Completados'}].map(f => html`
-                <button key=${f.id} onClick=${()=>setActFilter(f.id)} style=${{ padding:'4px 10px', borderRadius:7, border:actFilter===f.id?'none':'1px solid #E5E5EA', background:actFilter===f.id?'#1D1D1F':'#FFF', color:actFilter===f.id?'#FFF':'#6E6E73', fontSize:10, fontWeight:600 }}>${f.label}</button>
-              `)}
-            </div>
-          </div>
-          <div style=${{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Acción concreta..." style=${{ ...iS, flex:2, minWidth:150 }} />
-            <input value=${form.owner} onInput=${e=>setForm({...form,owner:e.target.value})} placeholder="Responsable" style=${{ ...iS, flex:1, minWidth:80 }} />
-            <input type="date" value=${form.date} onInput=${e=>setForm({...form,date:e.target.value})} style=${{ ...iS, width:120, flex:'none' }} />
-            <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})} style=${{ ...iS, width:100, flex:'none' }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
-            <button onClick=${()=>addA(null)} style=${bP}>+ Añadir</button>
-          </div>
-          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea accionables o selecciona notas/riesgos →</p></div>`}
-          <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
-            ${[...actions].filter(a => actFilter==='mine' ? a.createdBy===user.id : actFilter==='done' ? a.status==='done' : true).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a=>{
-              const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1]; const st=STS.find(s=>s.id===a.status); const ct=a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
-              if(eId===a.id) return html`
-                <div key=${a.id} style=${{ padding:'14px 16px', borderRadius:13, background:'#F9F9FB', border:'2px solid #007AFF30', animation:'fadeIn .2s' }}>
-                  <div style=${{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                    <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
-                    <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:80, fontSize:13 }} />
-                    <input type="date" value=${eF.date} onInput=${e=>setEF({...eF,date:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:13 }} />
-                    <select value=${eF.priority} onChange=${e=>setEF({...eF,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', fontSize:13 }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
-                  </div>
-                  <div style=${{ display:'flex', gap:6 }}><button onClick=${saveEA} style=${{ ...bP, padding:'8px 16px', fontSize:12 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'8px 14px', fontSize:12 }}>Cancelar</button></div>
-                </div>`;
-              return html`
-                <div key=${a.id} class="hl" style=${{ padding:'12px 14px', borderRadius:13, background:'#FFF', border:'1.5px solid #E5E5EA', display:'flex', alignItems:'center', gap:10 }}>
-                  <div style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, minWidth:40 }}><span style=${{ fontSize:14 }}>${pr.icon}</span><span style=${{ fontSize:8, fontWeight:700, color:pr.color, textTransform:'uppercase' }}>${pr.label}</span></div>
-                  <div style=${{ flex:1 }}>
-                    ${ct&&html`<span style=${{ fontSize:9, fontWeight:700, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:3, display:'inline-block', marginBottom:2 }}>${ct.emoji} ${ct.label}</span>`}
-                    <p style=${{ fontSize:13, fontWeight:600 }}>${a.text}</p>
-                    <div style=${{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}><span style=${{ fontSize:11, color:'#007AFF', fontWeight:600 }}>${a.owner}</span>${a.date&&html`<span style=${{ fontSize:10, color:'#86868B' }}>📅 ${fd(a.date)}</span>`}</div>
-                  </div>
-                  <select value=${a.status} onChange=${e=>upSt(a.id,e.target.value)} style=${{ padding:'5px 8px', borderRadius:7, border:'1.5px solid '+st.color+'28', background:st.bg, color:st.color, fontSize:11, fontWeight:600, outline:'none' }}>${STS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}</select>
-                  <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none', background:'none', fontSize:14, color:'#86868B' }}>✏️</button>
-                  <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC' }}>✕</button>
-                </div>`;
-            })}
-          </div>
-        </div>
-        <div style=${{ ...cS, padding:18, overflowY:'auto', maxHeight:'80vh' }}>
-          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas más votadas</h4>
-          <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para añadir / quitar</p>
-          <div style=${{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
-            ${topN.map(n=>{const ct=CATS.find(c=>c.id===n.category); const lk=actions.some(a=>a.noteId===n.id);
-              return html`<button key=${n.id} onClick=${()=>togN(n)} style=${{ padding:'9px 10px', borderRadius:10, background:lk?'#1D1D1F':ct.bg, border:'1px solid '+(lk?'#1D1D1F':ct.color+'18'), textAlign:'left', transition:'all .2s' }}>
-                <div style=${{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}><span style=${{ fontSize:11 }}>${ct.emoji}</span><span style=${{ fontSize:11, fontWeight:700, color:lk?'#FFF':ct.color }}>👍 ${n.voters?.length||0}</span>${lk&&html`<span style=${{ fontSize:9, color:'#34C759', fontWeight:700 }}>✓ Añadido</span>`}</div>
-                <p style=${{ fontSize:11, color:lk?'#CCC':'#1D1D1F', lineHeight:1.35 }}>${n.text}</p>
-              </button>`})}
-          </div>
-          ${openRisks.length > 0 && html`
-            <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>⚠️ Riesgos abiertos</h4>
-            <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para crear accionable de mitigación</p>
-            <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-              ${openRisks.map(r => {
-                const lk = actions.some(a => a.riskId === r.id);
-                const imp = getRiskLevel(r.impactVotes);
-                const hc = getHeatColor(imp, getRiskLevel(r.probVotes));
-                return html`<button key=${r.id} onClick=${()=>togR(r)} style=${{ padding:'9px 10px', borderRadius:10, background:lk?'#1D1D1F':'#FFF5F5', border:'1px solid '+(lk?'#1D1D1F':hc+'30'), borderLeft:'3px solid '+(lk?'#34C759':hc), textAlign:'left', transition:'all .2s' }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}>
-                    <span style=${{ fontSize:10, fontWeight:700, color:lk?'#FFF':hc }}>⚠️ ${imp.label}</span>
-                    ${lk&&html`<span style=${{ fontSize:9, color:'#34C759', fontWeight:700 }}>✓ Accionable</span>`}
-                  </div>
-                  <p style=${{ fontSize:11, color:lk?'#CCC':'#1D1D1F', lineHeight:1.35 }}>${r.text}</p>
-                </button>`;
-              })}
-            </div>
-          `}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-/* ═══ PHASE 5: RISKS ═══ */
-function P5Risks({ risks, sR, notes, user }) {
-  const [form, setForm] = useState({ text:'', mitigation:'', owner:'' });
-  const [eId, setEId] = useState(null);
-  const [eF, setEF] = useState({});
-  const [riskFilter, setRiskFilter] = useState('all');
-
-  const badStopNotes = notes.filter(n => n.category === 'bad' || n.category === 'stop').sort((a,b) => (b.voters?.length||0) - (a.voters?.length||0));
-
-  const addRisk = (fromNote) => {
-    const text = fromNote ? fromNote.text : form.text;
-    if (!text.trim()) return;
-    sR([...risks, { id:uid(), text:text.trim(), mitigation:form.mitigation||'', owner:form.owner||'Sin asignar', status:'open', impactVotes:{}, probVotes:{}, fromNote:fromNote?.id||null, createdBy:user.id }]);
-    if (!fromNote) setForm({ text:'', mitigation:'', owner:'' });
-  };
-
-  const toggleFromNote = (note) => {
-    const ex = risks.find(r => r.fromNote === note.id);
-    if (ex) sR(risks.filter(r => r.fromNote !== note.id));
-    else addRisk(note);
-  };
-
-  const voteImpact = (riskId, level) => {
-    sR(risks.map(r => {
-      if (r.id !== riskId) return r;
-      const v = { ...(r.impactVotes||{}) };
-      v[user.id] = v[user.id] === level ? undefined : level;
-      if (!v[user.id]) delete v[user.id];
-      return { ...r, impactVotes: v };
-    }));
-  };
-
-  const voteProb = (riskId, level) => {
-    sR(risks.map(r => {
-      if (r.id !== riskId) return r;
-      const v = { ...(r.probVotes||{}) };
-      v[user.id] = v[user.id] === level ? undefined : level;
-      if (!v[user.id]) delete v[user.id];
-      return { ...r, probVotes: v };
-    }));
-  };
-
-  const updateStatus = (id, st) => sR(risks.map(r => r.id===id ? {...r, status:st} : r));
-  const delRisk = (id) => sR(risks.filter(r => r.id !== id));
-  const saveEdit = () => { sR(risks.map(r => r.id===eId ? {...r,...eF} : r)); setEId(null); };
-
-  const allOpen = risks.filter(r => r.status !== 'mitigated');
-  const allMitigated = risks.filter(r => r.status === 'mitigated');
-  const openRisks = riskFilter === 'mine' ? allOpen.filter(r => r.createdBy === user.id) : allOpen;
-  const mitigatedRisks = riskFilter === 'mine' ? allMitigated.filter(r => r.createdBy === user.id) : allMitigated;
-
-  // Heat map data
-  const heatData = openRisks.map(r => ({
-    ...r,
-    impLvl: getRiskLevel(r.impactVotes),
-    probLvl: getRiskLevel(r.probVotes),
-  }));
-
-  return html`
-    <div style=${{ maxWidth:1100, margin:'0 auto' }}>
-      <!-- Heat map full width -->
-      <div style=${{ ...cS, padding:'22px', marginBottom:14 }}>
-        <h3 style=${{ fontSize:16, fontWeight:700, marginBottom:14 }}>⚠️ Mapa de calor de riesgos</h3>
-        <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, alignItems:'start' }}>
-          <div style=${{ position:'relative', paddingLeft:40 }}>
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:3 }}>
-              ${['alto','medio','bajo'].map(prob =>
-                ['bajo','medio','alto'].map(imp => {
-                  const probLvl = RISK_LEVELS.find(l=>l.id===prob);
-                  const impLvl = RISK_LEVELS.find(l=>l.id===imp);
-                  const color = getHeatColor(impLvl, probLvl);
-                  const inCell = heatData.filter(r => r.impLvl.id===imp && r.probLvl.id===prob);
-                  return html`
-                    <div key=${prob+imp} style=${{ background:color+'20', border:'1.5px solid '+color+'30', borderRadius:10, padding:10, minHeight:90, display:'flex', flexWrap:'wrap', gap:5, alignContent:'flex-start' }}>
-                      ${inCell.map((r,i) => html`
-                        <div key=${r.id} style=${{ width:34, height:34, borderRadius:17, background:color, color:'#FFF', fontSize:11, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', border:'2.5px solid #FFF', boxShadow:'0 2px 6px '+color+'40' }} title=${r.text}>R${risks.indexOf(r)+1}</div>
-                      `)}
-                    </div>`;
-                })
-              )}
-            </div>
-            <div style=${{ display:'flex', justifyContent:'space-between', marginTop:8, fontSize:11, color:'#86868B', fontWeight:600, paddingLeft:0 }}>
-              <span>Bajo</span><span>Medio</span><span>Alto</span>
-            </div>
-            <div style=${{ position:'absolute', left:8, top:0, bottom:28, display:'flex', flexDirection:'column', justifyContent:'space-between', fontSize:11, color:'#86868B', fontWeight:600 }}>
-              <span>Alta</span><span>Media</span><span>Baja</span>
-            </div>
-            <div style=${{ textAlign:'center', fontSize:11, color:'#86868B', marginTop:4, fontWeight:600 }}>IMPACTO →</div>
-            <div style=${{ position:'absolute', left:-8, top:'40%', transform:'rotate(-90deg)', fontSize:11, color:'#86868B', fontWeight:600 }}>PROB. →</div>
-          </div>
-          <!-- Legend / summary -->
-          <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-            ${heatData.length === 0 ? html`<p style=${{ fontSize:13, color:'#C7C7CC', padding:'20px 0' }}>No hay riesgos abiertos</p>` :
-              heatData.map((r, i) => {
-                const hc = getHeatColor(r.impLvl, r.probLvl);
-                return html`
-                  <div key=${r.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', borderRadius:8, background:'#F9F9FB', borderLeft:'3px solid '+hc }}>
-                    <span style=${{ fontSize:12, fontWeight:800, color:hc, minWidth:28 }}>R${risks.indexOf(r)+1}</span>
-                    <span style=${{ fontSize:12, flex:1 }}>${r.text}</span>
-                    <span style=${{ fontSize:9, padding:'2px 6px', borderRadius:4, background:hc+'15', color:hc, fontWeight:700 }}>${r.impLvl.label} × ${r.probLvl.label}</span>
-                  </div>`;
-              })
-            }
-          </div>
-        </div>
-      </div>
-
-      <!-- Risk list + form -->
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14, marginBottom:14 }}>
-        <div style=${{ ...cS, padding:'18px' }}>
-          <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-            <h3 style=${{ fontSize:14, fontWeight:700 }}>📋 Registro de riesgos (${openRisks.length} abiertos)</h3>
-            <div style=${{ display:'flex', gap:4 }}>
-              ${[{id:'all',label:'Todos'},{id:'mine',label:'👤 Mis riesgos'}].map(f => html`
-                <button key=${f.id} onClick=${()=>setRiskFilter(f.id)} style=${{ padding:'4px 10px', borderRadius:7, border:riskFilter===f.id?'none':'1px solid #E5E5EA', background:riskFilter===f.id?'#1D1D1F':'#FFF', color:riskFilter===f.id?'#FFF':'#6E6E73', fontSize:10, fontWeight:600 }}>${f.label}</button>
-              `)}
-            </div>
-          </div>
-          <!-- New risk form -->
-          <div style=${{ display:'flex', gap:5, marginBottom:14, flexWrap:'wrap' }}>
-            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Descripción del riesgo..." style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
-            <input value=${form.mitigation} onInput=${e=>setForm({...form,mitigation:e.target.value})} placeholder="Mitigación" style=${{ ...iS, flex:1, minWidth:100, fontSize:13 }} />
-            <input value=${form.owner} onInput=${e=>setForm({...form,owner:e.target.value})} placeholder="Owner" style=${{ ...iS, width:80, flex:'none', fontSize:13 }} />
-            <button onClick=${()=>addRisk(null)} style=${bP}>+ Riesgo</button>
-          </div>
-          <!-- Risk items -->
-          <div style=${{ display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
-            ${openRisks.map((r, idx) => {
-              const imp = getRiskLevel(r.impactVotes);
-              const prob = getRiskLevel(r.probVotes);
-              const hc = getHeatColor(imp, prob);
-              const st = RISK_STATUS.find(s=>s.id===r.status) || RISK_STATUS[0];
-
-              if (eId===r.id) return html`
-                <div key=${r.id} style=${{ padding:'12px', borderRadius:12, background:'#F9F9FB', border:'2px solid #007AFF30', animation:'fadeIn .2s' }}>
-                  <div style=${{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 }}>
-                    <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:12 }} />
-                    <input value=${eF.mitigation} onInput=${e=>setEF({...eF,mitigation:e.target.value})} placeholder="Mitigación" style=${{ ...iS, flex:1, minWidth:100, fontSize:12 }} />
-                    <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, width:80, flex:'none', fontSize:12 }} />
-                  </div>
-                  <div style=${{ display:'flex', gap:5 }}><button onClick=${saveEdit} style=${{ ...bP, padding:'6px 14px', fontSize:11 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'6px 12px', fontSize:11 }}>Cancelar</button></div>
-                </div>`;
-
-              return html`
-                <div key=${r.id} style=${{ padding:'10px 12px', borderRadius:12, background:'#FFF', border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc }}>
-                  <div style=${{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:6 }}>
-                    <span style=${{ fontSize:12, fontWeight:800, color:hc, minWidth:28 }}>R${idx+1}</span>
-                    <div style=${{ flex:1 }}>
-                      <p style=${{ fontSize:12, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
-                      ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
-                    </div>
-                    <span style=${{ fontSize:11, fontWeight:600, color:'#007AFF' }}>${r.owner}</span>
-                  </div>
-                  <!-- Voting -->
-                  <div style=${{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-                    <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
-                      <span style=${{ fontSize:10, color:'#86868B', fontWeight:600, minWidth:50 }}>Impacto:</span>
-                      ${RISK_LEVELS.map(l => {
-                        const myVote = r.impactVotes?.[user.id];
-                        const count = Object.values(r.impactVotes||{}).filter(v=>v===l.id).length;
-                        return html`<button key=${l.id} onClick=${()=>voteImpact(r.id,l.id)} style=${{ padding:'2px 7px', borderRadius:5, border:myVote===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:myVote===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color }}>${l.label}${count>0?' '+count:''}</button>`;
-                      })}
-                    </div>
-                    <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
-                      <span style=${{ fontSize:10, color:'#86868B', fontWeight:600, minWidth:35 }}>Prob:</span>
-                      ${RISK_LEVELS.map(l => {
-                        const myVote = r.probVotes?.[user.id];
-                        const count = Object.values(r.probVotes||{}).filter(v=>v===l.id).length;
-                        return html`<button key=${l.id} onClick=${()=>voteProb(r.id,l.id)} style=${{ padding:'2px 7px', borderRadius:5, border:myVote===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:myVote===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color }}>${l.label}${count>0?' '+count:''}</button>`;
-                      })}
-                    </div>
-                    <div style=${{ display:'flex', gap:3, marginLeft:'auto' }}>
-                      <select value=${r.status} onChange=${e=>updateStatus(r.id,e.target.value)} style=${{ padding:'3px 6px', borderRadius:5, border:'1px solid '+st.color+'30', background:st.color+'10', color:st.color, fontSize:9, fontWeight:600, outline:'none' }}>
-                        ${RISK_STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
-                      </select>
-                      <button onClick=${()=>{setEId(r.id);setEF({text:r.text,mitigation:r.mitigation,owner:r.owner})}} style=${{ border:'none', background:'none', fontSize:12, color:'#86868B', cursor:'pointer' }}>✏️</button>
-                      <button onClick=${()=>delRisk(r.id)} style=${{ border:'none', background:'none', fontSize:12, color:'#C7C7CC', cursor:'pointer' }}>✕</button>
-                    </div>
-                  </div>
-                </div>`;
-            })}
-          </div>
-          ${mitigatedRisks.length > 0 && html`
-            <div style=${{ marginTop:14 }}>
-              <h4 style=${{ fontSize:12, fontWeight:700, color:'#34C759', marginBottom:8 }}>✅ Mitigados (${mitigatedRisks.length})</h4>
-              <div style=${{ display:'flex', flexDirection:'column', gap:4 }}>
-                ${mitigatedRisks.map((r, i) => html`
-                  <div key=${r.id} style=${{ padding:'8px 10px', borderRadius:8, background:'#F0FFF4', border:'1px solid #34C75920', fontSize:11, display:'flex', alignItems:'center', gap:8 }}>
-                    <span style=${{ color:'#34C759', fontWeight:700, minWidth:24 }}>R${risks.indexOf(r)+1}</span>
-                    <span style=${{ flex:1, color:'#86868B', textDecoration:'line-through' }}>${r.text}</span>
-                    ${r.mitigation && html`<span style=${{ fontSize:10, color:'#86868B' }}>🛡️ ${r.mitigation}</span>`}
-                    <button onClick=${()=>updateStatus(r.id,'open')} style=${{ border:'none', background:'#FF950015', color:'#FF9500', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:5, cursor:'pointer' }} title="Reabrir">↩ Reabrir</button>
-                  </div>
-                `)}
+      ${open.length===0 && html`<div class="card" style=${{textAlign:'center',padding:28,color:'#86868B',fontSize:13}}>✅ Sin riesgos abiertos</div>`}
+      ${mit.length>0 && html`
+        <details style=${{marginTop:14}}>
+          <summary style=${{cursor:'pointer',fontSize:12,color:'#86868B',fontWeight:600,padding:'6px 0'}}>✅ Riesgos mitigados (${mit.length})</summary>
+          <div style=${{marginTop:6}}>
+            ${mit.map(r=>html`
+              <div key=${r.id} style=${{background:'#F9F9FB',borderRadius:10,padding:10,marginBottom:6,opacity:.65}}>
+                <p style=${{fontSize:12,textDecoration:'line-through',color:'#86868B'}}>${r.text}</p>
               </div>
-            </div>
-          `}
-        </div>
-        <!-- Sidebar: Bad/Stop notes to convert -->
-        <div style=${{ ...cS, padding:'18px' }}>
-          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas Bad / Stop</h4>
-          <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para convertir en riesgo</p>
-          <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-            ${badStopNotes.length === 0 ? html`<p style=${{ fontSize:11, color:'#C7C7CC' }}>No hay notas Bad/Stop</p>` :
-              badStopNotes.slice(0,12).map(n => {
-                const ct = CATS.find(c=>c.id===n.category);
-                const linked = risks.some(r => r.fromNote === n.id);
-                return html`<button key=${n.id} onClick=${()=>toggleFromNote(n)} style=${{ padding:'8px 10px', borderRadius:9, background:linked?'#1D1D1F':ct.bg, border:'1px solid '+(linked?'#1D1D1F':ct.color+'18'), textAlign:'left', transition:'all .2s' }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}><span style=${{ fontSize:10 }}>${ct.emoji}</span><span style=${{ fontSize:10, fontWeight:700, color:linked?'#FFF':ct.color }}>👍 ${n.voters?.length||0}</span>${linked&&html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700 }}>✓ Riesgo</span>`}</div>
-                  <p style=${{ fontSize:10, color:linked?'#CCC':'#1D1D1F', lineHeight:1.3, margin:0 }}>${n.text}</p>
-                </button>`;
-              })
-            }
+            `)}
           </div>
-        </div>
-      </div>
-    </div>
-  `;
+        </details>
+      `}
+    </div>`;
 }
 
-/* ═══ PHASE 6: DASHBOARD + PDF ═══ */
-function P6({ notes, actions, risks, users, user, obj, tasks }) {
-  // Build ranking from notes (not from online users — so it works even if someone disconnects)
-  const authorMap = {};
-  notes.forEach(n => {
-    if (!authorMap[n.userId]) authorMap[n.userId] = { name: n.userName, avatar: n.userAvatar, color: n.userColor || '#007AFF', tarjetas: 0, votosRecibidos: 0 };
-    authorMap[n.userId].tarjetas++;
-    authorMap[n.userId].votosRecibidos += (n.voters?.length || 0);
-  });
-  const ranking = Object.entries(authorMap).map(([id, d]) => ({
-    id, name: d.name, avatar: d.avatar, color: d.color,
-    tarjetas: d.tarjetas, votosRecibidos: d.votosRecibidos,
-    score: d.tarjetas + d.votosRecibidos,
-  })).sort((a, b) => b.score - a.score);
-  const mx=ranking[0]?.score||1;
-  const tN=notes.length; const tV=notes.reduce((s,n)=>s+(n.voters?.length||0),0);
-  const tD=tasks.filter(t=>t.done).length; const aD=actions.filter(a=>a.status==='done').length;
-  const openRisks=risks.filter(r=>r.status!=='mitigated');
-  const medals=['🥇','🥈','🥉']; const priO={high:3,medium:2,low:1};
-  const objL=obj.met===true?'Cumplido ✅':obj.met===false?'No cumplido ❌':obj.met==='partial'?'Parcial ⚠️':'Sin evaluar';
+/* ══════════════════════════════════════════════
+   PHASE: ACTIONS
+══════════════════════════════════════════════ */
+function PhaseActions({ state, upd, user, showMsg }) {
+  const { actions } = state;
+  const [text,  setText]  = useState('');
+  const [owner, setOwner] = useState('');
+  const [pri,   setPri]   = useState('medium');
+
+  const add = () => {
+    if (!text.trim()) return;
+    upd('actions', [...actions, {id:uid(), text:text.trim(), owner:owner||'Sin asignar', status:'pending', priority:pri}]);
+    setText(''); setOwner('');
+    showMsg('🎯 Accionable añadido');
+  };
+  const upA = (id, field, val) => upd('actions', actions.map(a=>a.id===id?{...a,[field]:val}:a));
+  const del = id => upd('actions', actions.filter(a=>a.id!==id));
+
+  const priO = {high:3,medium:2,low:1};
+  const sorted = [...actions].sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0));
+
+  return html`
+    <div style=${{maxWidth:680,margin:'0 auto'}}>
+      <div class="card" style=${{marginBottom:12}}>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 130px auto',gap:8,marginBottom:8}}>
+          <input value=${text} onInput=${e=>setText(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&add()}
+            placeholder="Accionable…" style=${{padding:'8px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none'}} />
+          <input value=${owner} onInput=${e=>setOwner(e.target.value)} placeholder="Responsable"
+            style=${{padding:'8px 10px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none'}} />
+          <button onClick=${add} style=${{padding:'8px 16px',background:'#007AFF',color:'#FFF',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:16}}>+</button>
+        </div>
+        <div style=${{display:'flex',gap:6}}>
+          ${PRIS.map(p=>html`
+            <button key=${p.id} onClick=${()=>setPri(p.id)} style=${{
+              flex:1,padding:'5px',borderRadius:8,border:pri===p.id?`2px solid ${p.color}`:'2px solid #E5E5EA',
+              background:pri===p.id?p.color+'15':'#FFF',color:pri===p.id?p.color:'#86868B',fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .15s'
+            }}>${p.icon} ${p.label}</button>
+          `)}
+        </div>
+      </div>
+      ${sorted.map(a => {
+        const st = STS.find(s=>s.id===a.status)||STS[0];
+        const pr = PRIS.find(p=>p.id===a.priority)||PRIS[1];
+        return html`
+          <div key=${a.id} class="hl card" style=${{marginBottom:8,padding:'12px 14px',display:'flex',gap:10,alignItems:'center'}}>
+            <span style=${{fontSize:15,flexShrink:0}}>${pr.icon}</span>
+            <div style=${{flex:1,minWidth:0}}>
+              <p style=${{fontSize:13,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:a.status==='done'?'#86868B':'#1D1D1F'}}>${a.text}</p>
+              <p style=${{fontSize:10,color:'#86868B',marginTop:2}}>👤 ${a.owner}</p>
+            </div>
+            <select value=${a.status} onChange=${e=>upA(a.id,'status',e.target.value)} style=${{
+              padding:'4px 7px',borderRadius:8,border:`1.5px solid ${st.color}`,background:st.bg,color:st.color,fontSize:10,fontWeight:700,cursor:'pointer',outline:'none'
+            }}>
+              ${STS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+            </select>
+            <button onClick=${()=>del(a.id)} style=${{background:'none',border:'none',color:'#C7C7CC',cursor:'pointer',fontSize:13}}>✕</button>
+          </div>`;
+      })}
+      ${actions.length===0 && html`<div class="card" style=${{textAlign:'center',padding:28,color:'#86868B',fontSize:13}}>🎯 Aún no hay accionables</div>`}
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   PHASE: DASHBOARD
+══════════════════════════════════════════════ */
+function PhaseDashboard({ state, risks, saving, lastSaved, tipoInfo }) {
+  const { notes, tasks, actions, obj } = state;
+  const openRisks = risks.filter(r=>r.status==='open');
+  const done  = actions.filter(a=>a.status==='done').length;
+  const tDone = tasks.filter(t=>t.done).length;
+  const votes = notes.reduce((s,n)=>s+(n.voters?.length||0),0);
+  const pct   = actions.length ? Math.round(done/actions.length*100) : 0;
 
   const exportPDF = () => {
-    const nc=CATS.map(c=>({...c,notes:notes.filter(n=>n.category===c.id).sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0))}));
-    const sa=[...actions].sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0));
-    const doc=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>revelio - Informe</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/comfortaa@5.0.18/latin-400.css">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,'Segoe UI',sans-serif;color:#1D1D1F;padding:40px;max-width:900px;margin:0 auto;font-size:13px;line-height:1.5}h1{font-size:26px;font-weight:700;margin-bottom:4px}h2{font-size:18px;font-weight:700;margin:28px 0 12px;padding-bottom:6px;border-bottom:2px solid #E5E5EA}.sum{display:flex;gap:12px;margin-bottom:24px}.cd{flex:1;background:#F9F9FB;border-radius:12px;padding:16px;text-align:center;border:1px solid #E5E5EA}.cd .v{font-size:22px;font-weight:800}.cd .l{font-size:11px;color:#86868B;margin-top:2px}.ct{margin-bottom:20px;padding:14px;border-radius:12px;border-left:4px solid}.good{border-color:#34C759;background:#F0FFF4}.bad{border-color:#FF3B30;background:#FFF5F5}.start{border-color:#007AFF;background:#EBF5FF}.stop{border-color:#FF9500;background:#FFF8EB}.nt{padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;justify-content:space-between}.nt:last-child{border-bottom:none}.ac{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #E5E5EA}.ac:last-child{border-bottom:none}.bg{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}.rk{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F2F2F7}.rk:last-child{border-bottom:none}.tk{padding:4px 0}.tk.dn{text-decoration:line-through;color:#86868B}.br{height:6px;background:#E5E5EA;border-radius:3px;margin:4px 0 12px;overflow:hidden}.fl{height:100%;border-radius:3px}@media print{body{padding:20px}}</style></head><body>
-<div style="text-align:center;margin-bottom:8px"><span style="font-family:'Comfortaa',sans-serif;font-size:28px;font-weight:400;letter-spacing:2px;background:linear-gradient(90deg,#007AFF,#5856D6);-webkit-background-clip:text;-webkit-text-fill-color:transparent">revelio</span></div>
-<p style="text-align:center;font-size:20px;font-weight:700;margin-bottom:4px">${SALA_DISPLAY}</p>
-<p style="text-align:center;font-size:12px;color:#86868B;margin-bottom:4px">${TIPO_INFO.icon} ${TIPO_INFO.label}</p>
-<p style="text-align:center;color:#86868B;font-size:13px;margin-bottom:24px">${fd(new Date())}</p>
-<div class="sum"><div class="cd"><div class="v" style="color:#007AFF">${tN}</div><div class="l">Notas</div></div><div class="cd"><div class="v" style="color:#FF9500">${tV}</div><div class="l">Votos</div></div><div class="cd"><div class="v" style="color:#34C759">${aD}/${actions.length}</div><div class="l">Accionables</div></div><div class="cd"><div class="v" style="color:#FF3B30">${openRisks.length}</div><div class="l">Riesgos</div></div><div class="cd"><div class="v" style="color:${obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'};font-size:14px">${objL}</div><div class="l">Objetivo</div></div></div>
-${obj.text?'<h2>🎯 Objetivo</h2><p style="margin-bottom:16px">'+obj.text+'</p>':''}
-<h2>📋 Tareas (${tD}/${tasks.length})</h2><div class="br"><div class="fl" style="width:${tasks.length?(tD/tasks.length)*100:0}%;background:linear-gradient(90deg,#34C759,#007AFF)"></div></div>
-${tasks.map(t=>'<div class="tk'+(t.done?' dn':'')+'">'+(t.done?'✅':'⬜')+' '+t.text+'</div>').join('')}
-<h2>📝 Notas del equipo</h2>
-${nc.map(c=>c.notes.length===0?'':'<div class="ct '+c.id+'"><h3 style="font-size:14px;font-weight:700;margin-bottom:8px">'+c.emoji+' '+c.label+' ('+c.notes.length+')</h3>'+c.notes.map(n=>'<div class="nt"><div style="flex:1">'+n.text+'</div><div style="font-size:11px;color:#86868B;white-space:nowrap;margin-left:12px">'+n.userAvatar+' '+n.userName+' · 👍 '+(n.voters?.length||0)+'</div></div>').join('')+'</div>').join('')}
-<h2>🎯 Accionables</h2>
-${sa.length===0?'<p style="color:#86868B">No se definieron accionables</p>':sa.map(a=>{const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1];const st=STS.find(s=>s.id===a.status);return'<div class="ac"><div style="font-size:16px;width:24px;text-align:center">'+pr.icon+'</div><div style="flex:1"><strong>'+a.text+'</strong><div style="font-size:11px;color:#86868B">'+a.owner+(a.date?' · 📅 '+fd(a.date):'')+'</div></div><span class="bg" style="background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></div>'}).join('')}
-<h2>⚠️ Riesgos (${openRisks.length} abiertos)</h2>
-${risks.length===0?'<p style="color:#86868B">No se identificaron riesgos</p>':risks.map((r,i)=>{const imp=getRiskLevel(r.impactVotes);const prob=getRiskLevel(r.probVotes);const hc=getHeatColor(imp,prob);const st=RISK_STATUS.find(s=>s.id===r.status)||RISK_STATUS[0];return'<div class="ac" style="border-left:4px solid '+hc+'"><div style="font-weight:800;color:'+hc+';min-width:28px">R'+(i+1)+'</div><div style="flex:1"><strong>'+r.text+'</strong>'+(r.mitigation?'<div style="font-size:11px;color:#86868B">🛡️ '+r.mitigation+'</div>':'')+'<div style="font-size:11px;color:#86868B">Impacto: '+imp.label+' · Prob: '+prob.label+' · Owner: '+r.owner+'</div></div><span class="bg" style="background:'+st.color+'20;color:'+st.color+'">'+st.label+'</span></div>'}).join('')}
-<h2>🏆 Ranking</h2><p style="font-size:11px;color:#86868B;margin-bottom:12px">Tarjetas aportadas + votos recibidos</p>
-${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;text-align:center;font-size:18px">'+(i<3?medals[i]:(i+1)+'º')+'</div><div><strong>'+r.avatar+' '+r.name+'</strong> <span style="font-weight:800;color:#FFB800">'+r.score+' pts</span><div style="font-size:10px;color:#86868B">📝 '+r.tarjetas+' tarjetas · 👍 '+r.votosRecibidos+' votos recibidos</div></div></div>').join('')}
-<div style="margin-top:32px;text-align:center;color:#C7C7CC;font-size:11px;font-family:'Comfortaa',sans-serif">revelio · ${new Date().toLocaleString('es-ES')}</div>
-<script>window.onload=function(){window.print()}<\/script></body></html>`;
-    const w=window.open('','_blank');
-    if(w){w.document.write(doc);w.document.close()}
+    const w = window.open('','_blank');
+    const catHTML = CATS.map(c => {
+      const cn = [...notes.filter(n=>n.category===c.id)].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0));
+      if (!cn.length) return '';
+      return `<div style="margin-bottom:16px;padding:12px;border-radius:10px;border-left:4px solid ${c.color};background:${c.bg}">
+        <p style="font-weight:700;font-size:13px;color:${c.color};margin-bottom:8px">${c.emoji} ${c.label} (${cn.length})</p>
+        ${cn.map(n=>`<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);display:flex;justify-content:space-between;font-size:12px"><span>${n.text}</span><span style="color:#86868B">▲${n.voters?.length||0}</span></div>`).join('')}
+      </div>`;
+    }).join('');
+    const actHTML = actions.length ? `
+      <h2 style="font-size:15px;border-bottom:2px solid #E5E5EA;padding-bottom:6px;margin:20px 0 10px">🎯 Accionables</h2>
+      ${[...actions].sort((a,b)=>{const o={high:3,medium:2,low:1};return(o[b.priority]||0)-(o[a.priority]||0);}).map(a=>`
+        <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #E5E5EA;font-size:12px;align-items:center">
+          <span>${PRIS.find(p=>p.id===a.priority)?.icon||'🟡'}</span>
+          <span style="flex:1">${a.text}</span>
+          <span style="color:#86868B">${a.owner}</span>
+          <span style="color:${STS.find(s=>s.id===a.status)?.color||'#86868B'};font-weight:600">${STS.find(s=>s.id===a.status)?.label||a.status}</span>
+        </div>`).join('')}` : '';
+    const risksHTML = openRisks.length ? `
+      <h2 style="font-size:15px;border-bottom:2px solid #FF9500;padding-bottom:6px;margin:20px 0 10px;color:#FF9500">⚠️ Riesgos abiertos</h2>
+      ${openRisks.map(r=>`<div style="padding:6px 0;border-bottom:1px solid #FF950020;font-size:12px">${r.text} — ${r.owner}</div>`).join('')}` : '';
+    const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>revelio — ${SALA}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,'Segoe UI',sans-serif;padding:40px;color:#1D1D1F;max-width:860px;margin:0 auto;font-size:13px;line-height:1.5}h1{font-size:22px;font-weight:800;margin-bottom:4px}@media print{body{padding:20px}}</style></head><body>
+    <div style="text-align:center;margin-bottom:24px">
+      <h1>revelio — ${SALA}</h1>
+      <p style="color:#86868B;font-size:12px">${tipoInfo.icon} ${tipoInfo.label} · ${fd(lastSaved||new Date())} ${fdt(lastSaved||new Date())}</p>
+      ${obj.text?`<p style="margin-top:8px;font-size:13px">🎯 <b>${obj.text}</b> — ${obj.met==='met'?'✅ Cumplido':obj.met==='partial'?'⚠️ Parcial':obj.met==='unmet'?'❌ No cumplido':'Sin evaluar'}</p>`:''}
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      ${[['📝',notes.length,'Notas','#007AFF'],['▲',votes,'Votos','#FF9500'],[`🎯`,`${done}/${actions.length}`,'Accionables','#34C759'],['⚠️',openRisks.length,'Riesgos','#FF3B30']].map(([i,v,l,c])=>`<div style="flex:1;text-align:center;background:#F9F9FB;border-radius:10px;padding:12px;border:1px solid #E5E5EA"><div style="font-size:18px;font-weight:800;color:${c}">${v}</div><div style="font-size:10px;color:#86868B">${l}</div></div>`).join('')}
+    </div>
+    ${catHTML}${actHTML}${risksHTML}
+    <p style="text-align:center;color:#86868B;font-size:10px;margin-top:28px">Generado con revelio ✨ — retroboost.netlify.app</p>
+    </body></html>`;
+    w.document.write(doc);
+    w.document.close();
+    setTimeout(()=>w.print(), 500);
   };
 
   return html`
-    <div style=${{ maxWidth:960, margin:'0 auto', display:'flex', flexDirection:'column', gap:14 }}>
-      <div style=${{ display:'flex', justifyContent:'flex-end' }}>
-        <button onClick=${exportPDF} style=${{ ...bP, background:'#007AFF', display:'flex', alignItems:'center', gap:6 }}>📄 Descargar informe PDF</button>
+    <div style=${{maxWidth:780,margin:'0 auto'}}>
+      <!-- KPI cards -->
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}}>
+        ${[['📝',notes.length,'Notas','#007AFF'],['▲',votes,'Votos','#FF9500'],[`${done}/${actions.length}`,'Accionables','#34C759'],['⚠️ '+openRisks.length,'Riesgos abiertos','#FF3B30']].map(([v,l,c])=>html`
+          <div class="card" style=${{textAlign:'center',padding:'14px 10px'}}>
+            <div style=${{fontSize:20,fontWeight:800,color:c,marginBottom:2}}>${v}</div>
+            <div style=${{fontSize:10,color:'#86868B'}}>${l}</div>
+          </div>
+        `)}
       </div>
-      <div style=${{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10 }}>
-        ${[{l:'Notas',v:tN,i:'📝',c:'#007AFF'},{l:'Votos',v:tV,i:'👍',c:'#FF9500'},{l:'Accionables',v:aD+'/'+actions.length,i:'🎯',c:'#34C759'},{l:'Riesgos abiertos',v:openRisks.length,i:'⚠️',c:openRisks.length>0?'#FF3B30':'#34C759'},{l:'Objetivo',v:objL,i:'🏁',c:obj.met===true?'#34C759':obj.met===false?'#FF3B30':'#FF9500'}].map((s,i)=>html`
-          <div key=${i} style=${{ ...cS, padding:18, textAlign:'center' }}><div style=${{ fontSize:24, marginBottom:6 }}>${s.i}</div><div style=${{ fontSize:24, fontWeight:800, color:s.c }}>${s.v}</div><div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${s.l}</div></div>`)}
-      </div>
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-        <div style=${{ ...cS, padding:22 }}>
-          <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:14 }}>📊 Notas por categoría</h3>
-          ${CATS.map(c=>{const cnt=notes.filter(n=>n.category===c.id).length;const pct=tN>0?(cnt/tN)*100:0;return html`
-            <div key=${c.id} style=${{ marginBottom:10 }}><div style=${{ display:'flex', justifyContent:'space-between', marginBottom:4 }}><span style=${{ fontSize:13, fontWeight:600 }}>${c.emoji} ${c.label}</span><span style=${{ fontSize:12, fontWeight:700, color:c.color }}>${cnt}</span></div><div style=${{ height:8, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}><div style=${{ height:'100%', width:pct+'%', background:c.color, borderRadius:4, transition:'width .5s' }} /></div></div>`})}
+
+      <!-- Tasks completion -->
+      <div class="card" style=${{marginBottom:12}}>
+        <div style=${{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+          <span style=${{fontSize:13,fontWeight:600}}>📋 Completitud de tareas</span>
+          <span style=${{fontSize:13,fontWeight:700,color:'#34C759'}}>${tDone}/${tasks.length}</span>
         </div>
-        <div style=${{ ...cS, padding:22 }}>
-          <h3 style=${{ fontSize:15, fontWeight:700, marginBottom:14 }}>📋 Progreso</h3>
-          ${[{l:'Tareas',d:tD,t:tasks.length,c:'#007AFF'},{l:'Accionables',d:aD,t:actions.length,c:'#34C759'}].map((r,i)=>html`
-            <div key=${i} style=${{ marginBottom:12 }}><div style=${{ display:'flex', justifyContent:'space-between', marginBottom:4 }}><span style=${{ fontSize:13, fontWeight:600 }}>${r.l}</span><span style=${{ fontSize:12, fontWeight:700, color:r.c }}>${r.d}/${r.t}</span></div><div style=${{ height:8, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}><div style=${{ height:'100%', width:(r.t>0?(r.d/r.t)*100:0)+'%', background:r.c, borderRadius:4, transition:'width .5s' }} /></div></div>`)}
+        <div style=${{height:8,background:'#F2F2F7',borderRadius:4,overflow:'hidden'}}>
+          <div style=${{height:'100%',width:(tasks.length?tDone/tasks.length*100:0)+'%',background:'linear-gradient(90deg,#34C759,#30d158)',borderRadius:4,transition:'width .5s ease'}}></div>
         </div>
       </div>
-      <div style=${{ ...cS, padding:24 }}>
-        <h3 style=${{ fontSize:18, fontWeight:700, marginBottom:4 }}>🏆 Ranking</h3>
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:18 }}>Tarjetas aportadas + votos recibidos en ellas</p>
-        <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-          ${ranking.map((r,i)=>{const isMe=r.id===user.id;const bw=mx>0?(r.score/mx)*100:0;
-            const bg=i===0?'linear-gradient(90deg,#FFD60A,#FF9500)':i===1?'linear-gradient(90deg,#C0C0C0,#999)':i===2?'linear-gradient(90deg,#CD7F32,#B8860B)':'#007AFF';
+
+      <!-- Notes by cat -->
+      <div class="card" style=${{marginBottom:12}}>
+        <h3 style=${{fontSize:13,fontWeight:700,marginBottom:12}}>📊 Distribución de notas</h3>
+        ${CATS.map(c=>{
+          const cn = notes.filter(n=>n.category===c.id);
+          const w  = notes.length ? cn.length/notes.length*100 : 0;
+          return html`
+            <div key=${c.id} style=${{marginBottom:9}}>
+              <div style=${{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                <span style=${{fontSize:12}}>${c.emoji} ${c.label}</span>
+                <span style=${{fontSize:12,fontWeight:600,color:c.color}}>${cn.length}</span>
+              </div>
+              <div style=${{height:6,background:'#F2F2F7',borderRadius:3,overflow:'hidden'}}>
+                <div style=${{height:'100%',width:w+'%',background:c.color,borderRadius:3,transition:'width .4s ease'}}></div>
+              </div>
+            </div>`;
+        })}
+      </div>
+
+      <!-- Action completion -->
+      ${actions.length>0 && html`
+        <div class="card" style=${{marginBottom:12}}>
+          <div style=${{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+            <span style=${{fontSize:13,fontWeight:600}}>🎯 Accionables · ${pct}% completado</span>
+            <span style=${{fontSize:13,fontWeight:700,color:'#007AFF'}}>${done}/${actions.length}</span>
+          </div>
+          <div style=${{height:8,background:'#F2F2F7',borderRadius:4,overflow:'hidden'}}>
+            <div style=${{height:'100%',width:pct+'%',background:'linear-gradient(90deg,#007AFF,#5856D6)',borderRadius:4,transition:'width .4s ease'}}></div>
+          </div>
+        </div>
+      `}
+
+      <!-- Open risks -->
+      ${openRisks.length>0 && html`
+        <div class="card" style=${{marginBottom:12,border:'1.5px solid #FF950028',background:'#FFFCF7'}}>
+          <h3 style=${{fontSize:13,fontWeight:700,color:'#FF9500',marginBottom:10}}>⚠️ Riesgos abiertos (${openRisks.length})</h3>
+          ${openRisks.map(r=>{
+            const avgV = vs => { const a=Object.values(vs||{}); return a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):0; };
+            const score = avgV(r.impactVotes)*avgV(r.probVotes);
+            const col = score>=15?'#FF3B30':score>=6?'#FF9500':'#34C759';
             return html`
-              <div key=${r.id} style=${{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderRadius:14, background:isMe?'#007AFF06':i<3?'#FFFBEB':'#F9F9FB', border:isMe?'2px solid #007AFF25':i<3?'1.5px solid #FFD60A25':'1.5px solid #E5E5EA' }}>
-                <div style=${{ width:32, textAlign:'center', fontSize:i<3?22:14, fontWeight:700, color:'#86868B' }}>${i<3?medals[i]:(i+1)+'º'}</div>
-                <div style=${{ width:36, height:36, borderRadius:18, background:r.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0, border:'2px solid #FFF', boxShadow:'0 2px 6px rgba(0,0,0,0.06)' }}>${r.avatar}</div>
-                <div style=${{ flex:1 }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}><span style=${{ fontSize:14, fontWeight:700 }}>${r.name}</span><span style=${{ fontSize:18, fontWeight:800, color:i<3?'#FFB800':'#86868B' }}>${r.score}</span><span style=${{ fontSize:10, color:'#86868B' }}>pts</span></div>
-                  <div style=${{ height:5, background:'#E5E5EA', borderRadius:3, overflow:'hidden', marginBottom:5 }}><div style=${{ height:'100%', width:bw+'%', background:bg, borderRadius:3, transition:'width .5s' }} /></div>
-                  <div style=${{ display:'flex', gap:10 }}><span style=${{ fontSize:11, color:'#86868B' }}>📝 ${r.tarjetas} tarjetas</span><span style=${{ fontSize:11, color:'#86868B' }}>👍 ${r.votosRecibidos} votos recibidos</span></div>
-                </div>
-              </div>`})}
+              <div key=${r.id} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:'1px solid #FF950015',fontSize:12}}>
+                <span style=${{flex:1}}>${r.text}</span>
+                <span style=${{background:col,color:'#FFF',borderRadius:6,padding:'1px 8px',fontSize:10,fontWeight:700,marginLeft:10}}>Score ${score}</span>
+              </div>`;
+          })}
+        </div>
+      `}
+
+      <!-- Auto-save status + PDF -->
+      <div class="card" style=${{display:'flex',alignItems:'center',gap:12}}>
+        <div style=${{flex:1,fontSize:12,color:'#86868B'}}>
+          ${saving
+            ? html`<span style=${{animation:'pulse 1s infinite',color:'#FF9500',fontWeight:600}}>⏳ Auto-guardando…</span>`
+            : lastSaved
+              ? html`<span style=${{color:'#34C759',fontWeight:600}}>✅ Guardado ${fd(lastSaved)} ${fdt(lastSaved)}</span>`
+              : html`<span>⏳ En espera de datos…</span>`
+          }
+        </div>
+        <button onClick=${exportPDF} style=${{padding:'10px 20px',background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',border:'none',borderRadius:12,fontSize:13,fontWeight:600,cursor:'pointer',boxShadow:'0 3px 10px rgba(0,122,255,.3)'}}>
+          📄 Exportar PDF
+        </button>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   GUIDE MODAL
+══════════════════════════════════════════════ */
+function GuideModal({ onClose }) {
+  return html`
+    <div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9000,padding:16}} onClick=${onClose}>
+      <div class="card" style=${{maxWidth:580,width:'100%',maxHeight:'86vh',overflowY:'auto',animation:'fadeInScale .2s ease'}} onClick=${e=>e.stopPropagation()}>
+        <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <h2 style=${{fontSize:18,fontWeight:700}}>📖 Libro de Hechizos</h2>
+          <button onClick=${onClose} style=${{width:30,height:30,borderRadius:'50%',background:'#F2F2F7',border:'none',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+        </div>
+        <h3 style=${{fontSize:13,fontWeight:700,color:'#007AFF',marginBottom:8}}>🧙 Para el equipo</h3>
+        <div style=${{display:'flex',flexDirection:'column',gap:6,marginBottom:14}}>
+          ${PHASES.map(p=>html`
+            <div key=${p.id} style=${{background:'#F9F9FB',borderRadius:10,padding:'9px 12px',display:'flex',alignItems:'center',gap:10}}>
+              <span style=${{fontSize:16}}>${p.icon}</span>
+              <div>
+                <p style=${{fontWeight:700,fontSize:12}}>${p.label}</p>
+                <p style=${{fontSize:11,color:'#86868B',fontStyle:'italic'}}>${p.hp}</p>
+              </div>
+            </div>
+          `)}
+        </div>
+        <div style=${{background:'#EBF5FF',borderRadius:10,padding:10,marginBottom:14,fontSize:12,color:'#007AFF'}}>
+          💡 Vota con ▲ · Reacciona con emojis · Convierte notas en riesgos/accionables desde "En Común"
+        </div>
+        <hr style=${{border:'none',borderTop:'1px solid #E5E5EA',margin:'12px 0'}} />
+        <h3 style=${{fontSize:13,fontWeight:700,color:'#5856D6',marginBottom:8}}>🏰 Para el Scrum Master</h3>
+        <p style=${{fontSize:12,marginBottom:6}}>🔗 Enlace equipo: <code style=${{background:'#F2F2F7',padding:'1px 6px',borderRadius:4,fontSize:11}}>${location.origin}?sala=X&tipo=agile</code></p>
+        <p style=${{fontSize:12,marginBottom:6}}>🏰 Admin: <code style=${{background:'#F2F2F7',padding:'1px 6px',borderRadius:4,fontSize:11}}>${location.origin}?admin</code></p>
+        <div style=${{background:'#F9F9FB',borderRadius:10,padding:10,marginTop:10,fontSize:12,color:'#86868B'}}>
+          <b>💾 Auto-save:</b> Los datos se guardan solos 2s después de cada cambio.<br/>
+          <b>⚠️ Riesgos:</b> Persisten entre retros hasta ser mitigados.<br/>
+          <b>🆕 Nueva retro:</b> Cierra la actual (queda en historial) e inicia una nueva.<br/>
+          <b>📊 Historial:</b> Visible en el panel admin por sala.
+        </div>
+        <p style=${{textAlign:'center',fontSize:12,color:'#C7C7CC',marginTop:16}}>Hecho con ✨ y sin Horcruxes</p>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   ADMIN
+══════════════════════════════════════════════ */
+function Admin() {
+  const [rooms,    setRooms]    = useState([]);
+  const [retros,   setRetros]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [expanded, setExpanded] = useState(null);
+  const [slug,  setSlug]  = useState('');
+  const [name,  setName]  = useState('');
+  const [tipo,  setTipo]  = useState('agile');
+  const [toast, setToast] = useState(null);
+
+  const msg = m => { setToast(m); setTimeout(()=>setToast(null),2400); };
+
+  useEffect(()=>{
+    (async()=>{
+      const [r,rt] = await Promise.all([dbLoadRooms(), dbGetAllRetros()]);
+      setRooms(r); setRetros(rt); setLoading(false);
+    })();
+  },[]);
+
+  const addRoom = async () => {
+    if (!slug.trim()||!name.trim()) return;
+    await dbSaveRoom(slug.trim().toLowerCase(), name.trim(), tipo);
+    const r = await dbLoadRooms(); setRooms(r);
+    setSlug(''); setName('');
+    msg('✅ Sala creada');
+  };
+
+  const delRoom = async s => {
+    if (!confirm(`¿Eliminar sala "${s}"?`)) return;
+    await dbDeleteRoom(s);
+    setRooms(rooms.filter(r=>r.slug!==s));
+    msg('🗑️ Sala eliminada');
+  };
+
+  const retrosFor = s => retros.filter(r=>r.sala===s);
+  const go = (s,t) => location.href = `?sala=${s}&tipo=${t||'agile'}`;
+
+  if (loading) return html`
+    <div style=${{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#F2F2F7'}}>
+      <div style=${{textAlign:'center',color:'#86868B'}}>
+        <div style=${{fontSize:32,animation:'spin 1s linear infinite',display:'inline-block'}}>⏳</div>
+        <p style=${{marginTop:8}}>Cargando…</p>
+      </div>
+    </div>`;
+
+  return html`
+    <div style=${{minHeight:'100vh',background:'#F2F2F7'}}>
+      <div style=${{background:'rgba(255,255,255,.92)',backdropFilter:'blur(14px)',borderBottom:'1px solid #E5E5EA',padding:'12px 20px',position:'sticky',top:0,zIndex:100}}>
+        <div style=${{maxWidth:900,margin:'0 auto',display:'flex',alignItems:'center',gap:12}}>
+          <div style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:20,background:'linear-gradient(90deg,#007AFF,#5856D6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>revelio</div>
+          <h2 style=${{fontSize:15,fontWeight:700}}>🏰 Admin</h2>
+          <button onClick=${()=>location.href='/'} style=${{marginLeft:'auto',background:'none',border:'1px solid #E5E5EA',borderRadius:8,padding:'4px 12px',fontSize:12,cursor:'pointer',color:'#86868B'}}>← Inicio</button>
         </div>
       </div>
-    </div>
-  `;
+      <div style=${{maxWidth:900,margin:'0 auto',padding:20}}>
+
+        <!-- Add room -->
+        <div class="card" style=${{marginBottom:16}}>
+          <h3 style=${{fontSize:13,fontWeight:700,marginBottom:12}}>➕ Nueva sala</h3>
+          <div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <input value=${slug} onInput=${e=>setSlug(e.target.value)} placeholder="slug (ej: vwfs)"
+              style=${{padding:'8px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none',width:130}} />
+            <input value=${name} onInput=${e=>setName(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&addRoom()} placeholder="Nombre completo"
+              style=${{flex:1,padding:'8px 12px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none',minWidth:180}} />
+            <select value=${tipo} onChange=${e=>setTipo(e.target.value)} style=${{padding:'8px 10px',borderRadius:10,border:'1.5px solid #E5E5EA',fontSize:13,outline:'none'}}>
+              ${Object.entries(TASK_TEMPLATES).map(([k,v])=>html`<option key=${k} value=${k}>${v.icon} ${v.label}</option>`)}
+            </select>
+            <button onClick=${addRoom} style=${{padding:'8px 18px',background:'#007AFF',color:'#FFF',border:'none',borderRadius:10,cursor:'pointer',fontWeight:600,fontSize:13}}>Crear</button>
+          </div>
+        </div>
+
+        <!-- Rooms list -->
+        <div class="card">
+          <h3 style=${{fontSize:13,fontWeight:700,marginBottom:14}}>📋 Salas (${rooms.length})</h3>
+          ${rooms.length===0 && html`<p style=${{color:'#86868B',textAlign:'center',padding:20,fontSize:13}}>Sin salas. Crea la primera ☝️</p>`}
+          ${rooms.map(room => {
+            const sr   = retrosFor(room.slug);
+            const act  = sr.find(r=>r.status==='active');
+            const ti   = TASK_TEMPLATES[room.tipo]||TASK_TEMPLATES.agile;
+            const notes = sr.reduce((s,r)=>s+(r.data?.notes?.length||0),0);
+            const acts  = sr.reduce((s,r)=>s+(r.data?.actions?.length||0),0);
+            const isExp = expanded===room.slug;
+            return html`
+              <div key=${room.slug} style=${{borderBottom:'1px solid #F2F2F7',paddingBottom:14,marginBottom:14}}>
+                <div style=${{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <div style=${{flex:1,minWidth:200}}>
+                    <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                      <button onClick=${()=>go(room.slug,room.tipo)} style=${{background:'none',border:'none',cursor:'pointer',fontWeight:700,color:'#007AFF',fontSize:14,padding:0}}>${room.name}</button>
+                      ${act&&html`<span style=${{background:'#34C75918',color:'#34C759',padding:'1px 7px',borderRadius:5,fontSize:10,fontWeight:700}}>● Activa</span>`}
+                    </div>
+                    <div style=${{fontSize:10,color:'#86868B',display:'flex',gap:8,alignItems:'center'}}>
+                      <span style=${{background:ti.color+'15',color:ti.color,padding:'1px 6px',borderRadius:4,fontWeight:600}}>${ti.icon} ${ti.label}</span>
+                      <span>slug: <code>${room.slug}</code></span>
+                      <span>·</span>
+                      <span>${sr.length} retros · ${notes} notas · ${acts} accionables</span>
+                    </div>
+                  </div>
+                  <div style=${{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    <button onClick=${()=>{ navigator.clipboard.writeText(`${location.origin}?sala=${room.slug}&tipo=${room.tipo}`); msg('📋 Copiado'); }} style=${{padding:'5px 10px',borderRadius:8,border:'1px solid #E5E5EA',background:'#FFF',cursor:'pointer',fontSize:11}}>📋 Copiar enlace</button>
+                    <button onClick=${()=>setExpanded(isExp?null:room.slug)} style=${{padding:'5px 10px',borderRadius:8,border:'1px solid #E5E5EA',background:isExp?'#EBF5FF':'#FFF',color:isExp?'#007AFF':'#1D1D1F',cursor:'pointer',fontSize:11}}>
+                      📂 Retros (${sr.length})
+                    </button>
+                    <button onClick=${()=>go(room.slug,room.tipo)} style=${{padding:'5px 10px',borderRadius:8,border:'1px solid #007AFF',background:'#EBF5FF',color:'#007AFF',cursor:'pointer',fontSize:11,fontWeight:600}}>Entrar →</button>
+                    <button onClick=${()=>delRoom(room.slug)} style=${{padding:'5px 8px',borderRadius:8,border:'1px solid #FF3B3020',background:'#FFF5F5',color:'#FF3B30',cursor:'pointer',fontSize:11}}>🗑️</button>
+                  </div>
+                </div>
+                ${isExp && html`
+                  <div style=${{marginTop:12,background:'#F9F9FB',borderRadius:12,padding:12}}>
+                    <p style=${{fontSize:11,fontWeight:600,color:'#86868B',marginBottom:8}}>Historial de retros</p>
+                    ${sr.length===0 && html`<p style=${{fontSize:12,color:'#C7C7CC',textAlign:'center',padding:'10px 0'}}>Sin retros aún</p>`}
+                    ${sr.map(r=>{
+                      const nC = r.data?.notes?.length||0;
+                      const aC = r.data?.actions?.length||0;
+                      return html`
+                        <div key=${r.id} style=${{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:'1px solid #E5E5EA',fontSize:12}}>
+                          <span style=${{background:r.status==='active'?'#34C75920':'#86868B18',color:r.status==='active'?'#34C759':'#86868B',padding:'1px 7px',borderRadius:5,fontSize:10,fontWeight:700,whiteSpace:'nowrap'}}>
+                            ${r.status==='active'?'● Activa':'Cerrada'}
+                          </span>
+                          <span style=${{color:'#86868B',flex:1}}>${fd(r.created_at)} · ${nC} notas · ${aC} accionables</span>
+                          ${r.status==='active'&&html`<button onClick=${()=>go(room.slug,room.tipo)} style=${{padding:'3px 9px',borderRadius:6,border:'1px solid #007AFF',color:'#007AFF',background:'#EBF5FF',cursor:'pointer',fontSize:11,fontWeight:600}}>Abrir</button>`}
+                        </div>`;
+                    })}
+                  </div>
+                `}
+              </div>`;
+          })}
+        </div>
+      </div>
+
+      ${toast && html`
+        <div style=${{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',background:'#1D1D1F',color:'#FFF',padding:'10px 20px',borderRadius:12,fontSize:13,fontWeight:600,zIndex:500,animation:'fadeIn .2s',whiteSpace:'nowrap'}}>
+          ${toast}
+        </div>
+      `}
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   LANDING
+══════════════════════════════════════════════ */
+function Landing() {
+  return html`
+    <div style=${{minHeight:'100vh',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,textAlign:'center',color:'#FFF'}}>
+      <div style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:52,marginBottom:8,letterSpacing:2}}>revelio</div>
+      <p style=${{fontSize:17,fontWeight:300,marginBottom:48,opacity:.85}}>Retrospectivas ágiles ✨ — en tiempo real, sin esfuerzo</p>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,maxWidth:580,width:'100%',marginBottom:40}}>
+        ${PHASES.map(p=>html`
+          <div key=${p.id} style=${{background:'rgba(255,255,255,.15)',borderRadius:14,padding:'14px 12px',backdropFilter:'blur(10px)',border:'1px solid rgba(255,255,255,.2)'}}>
+            <div style=${{fontSize:22,marginBottom:5}}>${p.icon}</div>
+            <div style=${{fontWeight:700,fontSize:12}}>${p.label}</div>
+            <div style=${{fontSize:10,opacity:.75,marginTop:2,fontStyle:'italic'}}>${p.hp}</div>
+          </div>
+        `)}
+      </div>
+      <div style=${{background:'rgba(255,255,255,.15)',borderRadius:14,padding:'14px 20px',backdropFilter:'blur(10px)',marginBottom:16,fontSize:13,maxWidth:460}}>
+        Entra con <code style=${{background:'rgba(255,255,255,.2)',padding:'2px 8px',borderRadius:5}}>${location.origin}?sala=TU_SALA</code><br/>
+        <span style=${{opacity:.75,fontSize:11}}>Añade &tipo=waterfall | itil | kanban para elegir plantilla</span>
+      </div>
+      <a href="?admin" style=${{color:'#FFF',opacity:.8,fontSize:13,textDecoration:'none',padding:'8px 20px',border:'1px solid rgba(255,255,255,.4)',borderRadius:10,backdropFilter:'blur(10px)'}}>
+        🏰 Panel de administración →
+      </a>
+      <p style=${{marginTop:40,fontSize:11,opacity:.4}}>Hecho con ✨ y sin Horcruxes</p>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════ */
+function App() {
+  const [user, setUser] = useState(null);
+
+  if (!SALA_PARAM && !IS_ADMIN) return html`<${Landing} />`;
+  if (IS_ADMIN) return html`<${Admin} />`;
+  if (!user)    return html`<${Login} onJoin=${setUser} />`;
+  return html`<${RetroBoard} user=${user} />`;
 }
 
 render(html`<${App} />`, document.getElementById('app'));
