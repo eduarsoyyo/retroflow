@@ -340,50 +340,73 @@ function App() {
 /* ═══ NEED LINK SCREEN ═══ */
 function NeedLink() {
   const phases = [
-    { icon:'📋', label:'Repaso',      spell:'Pensadero'          },
-    { icon:'✍️',  label:'Análisis',   spell:'Revelio notae!'     },
-    { icon:'💬', label:'En Común',    spell:'Priori Incantatem'  },
-    { icon:'⚠️',  label:'Riesgos',    spell:'Mapa del Merodeador'},
-    { icon:'🎯', label:'Accionables', spell:'Expecto Patronum'   },
-    { icon:'📊', label:'Dashboard',   spell:'Sombrero Selector'  },
+    { n:1, label:'Repaso',      sub:'Objetivo y tareas del sprint'   },
+    { n:2, label:'Análisis',    sub:'Notas individuales Good/Bad'     },
+    { n:3, label:'En Común',    sub:'Debatid y votad'                 },
+    { n:4, label:'Riesgos',     sub:'Identificad y medid el impacto'  },
+    { n:5, label:'Accionables', sub:'Asignad responsable y fecha'     },
+    { n:6, label:'Dashboard',   sub:'Ranking, métricas e informe PDF' },
   ];
 
   return html`
-    <div style=${{ minHeight:'100vh', background:'linear-gradient(160deg,#0F0C29,#302B63,#24243E)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'40px 20px', textAlign:'center' }}>
+    <div style=${{ minHeight:'100vh', background:'#FAFAFA', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 20px', textAlign:'center' }}>
+
+      <!-- Decorative blobs -->
+      <div style=${{ position:'fixed', top:-120, right:-120, width:400, height:400, borderRadius:'50%', background:'radial-gradient(circle,rgba(0,122,255,.12),transparent 70%)', pointerEvents:'none' }} />
+      <div style=${{ position:'fixed', bottom:-100, left:-100, width:350, height:350, borderRadius:'50%', background:'radial-gradient(circle,rgba(88,86,214,.1),transparent 70%)', pointerEvents:'none' }} />
 
       <!-- Logo -->
-      <h1 class="wm" style=${{ fontSize:56, marginBottom:6, lineHeight:1 }}>revelio</h1>
-      <p style=${{ fontSize:15, color:'rgba(255,255,255,.55)', marginBottom:48, letterSpacing:1 }}>retrospectivas que revelan lo que importa</p>
+      <div style=${{ marginBottom:40 }}>
+        <h1 style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:52, fontWeight:400, letterSpacing:3, color:'#1D1D1F', marginBottom:8, lineHeight:1 }}>revelio</h1>
+        <p style=${{ fontSize:14, color:'#86868B', letterSpacing:.5 }}>Retrospectivas ágiles en tiempo real</p>
+      </div>
 
-      <!-- 6 fases en grid compacto -->
-      <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, maxWidth:560, width:'100%', marginBottom:48 }}>
-        ${phases.map((p,i) => html`
-          <div key=${i} style=${{ background:'rgba(255,255,255,.07)', backdropFilter:'blur(12px)', borderRadius:16, padding:'18px 14px', border:'1px solid rgba(255,255,255,.12)', transition:'background .2s' }}
-            onMouseOver=${e=>e.currentTarget.style.background='rgba(255,255,255,.13)'}
-            onMouseOut=${e=>e.currentTarget.style.background='rgba(255,255,255,.07)'}>
-            <div style=${{ fontSize:26, marginBottom:6 }}>${p.icon}</div>
-            <div style=${{ fontSize:12, fontWeight:700, color:'#FFF', marginBottom:3 }}>${i+1}. ${p.label}</div>
-            <div style=${{ fontSize:10, color:'rgba(255,255,255,.4)', fontStyle:'italic' }}>${p.spell}</div>
+      <!-- 6 fases: línea de pasos horizontal -->
+      <div style=${{ maxWidth:640, width:'100%', marginBottom:52 }}>
+        <div style=${{ display:'flex', alignItems:'flex-start', gap:0, position:'relative' }}>
+          <!-- línea conectora -->
+          <div style=${{ position:'absolute', top:18, left:'calc(100%/12)', right:'calc(100%/12)', height:1, background:'linear-gradient(90deg,#007AFF,#5856D6)', opacity:.2, zIndex:0 }} />
+          ${phases.map((p,i) => html`
+            <div key=${i} style=${{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8, zIndex:1 }}>
+              <div style=${{
+                width:36, height:36, borderRadius:'50%', flexShrink:0,
+                background: i===0?'linear-gradient(135deg,#007AFF,#5856D6)':'#FFF',
+                border: i===0?'none':'1.5px solid #E5E5EA',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:13, fontWeight:700,
+                color: i===0?'#FFF':'#86868B',
+                boxShadow: i===0?'0 4px 12px rgba(0,122,255,.25)':'none',
+                transition:'all .2s'
+              }}>${p.n}</div>
+              <div style=${{ fontSize:11, fontWeight:700, color:'#1D1D1F', lineHeight:1.2 }}>${p.label}</div>
+              <div style=${{ fontSize:9, color:'#86868B', lineHeight:1.3, maxWidth:80 }}>${p.sub}</div>
+            </div>
+          `)}
+        </div>
+      </div>
+
+      <!-- 3 pills de features -->
+      <div style=${{ display:'flex', gap:10, marginBottom:52, flexWrap:'wrap', justifyContent:'center' }}>
+        ${[
+          ['Tiempo real','Notas y cursores sincronizados al instante'],
+          ['Votación anónima','Votos sin presión de grupo'],
+          ['Informe PDF','Exporta la retro completa en un clic'],
+        ].map(([t,d]) => html`
+          <div style=${{ background:'#FFF', border:'1px solid #E5E5EA', borderRadius:50, padding:'8px 18px', boxShadow:'0 1px 4px rgba(0,0,0,.05)' }}>
+            <span style=${{ fontSize:12, fontWeight:600, color:'#1D1D1F' }}>${t}</span>
+            <span style=${{ fontSize:11, color:'#86868B', marginLeft:6 }}>${d}</span>
           </div>
         `)}
       </div>
 
-      <!-- Features row -->
-      <div style=${{ display:'flex', gap:24, marginBottom:48, flexWrap:'wrap', justifyContent:'center' }}>
-        ${[['⚡','Tiempo real'],['🗳️','Votación anónima'],['⚠️','Gestión de riesgos'],['📄','Informe PDF']].map(([ic,l]) => html`
-          <div style=${{ display:'flex', alignItems:'center', gap:6, color:'rgba(255,255,255,.6)', fontSize:12 }}>
-            <span style=${{ fontSize:16 }}>${ic}</span><span>${l}</span>
-          </div>
-        `)}
+      <!-- CTA box -->
+      <div style=${{ background:'#FFF', borderRadius:20, padding:'24px 32px', border:'1px solid #E5E5EA', maxWidth:400, width:'100%', boxShadow:'0 4px 24px rgba(0,0,0,.06)' }}>
+        <div style=${{ width:44, height:44, borderRadius:14, background:'linear-gradient(135deg,#007AFF,#5856D6)', margin:'0 auto 14px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, boxShadow:'0 6px 16px rgba(0,122,255,.25)' }}>✨</div>
+        <p style=${{ fontSize:15, fontWeight:700, color:'#1D1D1F', marginBottom:6 }}>¿Listo para la retro?</p>
+        <p style=${{ fontSize:13, color:'#86868B', lineHeight:1.5 }}>Pide a tu Scrum Master el enlace de tu sala para comenzar.</p>
       </div>
 
-      <!-- CTA -->
-      <div style=${{ background:'rgba(255,255,255,.08)', backdropFilter:'blur(16px)', borderRadius:16, padding:'20px 28px', border:'1px solid rgba(255,255,255,.15)', maxWidth:420, width:'100%' }}>
-        <p style=${{ fontSize:13, color:'rgba(255,255,255,.6)', marginBottom:8 }}>🪄 Pide a tu Scrum Master el enlace de tu sala</p>
-        <code style=${{ fontSize:11, color:'rgba(255,255,255,.35)', letterSpacing:.5 }}>${window.location.host}?sala=tu-proyecto</code>
-      </div>
-
-      <p style=${{ fontSize:10, color:'rgba(255,255,255,.2)', marginTop:32 }}>Hecho con ✨ y sin Horcruxes</p>
+      <p style=${{ fontSize:10, color:'#C7C7CC', marginTop:36 }}>Hecho con ✨ y sin Horcruxes</p>
     </div>
   `;
 }
