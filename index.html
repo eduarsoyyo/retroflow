@@ -1456,10 +1456,10 @@ function PVacaciones() {
         ${saving && html`<span style=${{ fontSize:11, color:'#007AFF' }}>💾</span>`}
         <span style=${{ fontSize:11, color:'#86868B' }}>${activeThisMonth.length} ausencias este mes</span>
         <div style=${{ display:'flex', gap:10, fontSize:10, alignItems:'center' }}>
-          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#C8F0D0', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Laboral</span>
-          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#E8F4FD', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Fin semana</span>
-          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#EEEEFF', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Festivo</span>
-          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#007AFF', border:'1px solid #007AFF', borderRadius:2, marginRight:3 }}></span>Vacaciones</span>
+          <span><span style=${{ display:'inline-block', width:18, height:18, background:'#C8F0D0', border:'1px solid #ccc', borderRadius:3, marginRight:3, textAlign:'center', lineHeight:'18px', fontSize:9, fontWeight:600, color:'#2D8A4E' }}>L</span>Laboral</span>
+          <span><span style=${{ display:'inline-block', width:18, height:18, background:'#E0E0E0', border:'1px solid #ccc', borderRadius:3, marginRight:3 }}></span>Fin semana</span>
+          <span><span style=${{ display:'inline-block', width:18, height:18, background:'#EEEEFF', border:'1px solid #ccc', borderRadius:3, marginRight:3, textAlign:'center', lineHeight:'18px', fontSize:9, fontWeight:600, color:'#5856D6' }}>F</span>Festivo</span>
+          <span><span style=${{ display:'inline-block', width:18, height:18, background:'#FF9500', border:'1px solid #ccc', borderRadius:3, marginRight:3, textAlign:'center', lineHeight:'18px', fontSize:9, fontWeight:800, color:'#FFF' }}>V</span>Vacaciones</span>
         </div>
       </div>
 
@@ -1512,15 +1512,19 @@ function PVacaciones() {
                   </td>
                   <!-- Day cells -->
                   ${days.map(d => {
-                    const onVac = isOnVac(m, d);
-                    const wknd  = isWeekend(d);
-                    const td    = isToday(d);
+                    const onVac  = isOnVac(m, d);
+                    const wknd   = isWeekend(d);
+                    const holi   = isHoliday(d);
+                    const td     = isToday(d);
+                    const bg     = onVac ? '#FF9500' : wknd ? '#E0E0E0' : holi ? '#EEEEFF' : '#C8F0D0';
+                    const label  = onVac ? 'V' : wknd ? '' : holi ? 'F' : 'L';
+                    const color  = onVac ? '#FFF' : wknd ? '#888' : holi ? '#5856D6' : '#2D8A4E';
+                    const fw     = onVac ? 800 : 600;
                     return html`
-                      <td key=${d} title=${onVac?m.name+' - vacaciones':''}
-                        style=${{ padding:'4px 2px', textAlign:'center', borderBottom:'1px solid #F2F2F7', borderLeft:'1px solid #F2F2F7',
-                          background:onVac?'#007AFF':td?'#007AFF10':wknd?'#E8F4FD':isHoliday?'#DDEEFF':'#B8F0C8',
-                          minWidth:26 }}>
-                        ${onVac && html`<div style=${{ width:'100%', height:18, borderRadius:3, background:'#007AFF' }} />`}
+                      <td key=${d} title=${onVac?m.name+' - vacaciones':wknd?'Fin de semana':holi?'Festivo':'Laboral'}
+                        style=${{ padding:'1px', textAlign:'center', borderBottom:'1px solid #F2F2F7', borderLeft:'1px solid #F2F2F7',
+                          background:td?'#007AFF20':bg, minWidth:26, outline:td?'2px solid #007AFF':'none', outlineOffset:'-2px' }}>
+                        <div style=${{ fontSize:9, fontWeight:fw, color:td?'#007AFF':color, lineHeight:'18px', height:18 }}>${label}</div>
                       </td>`;
                   })}
                 </tr>`)}
