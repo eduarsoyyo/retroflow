@@ -13,10 +13,87 @@
   ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
   input:focus, textarea:focus, select:focus { border-color: #007AFF !important; outline: none; }
   button { font-family: inherit; cursor: pointer; }
-  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes spin    { to { transform: rotate(360deg); } }
   .hl { transition: transform .15s, box-shadow .15s; }
   .hl:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.07); }
   .wm { font-family: 'Comfortaa', sans-serif; font-weight: 400; letter-spacing: 2px; background: linear-gradient(90deg,#007AFF,#5856D6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: inline-block; }
+
+  /* ─── MOBILE ─────────────────────────────────────── */
+  @media (max-width: 640px) {
+
+    /* Header: stack logo+sala on one line, shrink controls */
+    header { flex-wrap: wrap; gap: 6px !important; padding: 8px 12px !important; }
+    header > div:first-child { flex: 1; min-width: 0; }
+    header h2 { font-size: 14px !important; }
+    header h2 span.wm { font-size: 15px !important; }
+
+    /* Phase nav: scrollable single row, smaller pills */
+    div[style*="overflowX:'auto'"] button {
+      padding: 7px 10px !important;
+      font-size: 11px !important;
+    }
+
+    /* Timer: smaller */
+    header span[style*="fontVariantNumeric"] { font-size: 15px !important; min-width: 42px !important; }
+
+    /* Main content: less padding */
+    div[style*="flex:1"][style*="overflowY:'auto'"] { padding: 10px 10px !important; }
+
+    /* Cards: full width, less padding */
+    div[style*="borderRadius:20"],
+    div[style*="borderRadius:16"],
+    div[style*="borderRadius:14"] { border-radius: 12px !important; }
+
+    /* Notes board: 1 col instead of 2 */
+    div[style*="gridTemplateColumns:'repeat(2,1fr)'"] { grid-template-columns: 1fr !important; }
+    div[style*="gridTemplateColumns:'1fr 1fr'"]       { grid-template-columns: 1fr !important; }
+    div[style*="gridTemplateColumns:'1fr 320px'"]     { grid-template-columns: 1fr !important; }
+    div[style*="gridTemplateColumns:'1fr 1fr 1fr'"]   { grid-template-columns: 1fr 1fr !important; }
+    div[style*="gridTemplateColumns:'repeat(5,1fr)'"] { grid-template-columns: repeat(3,1fr) !important; }
+    div[style*="gridTemplateColumns:'repeat(3,1fr)'"] { grid-template-columns: repeat(2,1fr) !important; }
+    div[style*="gridTemplateColumns:'200px 1fr'"]     { grid-template-columns: 1fr !important; }
+
+    /* Actions form: stack vertically */
+    div[style*="minWidth:150"] { min-width: 0 !important; }
+
+    /* Dashboard P6 tabs: wrap */
+    div[style*="background:'#FFF'"][style*="borderRadius:14"] button { font-size: 10px !important; padding: 6px 4px !important; }
+
+    /* Login card: tighter */
+    div[style*="borderRadius:28"] { padding: 28px 20px !important; border-radius: 20px !important; }
+
+    /* Risk heatmap: scale down */
+    div[style*="gridTemplateColumns:'repeat(3,1fr)'"] div[style*="minHeight:90"] { min-height: 60px !important; padding: 6px !important; }
+
+    /* Admin dashboard: 2-col KPIs */
+    /* Inputs full width on mobile */
+    input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom */
+
+    /* Modals: full screen on mobile */
+    div[style*="position:'fixed'"][style*="zIndex:9000"] > div,
+    div[style*="position:'fixed'"][style*="zIndex:9100"] > div {
+      max-width: 100% !important;
+      margin: 0 !important;
+      border-radius: 20px 20px 0 0 !important;
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      max-height: 90vh !important;
+    }
+
+    /* Retro board header buttons: icons only on very small */
+    header button[style*="5px 10px"] { padding: 5px 7px !important; font-size: 11px !important; }
+
+    /* Hide long labels on header buttons, keep emoji */
+    .mob-label { display: none; }
+  }
+
+  @media (max-width: 380px) {
+    header h2 span:not(.wm) { display: none; }
+    div[style*="gridTemplateColumns:'repeat(3,1fr)'"] { grid-template-columns: repeat(2,1fr) !important; }
+  }
 </style>
 <script type="importmap">
 {
