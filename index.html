@@ -1254,10 +1254,26 @@ async function saveTeamSupabase(team, vacs) {
 
 /* ═══ PHASE 7 — EQUIPO ═══ */
 function PEquipo() {
-  const [team,   setTeam]  = useState(loadTeamData);
-  const [newMem, setNewMem]= useState('');
-  const [saving, setSaving]= useState(false);
+  const [team,    setTeam]   = useState(loadTeamData);
+  const [loading, setLoading]= useState(true);
+  const [newMem,  setNewMem] = useState('');
+  const [saving,  setSaving] = useState(false);
   const vacs = loadVacsData();
+
+  // Always load from Supabase — team_members assigned to this sala
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => {
+      const salaMembers = data.filter(m => (m.rooms||[]).includes(SALA));
+      if (salaMembers.length > 0) {
+        const t = salaMembers.map(m => ({
+          id: m.id, name: m.name, avatar: m.avatar||'👤',
+          role: m.role||'', color: m.color||'#007AFF'
+        }));
+        setTeam(t); saveTeamLocal(t);
+      }
+      setLoading(false);
+    });
+  }, []);
 
   const persist = async (t) => {
     saveTeamLocal(t);
@@ -1289,11 +1305,13 @@ function PEquipo() {
 
       <!-- Member list -->
       <div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
-        ${team.length===0 && html`
+        ${loading ? html`<div style=${{ textAlign:'center', padding:40, color:'#86868B' }}>⏳ Cargando equipo…</div>` :
+        team.length===0 ? html`
           <div style=${{ textAlign:'center', padding:'48px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
             <p style=${{ fontSize:40, marginBottom:8 }}>👤</p>
-            <p style=${{ fontSize:14 }}>Añade los miembros del equipo abajo</p>
-          </div>`}
+            <p style=${{ fontSize:14 }}>Sin miembros asignados a este proyecto</p>
+            <p style=${{ fontSize:12, marginTop:6 }}>Añádelos desde Admin → Usuarios asignando este proyecto</p>
+          </div>` :
         ${team.map(m => {
           const mVacs = loadVacsData().filter(v=>v.memberId===m.id||v.name===m.name);
           const today = new Date().toISOString().slice(0,10);
