@@ -79,6 +79,15 @@ async function sbSaveTeamMember(m) {
 async function sbDeleteTeamMember(id) {
   try { await supabase.from('team_members').delete().eq('id',id); } catch {}
 }
+async function sbLoadCalendars() {
+  try { const {data}=await supabase.from('calendars').select('*').order('name'); return data||[]; } catch { return []; }
+}
+async function sbSaveCalendar(cal) {
+  try { await supabase.from('calendars').upsert(cal); } catch {}
+}
+async function sbDeleteCalendar(id) {
+  try { await supabase.from('calendars').delete().eq('id',id); } catch {}
+}
 async function sbSaveMemberVacs(memberId, vacations) {
   try { await supabase.from('team_members').update({ vacations }).eq('id', memberId); } catch {}
 }
@@ -154,6 +163,7 @@ const MAIN_TABS = [
   { id:'vacaciones', label:'Vacaciones', icon:'🏖️' },
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
+const ROLES = ['Scrum Master','Product Owner','Desarrollador/a','QA / Tester','Diseñador/a','DevOps','Tech Lead','Analista','Project Manager','Stakeholder','Otro'];
 const REACTIONS = ['🔥','💡','❤️','😂','🎯','🤯'];
 const COLRS = ['#007AFF','#FF3B30','#34C759','#FF9500','#AF52DE','#FF2D55','#5856D6','#00C7BE'];
 const BADGES = [
@@ -534,8 +544,26 @@ function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
       <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
         <input value=${m.email||''} onInput=${e=>setM({...m,email:e.target.value})} placeholder="Email"
           style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
-        <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="PIN / contraseña" type="password"
+        <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="Contraseña" type="password"
           style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+      </div>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+        <div>
+          <label style=${{ fontSize:11, color:'#86868B', display:'block', marginBottom:4, fontWeight:600 }}>Rol</label>
+          <select value=${m.role_label||''} onChange=${e=>setM({...m,role_label:e.target.value})}
+            style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none', background:'#FFF' }}>
+            <option value="">— Sin rol —</option>
+            ${ROLES.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+          </select>
+        </div>
+        <div>
+          <label style=${{ fontSize:11, color:'#86868B', display:'block', marginBottom:4, fontWeight:600 }}>Calendario de festivos</label>
+          <select value=${m.calendar_id||''} onChange=${e=>setM({...m,calendar_id:e.target.value||null})}
+            style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none', background:'#FFF' }}>
+            <option value="">— Sin calendario —</option>
+            ${(window.__calendars||[]).map(c=>html`<option key=${c.id} value=${c.id}>${c.name}</option>`)}
+          </select>
+        </div>
       </div>
       <div>
         <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600 }}>📂 Proyectos asignados</p>
@@ -558,6 +586,149 @@ function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
       </div>
     </div>`;
 }
+
+
+/* ═══ ADMIN CALENDARIOS ═══ */
+function AdminCalendarios() {
+  const [cals,    setCals]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editId,  setEditId]  = useState(null);  // calendar id being edited
+  const [editCal, setEditCal] = useState(null);  // {id,name,holidays:[{date,name}]}
+  const [newCal,  setNewCal]  = useState({name:'', holidays:[]});
+  const [showAdd, setShowAdd] = useState(false);
+  const [newHol,  setNewHol]  = useState({date:'', name:''});
+  const [saving,  setSaving]  = useState(false);
+
+  useEffect(() => {
+    sbLoadCalendars().then(data => {
+      setCals(data); setLoading(false);
+      window.__calendars = data;
+    });
+  }, []);
+
+  const saveCal = async (cal) => {
+    setSaving(true);
+    await sbSaveCalendar(cal);
+    setCals(prev => prev.some(c=>c.id===cal.id) ? prev.map(c=>c.id===cal.id?cal:c) : [...prev,cal]);
+    window.__calendars = cals;
+    setSaving(false); setEditId(null); setShowAdd(false);
+    setNewCal({name:'',holidays:[]});
+  };
+  const deleteCal = async (id) => {
+    if (!confirm('¿Eliminar este calendario?')) return;
+    await sbDeleteCalendar(id);
+    setCals(prev => prev.filter(c=>c.id!==id));
+    window.__calendars = cals.filter(c=>c.id!==id);
+  };
+
+  const CalForm = ({cal, setCal, onSave, onCancel}) => {
+    const [nh, setNh] = useState({date:'', name:''});
+    const addH = () => {
+      if (!nh.date||!nh.name.trim()) return;
+      setCal({...cal, holidays:[...(cal.holidays||[]),{...nh}].sort((a,b)=>a.date<b.date?-1:1)});
+      setNh({date:'', name:''});
+    };
+    const delH = (i) => setCal({...cal, holidays:(cal.holidays||[]).filter((_,idx)=>idx!==i)});
+
+    return html`
+      <div style=${{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div>
+          <label style=${{ fontSize:11, color:'#86868B', fontWeight:600, display:'block', marginBottom:4 }}>Nombre del calendario</label>
+          <input value=${cal.name||''} onInput=${e=>setCal({...cal,name:e.target.value})} placeholder="Ej: España, Andalucía, Cliente Endesa…"
+            style=${{ ...iS, fontSize:14 }} />
+        </div>
+
+        <div>
+          <label style=${{ fontSize:11, color:'#86868B', fontWeight:600, display:'block', marginBottom:6 }}>📅 Festivos (${(cal.holidays||[]).length})</label>
+          <div style=${{ display:'flex', flexDirection:'column', gap:4, marginBottom:8, maxHeight:200, overflowY:'auto' }}>
+            ${(cal.holidays||[]).length===0 && html`<p style=${{ fontSize:11, color:'#C7C7CC' }}>Sin festivos añadidos</p>`}
+            ${(cal.holidays||[]).map((h,i) => html`
+              <div key=${i} style=${{ display:'flex', alignItems:'center', gap:8, padding:'5px 10px', borderRadius:8, background:'#F9F9FB', border:'1px solid #E5E5EA' }}>
+                <span style=${{ fontSize:11, fontWeight:700, color:'#5856D6', minWidth:80 }}>${h.date}</span>
+                <span style=${{ fontSize:12, flex:1 }}>${h.name}</span>
+                <button onClick=${()=>delH(i)} style=${{ border:'none', background:'none', color:'#FF3B30', fontSize:14, cursor:'pointer' }}>✕</button>
+              </div>`)}
+          </div>
+          <div style=${{ display:'grid', gridTemplateColumns:'120px 1fr auto', gap:6 }}>
+            <input type="date" value=${nh.date} onInput=${e=>setNh({...nh,date:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 8px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+            <input value=${nh.name} onInput=${e=>setNh({...nh,name:e.target.value})} placeholder="Nombre del festivo"
+              onKeyDown=${e=>e.key==='Enter'&&addH()}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+            <button onClick=${addH} style=${{ padding:'7px 12px', borderRadius:8, border:'none', background:'#5856D6', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>+</button>
+          </div>
+        </div>
+
+        <div style=${{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:4 }}>
+          <button onClick=${onCancel} style=${{ padding:'9px 18px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+          <button onClick=${()=>onSave(cal)} disabled=${saving||!(cal.name||'').trim()}
+            style=${{ padding:'9px 18px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:(saving||!(cal.name||'').trim())?.5:1 }}>
+            ${saving?'Guardando…':'Guardar calendario'}
+          </button>
+        </div>
+      </div>`;
+  };
+
+  return html`
+    <div>
+      <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div>
+          <h3 style=${{ fontSize:16, fontWeight:700 }}>📅 Gestión de calendarios</h3>
+          <p style=${{ fontSize:12, color:'#86868B', marginTop:2 }}>Define plantillas de festivos y asígnalas a los usuarios</p>
+        </div>
+        <button onClick=${()=>setShowAdd(true)}
+          style=${{ padding:'8px 16px', borderRadius:10, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+          + Nuevo calendario
+        </button>
+      </div>
+
+      ${showAdd && html`
+        <div style=${{ ...cS, padding:'18px', marginBottom:12, border:'2px solid #5856D620', background:'#F8F8FF' }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo calendario</h4>
+          <${CalForm} cal=${newCal} setCal=${setNewCal}
+            onSave=${c=>saveCal({...c, id:crypto.randomUUID()})}
+            onCancel=${()=>setShowAdd(false)} />
+        </div>
+      `}
+
+      ${loading ? html`<div style=${{ textAlign:'center', padding:40, color:'#86868B' }}>⏳ Cargando…</div>` :
+      cals.length===0 ? html`
+        <div style=${{ textAlign:'center', padding:'40px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
+          <p style=${{ fontSize:32, marginBottom:8 }}>📅</p>
+          <p style=${{ fontSize:14 }}>Sin calendarios. Crea el primero.</p>
+          <p style=${{ fontSize:12, marginTop:6 }}>Ejemplo: "España", "Andalucía", "Cataluña", "Cliente Endesa"</p>
+        </div>` :
+      html`
+        <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+          ${cals.map(c => editId===c.id ? html`
+            <div key=${c.id} style=${{ ...cS, padding:'16px', border:'2px solid #5856D630' }}>
+              <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>✏️ Editar ${c.name}</h4>
+              <${CalForm} cal=${editCal} setCal=${setEditCal}
+                onSave=${saveCal} onCancel=${()=>setEditId(null)} />
+            </div>
+          ` : html`
+            <div key=${c.id} style=${{ ...cS, padding:'14px 16px' }}>
+              <div style=${{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style=${{ width:42, height:42, borderRadius:12, background:'linear-gradient(135deg,#5856D6,#007AFF)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📅</div>
+                <div style=${{ flex:1 }}>
+                  <span style=${{ fontSize:14, fontWeight:700 }}>${c.name}</span>
+                  <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${(c.holidays||[]).length} festivos definidos</div>
+                  <div style=${{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                    ${(c.holidays||[]).slice(0,6).map((h,i) => html`
+                      <span key=${i} style=${{ fontSize:9, background:'#5856D610', color:'#5856D6', padding:'2px 7px', borderRadius:10, fontWeight:600 }}>${h.date} ${h.name}</span>`)}
+                    ${(c.holidays||[]).length>6 && html`<span style=${{ fontSize:9, color:'#86868B' }}>+${(c.holidays||[]).length-6} más</span>`}
+                  </div>
+                </div>
+                <button onClick=${()=>{ setEditId(c.id); setEditCal({...c, holidays:[...(c.holidays||[])]}) }}
+                  style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>✏️ Editar</button>
+                <button onClick=${()=>deleteCal(c.id)}
+                  style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #FF3B3020', background:'#FFF', color:'#FF3B30', fontSize:11, cursor:'pointer' }}>✕</button>
+              </div>
+            </div>`)}
+        </div>`}
+    </div>`;
+}
+
 
 /* ═══ ADMIN USUARIOS ═══ */
 function AdminUsuarios({ rooms }) {
@@ -787,6 +958,7 @@ function RoomPicker() {
       if (sbRooms) { setRooms(sbRooms); saveRooms(sbRooms); }
     });
     sbLoadRetros().then(data => { setSbRetros(data); setLoadingSb(false); });
+    sbLoadCalendars().then(cals => { window.__calendars = cals; });
   }, []);
 
   const go = (slug, t) => { window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(slug) + '&tipo=' + (t || 'agile'); };
@@ -877,12 +1049,12 @@ function RoomPicker() {
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'},{id:'usuarios',label:'👥 Usuarios'}].map(t => html`
+          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'},{id:'usuarios',label:'👥 Usuarios'},{id:'calendarios',label:'📅 Calendarios'}].map(t => html`
             <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
           `)}
         </div>
 
-        ${tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
+        ${tab === 'calendarios' ? html`<${AdminCalendarios} />` : tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
           <!-- Project filter -->
           <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
             <span style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>Filtrar:</span>
@@ -1173,56 +1345,121 @@ function RoomPicker() {
 
 /* ═══ LOGIN ═══ */
 function Login({ onJoin }) {
-  const [nm, setNm] = useState('');
-  const [av, setAv] = useState(AVATARS[Math.floor(Math.random()*12)]);
-  const [col, setCol] = useState(COLRS[Math.floor(Math.random()*8)]);
-  const [warn, setWarn] = useState(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [rooms,    setRooms]    = useState([]);
+  const [selRoom,  setSelRoom]  = useState(SALA !== 'general' ? SALA : '');
+  const [members,  setMembers]  = useState([]);
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [step,     setStep]     = useState('credentials'); // credentials | sala
 
-  const handleName = (val) => { setNm(val); setWarn(null); };
+  // Load rooms and team_members on mount
+  useEffect(() => {
+    sbLoadRooms().then(r => {
+      setRooms(r||[]);
+      // If URL has sala param, pre-select it
+      if (SALA && SALA !== 'general') setSelRoom(SALA);
+    });
+    sbLoadTeamMembers().then(m => setMembers(m||[]));
+  }, []);
 
-  const go = () => {
-    if (!nm.trim()) return;
-    const taken = isNameTaken(nm.trim());
-    if (taken && !warn) {
-      setWarn(nm.trim());
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) { setError('Introduce usuario y contraseña'); return; }
+    setLoading(true); setError('');
+    // Find member by username or email
+    const member = members.find(m =>
+      (m.username && m.username.toLowerCase() === username.trim().toLowerCase()) ||
+      (m.email    && m.email.toLowerCase()    === username.trim().toLowerCase())
+    );
+    if (!member) { setLoading(false); setError('❌ Usuario no encontrado'); return; }
+    if (!member.pin || member.pin !== password) { setLoading(false); setError('❌ Contraseña incorrecta'); return; }
+
+    // Check if member is in the selected sala
+    const targetSala = selRoom || SALA;
+    if (!(member.rooms||[]).includes(targetSala)) {
+      setLoading(false);
+      setError('❌ No tienes acceso a esta sala');
       return;
     }
-    onJoin({ id: uid(), name: nm.trim(), avatar: av, color: col });
+
+    setLoading(false);
+    onJoin({
+      id: member.id, name: member.name,
+      avatar: member.avatar||'👤', color: member.color||'#007AFF',
+      role: member.role_label||'', calendarId: member.calendar_id||null,
+      username: member.username, sala: targetSala,
+    });
   };
 
-  const recoverIdentity = () => {
-    const reg = loadUserRegistry();
-    const found = reg.find(u => u.name.toLowerCase() === nm.trim().toLowerCase());
-    if (found) onJoin({ id: found.id, name: found.name, avatar: found.avatar, color: found.color });
-  };
+  // Rooms this member has access to (shown after typing username)
+  const memberRooms = username.trim()
+    ? (members.find(m=>
+        (m.username||'').toLowerCase()===username.trim().toLowerCase()||
+        (m.email||'').toLowerCase()===username.trim().toLowerCase()
+      )?.rooms || []).map(slug => rooms.find(r=>r.slug===slug)).filter(Boolean)
+    : [];
 
   return html`
-    <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style=${{ ...gl, borderRadius:28, padding:'44px 38px', maxWidth:420, width:'100%', boxShadow:'0 8px 60px rgba(0,0,0,0.06)' }}>
+    <div style=${{ minHeight:'100vh', background:'linear-gradient(135deg,#0057FF,#00C6FF)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div style=${{ background:'#FFF', borderRadius:24, padding:'40px 36px', maxWidth:420, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.15)' }}>
+
         <div style=${{ textAlign:'center', marginBottom:28 }}>
-          <h1 class="wm" style=${{ fontSize:30, marginBottom:3 }}>revelio</h1>
-          <p style=${{ color:'#86868B', fontSize:14 }}>Sala: <strong style=${{ color:'#007AFF' }}>${SALA_DISPLAY}</strong></p>
+          <h1 style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:32, fontWeight:400, letterSpacing:2, background:'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>revelio</h1>
+          <p style=${{ color:'#86868B', fontSize:13, marginTop:4 }}>Accede con tu cuenta</p>
         </div>
-        <input value=${nm} onInput=${e=>handleName(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&go()}
-          placeholder="¿Cómo te llamas, mago?" style=${{ ...iS, marginBottom: warn ? 8 : 18, textAlign:'center', fontSize:16, background:'#FFF', borderColor: warn ? '#FF9500' : '#E5E5EA' }} />
-        ${warn && html`
-          <div style=${{ background:'#FFF8EB', border:'1.5px solid #FF950030', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
-            <p style=${{ fontSize:12, color:'#FF9500', fontWeight:600, marginBottom:6 }}>⚠️ "${warn}" ya existe en esta sala</p>
-            <div style=${{ display:'flex', gap:6 }}>
-              <button onClick=${recoverIdentity} style=${{ ...bP, padding:'7px 14px', fontSize:11, background:'#007AFF', flex:1 }}>Soy yo, recuperar</button>
-              <button onClick=${()=>{setWarn(null);go()}} style=${{ ...bS, padding:'7px 14px', fontSize:11, flex:1 }}>Entrar como nuevo</button>
-            </div>
+
+        <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div>
+            <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', display:'block', marginBottom:4 }}>Usuario o email</label>
+            <input value=${username} onInput=${e=>{setUsername(e.target.value);setError('');}}
+              onKeyDown=${e=>e.key==='Enter'&&handleLogin()}
+              placeholder="tu_usuario o email@..."
+              style=${{ ...iS, fontSize:14 }} />
           </div>
-        `}
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Tu patronus</p>
-        <div style=${{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:14 }}>
-          ${AVATARS.map(a => html`<button key=${a} onClick=${()=>setAv(a)} style=${{ width:40, height:40, borderRadius:11, border:av===a?'2.5px solid '+col:'2px solid #E5E5EA', background:av===a?col+'10':'#FFF', fontSize:19, display:'flex', alignItems:'center', justifyContent:'center' }}>${a}</button>`)}
+
+          <div>
+            <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', display:'block', marginBottom:4 }}>Contraseña</label>
+            <input type="password" value=${password} onInput=${e=>{setPassword(e.target.value);setError('');}}
+              onKeyDown=${e=>e.key==='Enter'&&handleLogin()}
+              placeholder="••••••••"
+              style=${{ ...iS, fontSize:14 }} />
+          </div>
+
+          <!-- Room selector (if member has multiple rooms) -->
+          ${memberRooms.length > 1 && html`
+            <div>
+              <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', display:'block', marginBottom:4 }}>Sala</label>
+              <select value=${selRoom} onChange=${e=>setSelRoom(e.target.value)}
+                style=${{ ...iS, fontSize:13, background:'#FFF' }}>
+                <option value="">— Selecciona sala —</option>
+                ${memberRooms.map(r=>html`<option key=${r.slug} value=${r.slug}>${r.name}</option>`)}
+              </select>
+            </div>
+          `}
+
+          ${memberRooms.length === 1 && selRoom !== memberRooms[0].slug && html`
+            <div style=${{ padding:'8px 12px', background:'#F0F7FF', borderRadius:8, fontSize:12, color:'#007AFF' }}>
+              📂 Sala: <strong>${memberRooms[0].name}</strong>
+              ${(()=>{ if(selRoom!==memberRooms[0].slug) setSelRoom(memberRooms[0].slug); })()}
+            </div>
+          `}
+
+          ${error && html`
+            <div style=${{ background:'#FFF5F5', border:'1px solid #FF3B3025', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#FF3B30', fontWeight:600 }}>
+              ${error}
+            </div>
+          `}
+
+          <button onClick=${handleLogin} disabled=${loading}
+            style=${{ ...bP, padding:14, fontSize:15, marginTop:4, opacity:loading?.6:1 }}>
+            ${loading ? '⏳ Verificando…' : '🪄 Entrar'}
+          </button>
         </div>
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600, textTransform:'uppercase' }}>Casa</p>
-        <div style=${{ display:'flex', gap:5, marginBottom:24 }}>
-          ${COLRS.map(c => html`<button key=${c} onClick=${()=>setCol(c)} style=${{ width:28, height:28, borderRadius:14, background:c, border:col===c?'3px solid #1D1D1F':'3px solid transparent', transform:col===c?'scale(1.15)':'scale(1)', transition:'all .15s' }} />`)}
-        </div>
-        <button onClick=${go} style=${{ ...bP, width:'100%', padding:14, fontSize:16 }}>🪄 Revelio!</button>
+
+        <p style=${{ textAlign:'center', fontSize:11, color:'#C7C7CC', marginTop:20 }}>
+          ¿No tienes acceso? Contacta con tu Scrum Master.
+        </p>
       </div>
     </div>
   `;
@@ -1392,7 +1629,21 @@ function PVacaciones() {
   const nextMonth = () => { if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);} else setViewMonth(m=>m+1); };
   const goToday   = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
 
-  const HOLIDAYS = ['01-01','01-06','02-28','05-01','06-24','08-15','10-12','11-01','12-06','12-08','12-25','12-26'];
+  // Load holidays from Supabase calendars assigned to sala members
+  const [calHolidays, setCalHolidays] = useState([]);
+  useEffect(() => {
+    sbLoadTeamMembers().then(members => {
+      const salaMembers = members.filter(m=>(m.rooms||[]).includes(SALA));
+      const calIds = [...new Set(salaMembers.map(m=>m.calendar_id).filter(Boolean))];
+      if (calIds.length === 0) return;
+      sbLoadCalendars().then(cals => {
+        const relevant = cals.filter(c=>calIds.includes(c.id));
+        const allH = [...new Set(relevant.flatMap(c=>(c.holidays||[]).map(h=>h.date.slice(5))))]; // MM-DD
+        setCalHolidays(allH);
+      });
+    });
+  }, []);
+  const HOLIDAYS = calHolidays.length > 0 ? calHolidays : ['01-01','01-06','02-28','05-01','06-24','08-15','10-12','11-01','12-06','12-08','12-25','12-26'];
   const isOnVac = (member, day) => {
     const dateStr = viewYear+'-'+String(viewMonth+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
     return vacs.some(v =>
