@@ -69,6 +69,17 @@ async function sbLoadRooms() {
   } catch {}
   return null;
 }
+/* ─── Team Members (Supabase table) ─── */
+async function sbLoadTeamMembers() {
+  try { const {data}=await supabase.from('team_members').select('*').order('name'); return data||[]; } catch { return []; }
+}
+async function sbSaveTeamMember(m) {
+  try { await supabase.from('team_members').upsert(m); } catch {}
+}
+async function sbDeleteTeamMember(id) {
+  try { await supabase.from('team_members').delete().eq('id',id); } catch {}
+}
+
 async function sbSaveRoom(slug, name, tipo, metadata) {
   try { await supabase.from('rooms').upsert({ slug, name, tipo, metadata: metadata||{} }); } catch {}
 }
@@ -482,6 +493,142 @@ function getHeatColor(impLvl, probLvl) {
   return '#34C759';
 }
 
+/* ═══ ADMIN USUARIOS ═══ */
+function AdminUsuarios({ rooms }) {
+  const [members,    setMembers]   = useState([]);
+  const [loading,    setLoading]   = useState(true);
+  const [editId,     setEditId]    = useState(null);
+  const [editData,   setEditData]  = useState({});
+  const [newMember,  setNewMember] = useState({name:'',email:'',username:'',pin:'',avatar:'👤',color:'#007AFF',rooms:[]});
+  const [showAdd,    setShowAdd]   = useState(false);
+  const [saving,     setSaving]    = useState(false);
+
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => { setMembers(data); setLoading(false); });
+  }, []);
+
+  const saveMember = async (m) => {
+    setSaving(true);
+    await sbSaveTeamMember(m);
+    setMembers(prev => prev.some(x=>x.id===m.id) ? prev.map(x=>x.id===m.id?m:x) : [...prev,m]);
+    setSaving(false); setEditId(null); setShowAdd(false);
+    setNewMember({name:'',email:'',username:'',pin:'',avatar:'👤',color:'#007AFF',rooms:[]});
+  };
+  const deleteMember = async (id) => {
+    if (!confirm('¿Eliminar este miembro?')) return;
+    await sbDeleteTeamMember(id);
+    setMembers(prev => prev.filter(m=>m.id!==id));
+  };
+  const toggleRoom = (m, slug) => {
+    const rs = m.rooms||[];
+    return {...m, rooms: rs.includes(slug) ? rs.filter(r=>r!==slug) : [...rs,slug]};
+  };
+
+  const MemberForm = ({m, setM, onSave, onCancel}) => html`
+    <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style=${{ display:'grid', gridTemplateColumns:'48px 1fr 1fr', gap:8, alignItems:'center' }}>
+        <input value=${m.avatar} onInput=${e=>setM({...m,avatar:e.target.value})}
+          style=${{ textAlign:'center', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px', fontSize:22, fontFamily:'inherit', outline:'none' }} maxLength="2" title="Emoji" />
+        <input value=${m.name} onInput=${e=>setM({...m,name:e.target.value})} placeholder="Nombre completo *"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+        <input value=${m.username||''} onInput=${e=>setM({...m,username:e.target.value})} placeholder="Usuario (login)"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+      </div>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+        <input value=${m.email||''} onInput=${e=>setM({...m,email:e.target.value})} placeholder="Email"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+        <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="PIN / contraseña"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} type="password" />
+      </div>
+      <!-- Room assignment -->
+      <div>
+        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600 }}>📂 Proyectos asignados</p>
+        <div style=${{ display:'flex', flexWrap:'wrap', gap:6 }}>
+          ${rooms.map(r => {
+            const assigned = (m.rooms||[]).includes(r.slug);
+            return html`<button key=${r.slug} onClick=${()=>setM(toggleRoom(m,r.slug))}
+              style=${{ padding:'4px 12px', borderRadius:20, border:'1.5px solid '+(assigned?'#007AFF':'#E5E5EA'),
+                background:assigned?'#007AFF10':'#FFF', color:assigned?'#007AFF':'#6E6E73',
+                fontSize:11, fontWeight:assigned?700:400, cursor:'pointer' }}>
+              ${r.name}
+            </button>`;
+          })}
+        </div>
+      </div>
+      <div style=${{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <button onClick=${onCancel} style=${{ padding:'8px 16px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+        <button onClick=${()=>onSave(m)} disabled=${saving||!m.name.trim()}
+          style=${{ padding:'8px 16px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:saving?.6:1 }}>
+          ${saving?'Guardando…':'Guardar'}
+        </button>
+      </div>
+    </div>`;
+
+  return html`
+    <div>
+      <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <h3 style=${{ fontSize:16, fontWeight:700 }}>👥 Gestión de usuarios</h3>
+        <button onClick=${()=>setShowAdd(true)}
+          style=${{ padding:'8px 16px', borderRadius:10, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+          + Nuevo usuario
+        </button>
+      </div>
+
+      ${showAdd && html`
+        <div style=${{ ...cS, padding:'16px', marginBottom:12, border:'2px solid #007AFF20', background:'#F8FBFF' }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo miembro</h4>
+          <${MemberForm} m=${newMember} setM=${setNewMember}
+            onSave=${m=>saveMember({...m, id:crypto.randomUUID()})}
+            onCancel=${()=>setShowAdd(false)} />
+        </div>
+      `}
+
+      ${loading ? html`<div style=${{ textAlign:'center', padding:40, color:'#86868B' }}>⏳ Cargando…</div>` :
+        members.length===0 ? html`
+          <div style=${{ textAlign:'center', padding:'40px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
+            <p style=${{ fontSize:32, marginBottom:8 }}>👤</p>
+            <p style=${{ fontSize:14 }}>Sin usuarios registrados. Crea el primero.</p>
+          </div>` :
+        html`
+          <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+            ${members.map(m => editId===m.id ? html`
+              <div key=${m.id} style=${{ ...cS, padding:'16px', border:'2px solid #007AFF30' }}>
+                <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>✏️ Editar ${m.name}</h4>
+                <${MemberForm} m=${editData} setM=${setEditData}
+                  onSave=${saveMember}
+                  onCancel=${()=>setEditId(null)} />
+              </div>
+            ` : html`
+              <div key=${m.id} style=${{ ...cS, padding:'12px 16px' }}>
+                <div style=${{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style=${{ width:40, height:40, borderRadius:12, background:m.color||'#007AFF',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>${m.avatar||'👤'}</div>
+                  <div style=${{ flex:1 }}>
+                    <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
+                      <span style=${{ fontSize:14, fontWeight:700 }}>${m.name}</span>
+                      ${m.username && html`<code style=${{ fontSize:10, color:'#86868B', background:'#F2F2F7', padding:'1px 6px', borderRadius:4 }}>${m.username}</code>`}
+                      ${m.email && html`<span style=${{ fontSize:11, color:'#86868B' }}>${m.email}</span>`}
+                    </div>
+                    <div style=${{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                      ${(m.rooms||[]).length===0
+                        ? html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>Sin proyectos asignados</span>`
+                        : (m.rooms||[]).map(slug => {
+                            const r = rooms.find(x=>x.slug===slug);
+                            return r ? html`<span key=${slug} style=${{ fontSize:10, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:10, fontWeight:600 }}>${r.name}</span>` : null;
+                          })}
+                    </div>
+                  </div>
+                  <button onClick=${()=>{ setEditId(m.id); setEditData({...m}); }}
+                    style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>✏️ Editar</button>
+                  <button onClick=${()=>deleteMember(m.id)}
+                    style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #FF3B3020', background:'#FFF', color:'#FF3B30', fontSize:11, cursor:'pointer' }}>✕</button>
+                </div>
+              </div>`)}
+          </div>`}
+    </div>`;
+}
+
+
 /* ═══ SALA CARD COMPONENT ═══ */
 function SalaCard({ r, sbRetros, go, onRemove, setEditRoom }) {
   const rm    = sbRetros.filter(rt => rt.sala === r.slug);
@@ -704,7 +851,7 @@ function RoomPicker() {
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'}].map(t => html`
+          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'},{id:'usuarios',label:'👥 Usuarios'}].map(t => html`
             <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
           `)}
         </div>
@@ -942,6 +1089,9 @@ function RoomPicker() {
           </div>
           <p style=${{ fontSize:11, color:'#C7C7CC', marginTop:16, textAlign:'center' }}>Datos sincronizados con Supabase</p>
         `}
+
+        ${tab === 'usuarios' && html`<${AdminUsuarios} rooms=${rooms} />`}
+
       </div>
 
       <!-- ── MODAL: Confirmar eliminar sala ── -->
@@ -1156,7 +1306,22 @@ function PEquipo() {
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
 function PVacaciones() {
   const [team,    setTeam]   = useState(loadTeamData);
-  const [vacs,    setVacs]   = useState(loadVacsData);
+  const [sbMembers, setSbMembers] = useState([]);
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => {
+      // Merge Supabase members (filtered to this sala) with local team
+      const salaMembers = data.filter(m=>(m.rooms||[]).includes(SALA));
+      setSbMembers(salaMembers);
+      if (salaMembers.length > 0 && loadTeamData().length === 0) {
+        const merged = salaMembers.map(m=>({id:m.id,name:m.name,avatar:m.avatar||'👤',role:'',color:m.color}));
+        setTeam(merged); saveTeamLocal(merged);
+      }
+    });
+  }, []);
+  const [vacs,    setVacs]   = useState(() => {
+    // Merge local vacs with any stored in team_members (handled via useEffect)
+    return loadVacsData();
+  });
   const [newVac,  setNewVac] = useState({memberId:'', name:'', from:'', to:'', note:''});
   const [saving,  setSaving] = useState(false);
   const today = new Date();
@@ -1223,7 +1388,7 @@ function PVacaciones() {
         ${saving && html`<span style=${{ fontSize:11, color:'#007AFF' }}>💾</span>`}
         <span style=${{ fontSize:11, color:'#86868B' }}>${activeThisMonth.length} ausencias este mes</span>
         <div style=${{ display:'flex', gap:10, fontSize:10, alignItems:'center' }}>
-          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#E8F8EC', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Laboral</span>
+          <span><span style=${{ display:'inline-block', width:10, height:10, background:'#C8F0D0', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Laboral</span>
           <span><span style=${{ display:'inline-block', width:10, height:10, background:'#E8F4FD', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Fin semana</span>
           <span><span style=${{ display:'inline-block', width:10, height:10, background:'#EEEEFF', border:'1px solid #ccc', borderRadius:2, marginRight:3 }}></span>Festivo</span>
           <span><span style=${{ display:'inline-block', width:10, height:10, background:'#007AFF', border:'1px solid #007AFF', borderRadius:2, marginRight:3 }}></span>Vacaciones</span>
@@ -1285,7 +1450,7 @@ function PVacaciones() {
                     return html`
                       <td key=${d} title=${onVac?m.name+' - vacaciones':''}
                         style=${{ padding:'4px 2px', textAlign:'center', borderBottom:'1px solid #F2F2F7', borderLeft:'1px solid #F2F2F7',
-                          background:onVac?'#007AFF':td?'#007AFF10':wknd?'#E8F4FD':isHoliday?'#DDEEFF':'#E8F8EC',
+                          background:onVac?'#007AFF':td?'#007AFF10':wknd?'#E8F4FD':isHoliday?'#DDEEFF':'#B8F0C8',
                           minWidth:26 }}>
                         ${onVac && html`<div style=${{ width:'100%', height:18, borderRadius:3, background:'#007AFF' }} />`}
                       </td>`;
@@ -1500,9 +1665,7 @@ function RetroBoard({ user, onLogout }) {
             <h2 style=${{ fontSize:16, fontWeight:700 }}><span class="wm" style=${{ fontSize:18 }}>revelio</span> <span style=${{ fontSize:12, fontWeight:500, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:6, marginLeft:4 }}>${SALA_DISPLAY}</span> <span style=${{ fontSize:10, fontWeight:500, color:TIPO_INFO.color, background:TIPO_INFO.color+'10', padding:'2px 6px', borderRadius:5, marginLeft:2 }}>${TIPO_INFO.icon} ${TIPO_INFO.label}</span></h2>
             <span style=${{ fontSize:11, color:'#86868B' }}>${fd(new Date().toISOString())}</span>
           </div>
-          <button onClick=${()=>setShowReset(true)} style=${{ marginLeft:12, padding:'5px 10px', borderRadius:8, border:'1.5px solid #FF3B3040', background:'#FFF', color:'#FF3B30', fontSize:11, fontWeight:600 }}>🆕 Nueva retro</button>
-<button onClick=${()=>setShowHistorial(true)} style=${{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #FF950040', background:'#FFF', color:'#FF9500', fontSize:11, fontWeight:600 }}>📚 Historial</button>
-          <button onClick=${()=>setShowGuide(true)} style=${{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #5856D640', background:'#FFF', color:'#5856D6', fontSize:11, fontWeight:600 }}>📖 Guía</button>
+
         </div>
         <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
           <div style=${{ background:running?'#1D1D1F':'#F2F2F7', color:running?'#FFF':'#1D1D1F', borderRadius:10, padding:'6px 10px', display:'flex', alignItems:'center', gap:5 }}>
@@ -1535,7 +1698,7 @@ function RetroBoard({ user, onLogout }) {
 
       <!-- ── RETRO SUB-PHASES (only visible in Retro tab) ── -->
       ${mainTab==='retro' && html`
-        <div style=${{ padding:'6px 14px', display:'flex', gap:4, flexShrink:0, background:'#FAFAFA', borderBottom:'1px solid #E5E5EA', overflowX:'auto' }}>
+        <div style=${{ padding:'6px 14px', display:'flex', gap:4, flexShrink:0, background:'#FAFAFA', borderBottom:'1px solid #E5E5EA', overflowX:'auto', alignItems:'center' }}>
           ${PHASES.map((p,i)=>html`
             <button key=${p.id} onClick=${()=>setPhase(i)}
               style=${{ padding:'6px 12px', borderRadius:8, border:phase===i?'none':'1.5px solid #E5E5EA',
@@ -1544,6 +1707,10 @@ function RetroBoard({ user, onLogout }) {
                 alignItems:'center', gap:3, flexShrink:0, cursor:'pointer' }}>
               ${p.icon} ${p.label}
             </button>`)}
+          <div style=${{ flex:1 }} />
+          <button onClick=${()=>setShowReset(true)} style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #FF3B3030', background:'#FFF', color:'#FF3B30', fontSize:10, fontWeight:600, whiteSpace:'nowrap', cursor:'pointer' }}>🆕 Nueva retro</button>
+          <button onClick=${()=>setShowHistorial(true)} style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #FF950030', background:'#FFF', color:'#FF9500', fontSize:10, fontWeight:600, whiteSpace:'nowrap', cursor:'pointer' }}>📚 Historial</button>
+          <button onClick=${()=>setShowGuide(true)} style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #5856D630', background:'#FFF', color:'#5856D6', fontSize:10, fontWeight:600, whiteSpace:'nowrap', cursor:'pointer' }}>📖 Guía</button>
         </div>
       `}
 
