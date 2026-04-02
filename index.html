@@ -703,10 +703,10 @@ function RoomPicker() {
                         const col   = pct===null?'#E5E5EA':pct>=75?'#34C759':pct>=40?'#FF9500':'#FF3B30';
                         const h     = pct===null ? 4 : Math.max(pct, 4);
                         const sala  = rooms.find(r=>r.slug===t.sala);
-                        return html\`<div key=\${i} style=\${{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:1 }} title=\${(sala?.name||t.sala)+': '+(pct!==null?pct+'%':'sin act.')}>
-                          <span style=\${{ fontSize:8, color:pct!==null?col:'#C7C7CC', fontWeight:700 }}>\${pct!==null?pct+'%':''}</span>
-                          <div style=\${{ width:'100%', height:h+'%', minHeight:4, background:col, borderRadius:'3px 3px 0 0', opacity:pct===null?.3:1 }} />
-                        </div>\`;
+                        return html`<div key=${i} style=${{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:1 }} title=${(sala?.name||t.sala)+': '+(pct!==null?pct+'%':'sin act.')}>
+                          <span style=${{ fontSize:8, color:pct!==null?col:'#C7C7CC', fontWeight:700 }}>${pct!==null?pct+'%':''}</span>
+                          <div style=${{ width:'100%', height:h+'%', minHeight:4, background:col, borderRadius:'3px 3px 0 0', opacity:pct===null?.3:1 }} />
+                        </div>`;
                       })}
                     </div>
                     <div style=${{ display:'flex', justifyContent:'space-between', marginTop:6, fontSize:9, color:'#86868B' }}>
@@ -741,34 +741,34 @@ function RoomPicker() {
                         const cr = s.actions > 0 ? Math.round(s.done/s.actions*100) : 0;
                         const crColor = cr>=75?'#34C759':cr>=40?'#FF9500':'#FF3B30';
                         const health = cr>=60&&s.risksOpen===0?'🟢':cr>=30||s.risksOpen<=2?'🟡':'🔴';
-                        return html\`
-                          <div key=\${s.slug} style=\${{ padding:'12px 14px', borderRadius:12, background:'#F9F9FB', border:'1.5px solid #E5E5EA' }}>
-                            <div style=\${{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                              <span style=\${{ fontSize:14 }}>\${health}</span>
-                              <button onClick=\${()=>go(s.slug,s.tipo)} style=\${{ background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:700,color:'#007AFF',padding:0 }}>\${s.name}</button>
-                              <span style=\${{ fontSize:9, color:s.rTipo.color, background:s.rTipo.color+'18', padding:'1px 6px', borderRadius:4, fontWeight:700, marginLeft:'auto' }}>\${s.rTipo.icon} \${s.rTipo.label}</span>
+                        return html`
+                          <div key=${s.slug} style=${{ padding:'12px 14px', borderRadius:12, background:'#F9F9FB', border:'1.5px solid #E5E5EA' }}>
+                            <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                              <span style=${{ fontSize:14 }}>${health}</span>
+                              <button onClick=${()=>go(s.slug,s.tipo)} style=${{ background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:700,color:'#007AFF',padding:0 }}>${s.name}</button>
+                              <span style=${{ fontSize:9, color:s.rTipo.color, background:s.rTipo.color+'18', padding:'1px 6px', borderRadius:4, fontWeight:700, marginLeft:'auto' }}>${s.rTipo.icon} ${s.rTipo.label}</span>
                             </div>
-                            <div style=\${{ display:'flex', flexDirection:'column', gap:4 }}>
-                              \${metrics.map(m => {
+                            <div style=${{ display:'flex', flexDirection:'column', gap:4 }}>
+                              ${metrics.map(m => {
                                 const val = s[m.key] || 0;
                                 const pct = m.mx > 0 ? (val/m.mx)*100 : 0;
-                                return html\`<div key=\${m.key} style=\${{ display:'flex', alignItems:'center', gap:8 }}>
-                                  <span style=\${{ fontSize:9, color:'#86868B', minWidth:36 }}>\${m.label}</span>
-                                  <div style=\${{ flex:1, height:6, background:'#E5E5EA', borderRadius:3, overflow:'hidden' }}>
-                                    <div style=\${{ height:'100%', width:pct+'%', background:m.color, borderRadius:3, transition:'width .5s' }} />
+                                return html`<div key=${m.key} style=${{ display:'flex', alignItems:'center', gap:8 }}>
+                                  <span style=${{ fontSize:9, color:'#86868B', minWidth:36 }}>${m.label}</span>
+                                  <div style=${{ flex:1, height:6, background:'#E5E5EA', borderRadius:3, overflow:'hidden' }}>
+                                    <div style=${{ height:'100%', width:pct+'%', background:m.color, borderRadius:3, transition:'width .5s' }} />
                                   </div>
-                                  <span style=\${{ fontSize:10, fontWeight:700, color:m.color, minWidth:18, textAlign:'right' }}>\${val}</span>
-                                </div>\`;
+                                  <span style=${{ fontSize:10, fontWeight:700, color:m.color, minWidth:18, textAlign:'right' }}>${val}</span>
+                                </div>`;
                               })}
-                              <div style=\${{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
-                                <span style=\${{ fontSize:9, color:'#86868B', minWidth:36 }}>%Hecho</span>
-                                <div style=\${{ flex:1, height:6, background:'#E5E5EA', borderRadius:3, overflow:'hidden' }}>
-                                  <div style=\${{ height:'100%', width:cr+'%', background:crColor, borderRadius:3 }} />
+                              <div style=${{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
+                                <span style=${{ fontSize:9, color:'#86868B', minWidth:36 }}>%Hecho</span>
+                                <div style=${{ flex:1, height:6, background:'#E5E5EA', borderRadius:3, overflow:'hidden' }}>
+                                  <div style=${{ height:'100%', width:cr+'%', background:crColor, borderRadius:3 }} />
                                 </div>
-                                <span style=\${{ fontSize:10, fontWeight:700, color:crColor, minWidth:18, textAlign:'right' }}>\${cr}%</span>
+                                <span style=${{ fontSize:10, fontWeight:700, color:crColor, minWidth:18, textAlign:'right' }}>${cr}%</span>
                               </div>
                             </div>
-                          </div>\`;
+                          </div>`;
                       })}
                     </div>`;
                 })()}
@@ -857,7 +857,7 @@ function RoomPicker() {
                           </td>
                           <td style=${{ padding:'9px 10px', color:'#AF52DE', fontWeight:600 }}>${s.parts.length}</td>
                           <td style=${{ padding:'9px 10px', color:'#86868B', fontSize:10 }}>${lastDate ? fd(lastDate) : '—'}</td>
-                        </tr>\`
+                        </tr>`
                     })}
                   </tbody>
                 </table>
@@ -875,16 +875,16 @@ function RoomPicker() {
                   return CATS.map(c => {
                     const cnt = allNotes.filter(n => n.category === c.id).length;
                     const pct = total > 0 ? (cnt/total)*100 : 0;
-                    return html\`
-                      <div key=\${c.id} style=\${{ marginBottom:10 }}>
-                        <div style=\${{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                          <span style=\${{ fontSize:12, fontWeight:600 }}>\${c.emoji} \${c.label}</span>
-                          <span style=\${{ fontSize:11, fontWeight:700, color:c.color }}>\${cnt}</span>
+                    return html`
+                      <div key=${c.id} style=${{ marginBottom:10 }}>
+                        <div style=${{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                          <span style=${{ fontSize:12, fontWeight:600 }}>${c.emoji} ${c.label}</span>
+                          <span style=${{ fontSize:11, fontWeight:700, color:c.color }}>${cnt}</span>
                         </div>
-                        <div style=\${{ height:7, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}>
-                          <div style=\${{ height:'100%', width:pct+'%', background:c.color, borderRadius:4, transition:'width .5s' }} />
+                        <div style=${{ height:7, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}>
+                          <div style=${{ height:'100%', width:pct+'%', background:c.color, borderRadius:4, transition:'width .5s' }} />
                         </div>
-                      </div>\`;
+                      </div>`;
                   });
                 })()}
               </div>
@@ -898,23 +898,23 @@ function RoomPicker() {
                   return salaStats.map(s => {
                     const pending = s.entries.flatMap(rt => (rt.data?.actions||[]).filter(a=>a.status==='pending'||a.status==='progress'));
                     if (!pending.length) return null;
-                    return html\`
-                      <div key=\${s.slug} style=\${{ marginBottom:12 }}>
-                        <div style=\${{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
-                          <button onClick=\${()=>go(s.slug,s.tipo)} style=\${{ background:'none',border:'none',cursor:'pointer',fontSize:12,fontWeight:700,color:'#007AFF',padding:0 }}>\${s.name}</button>
-                          <span style=\${{ fontSize:10, color:'#86868B' }}>\${pending.length} pendientes</span>
+                    return html`
+                      <div key=${s.slug} style=${{ marginBottom:12 }}>
+                        <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+                          <button onClick=${()=>go(s.slug,s.tipo)} style=${{ background:'none',border:'none',cursor:'pointer',fontSize:12,fontWeight:700,color:'#007AFF',padding:0 }}>${s.name}</button>
+                          <span style=${{ fontSize:10, color:'#86868B' }}>${pending.length} pendientes</span>
                         </div>
-                        \${pending.slice(0,3).map(a => {
+                        ${pending.slice(0,3).map(a => {
                           const pr = PRIS.find(p=>p.id===a.priority)||PRIS[1];
                           const st2 = STS.find(sx=>sx.id===a.status)||STS[0];
-                          return html\`<div key=\${a.id} style=\${{ display:'flex', gap:6, alignItems:'center', padding:'3px 0', fontSize:11, borderBottom:'1px solid #F2F2F7' }}>
-                            <span>\${pr.icon}</span>
-                            <span style=\${{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>\${a.text}</span>
-                            <span style=\${{ color:st2.color, fontWeight:600, whiteSpace:'nowrap', fontSize:10 }}>\${a.owner||'—'}</span>
-                          </div>\`;
+                          return html`<div key=${a.id} style=${{ display:'flex', gap:6, alignItems:'center', padding:'3px 0', fontSize:11, borderBottom:'1px solid #F2F2F7' }}>
+                            <span>${pr.icon}</span>
+                            <span style=${{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>${a.text}</span>
+                            <span style=${{ color:st2.color, fontWeight:600, whiteSpace:'nowrap', fontSize:10 }}>${a.owner||'—'}</span>
+                          </div>`;
                         })}
-                        \${pending.length > 3 && html\`<p style=\${{ fontSize:10, color:'#86868B', marginTop:3 }}>+ \${pending.length-3} más</p>\`}
-                      </div>\`;
+                        ${pending.length > 3 && html`<p style=${{ fontSize:10, color:'#86868B', marginTop:3 }}>+ ${pending.length-3} más</p>`}
+                      </div>`;
                   });
                 })()}
               </div>
@@ -932,22 +932,22 @@ function RoomPicker() {
                     const rSala = rooms.find(rm => {
                       try { const saved=localStorage.getItem('rf-risks-'+rm.slug); return saved&&JSON.parse(saved).some(rx=>rx.id===r.id); } catch { return false; }
                     });
-                    return html\`
-                      <div key=\${r.id} style=\${{ padding:'10px 14px', borderRadius:11, background:'#FAFAFA', border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc, display:'flex', alignItems:'flex-start', gap:10 }}>
-                        <div style=\${{ flex:1 }}>
-                          <div style=\${{ display:'flex', gap:8, alignItems:'center', marginBottom:3 }}>
-                            <span style=\${{ background:hc, color:'#FFF', fontSize:9, fontWeight:800, padding:'1px 7px', borderRadius:5 }}>\${imp.label} / \${prob.label}</span>
-                            \${rSala && html\`<span style=\${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>\${rSala.name}</span>\`}
+                    return html`
+                      <div key=${r.id} style=${{ padding:'10px 14px', borderRadius:11, background:'#FAFAFA', border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc, display:'flex', alignItems:'flex-start', gap:10 }}>
+                        <div style=${{ flex:1 }}>
+                          <div style=${{ display:'flex', gap:8, alignItems:'center', marginBottom:3 }}>
+                            <span style=${{ background:hc, color:'#FFF', fontSize:9, fontWeight:800, padding:'1px 7px', borderRadius:5 }}>${imp.label} / ${prob.label}</span>
+                            ${rSala && html`<span style=${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>${rSala.name}</span>`}
                           </div>
-                          <p style=\${{ fontSize:12, fontWeight:600 }}>\${r.text}</p>
-                          \${r.mitigation && html\`<p style=\${{ fontSize:10, color:'#86868B', marginTop:2 }}>🛡️ \${r.mitigation}</p>\`}
+                          <p style=${{ fontSize:12, fontWeight:600 }}>${r.text}</p>
+                          ${r.mitigation && html`<p style=${{ fontSize:10, color:'#86868B', marginTop:2 }}>🛡️ ${r.mitigation}</p>`}
                         </div>
-                        <span style=\${{ fontSize:10, color:'#86868B', whiteSpace:'nowrap', marginTop:2 }}>👤 \${r.owner||'Sin asignar'}</span>
-                      </div>\`;
+                        <span style=${{ fontSize:10, color:'#86868B', whiteSpace:'nowrap', marginTop:2 }}>👤 ${r.owner||'Sin asignar'}</span>
+                      </div>`;
                   })}
                 </div>
               </div>
-            \`}
+            `}
 
           `}
         ` : html`
