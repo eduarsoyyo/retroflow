@@ -121,8 +121,10 @@ const SUPABASE_URL = 'https://lvsfrynsnyofroscaxhl.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ZYRlCDmIE80AYrZWEeeWnw_hXWcg2rA';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ═══ ADMIN AUTH ═══ */
-const ADMIN_PIN = 'revelio25';
+/* ═══ SUPABASE AUTH ═══ */
+const sbGetSession  = async () => { try { const {data} = await supabase.auth.getSession(); return data?.session || null; } catch { return null; } };
+const sbSignIn      = async (email, password) => { try { const {data,error} = await supabase.auth.signInWithPassword({email,password}); return {session:data?.session, error}; } catch(e) { return {session:null, error:e}; } };
+const sbSignOut     = async () => { try { await supabase.auth.signOut(); } catch {} };
 
 /* ─── Global error toast ─── */
 let _errorToast = null;
@@ -134,9 +136,6 @@ function useErrorToast() {
   useEffect(() => { _errorToast = setErr; return () => { _errorToast = null; }; }, []);
   return err;
 }
-const isAdminAuth = () => localStorage.getItem('rf-admin-auth') === ADMIN_PIN;
-const setAdminAuth = () => localStorage.setItem('rf-admin-auth', ADMIN_PIN);
-const clearAdminAuth = () => localStorage.removeItem('rf-admin-auth');
 
 /* ═══ SUPABASE DB LAYER (admin panel) ═══ */
 async function sbLoadRooms() {
@@ -606,27 +605,94 @@ function getHeatColor(impLvl, probLvl) {
 }
 
 function RoomPicker() {
-  // ─── PIN GATE ───
-  const [pinAuth, setPinAuth] = useState(isAdminAuth());
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  // ─── SUPABASE AUTH GATE ───
+  const [authState,  setAuthState]  = useState('checking'); // checking | signed-in | signed-out
+  const [authUser,   setAuthUser]   = useState(null);
+  const [email,      setEmail]      = useState('');
+  const [password,   setPassword]   = useState('');
+  const [authError,  setAuthError]  = useState('');
+  const [authLoading,setAuthLoading]= useState(false);
 
-  const checkPin = () => {
-    if (pinInput === ADMIN_PIN) { setAdminAuth(); setPinAuth(true); }
-    else { setPinError(true); setTimeout(() => setPinError(false), 1500); }
+  // Check existing session on mount
+  useEffect(() => {
+    sbGetSession().then(session => {
+      if (session) { setAuthUser(session.user); setAuthState('signed-in'); }
+      else          { setAuthState('signed-out'); }
+    });
+    // Listen for auth changes (e.g. token refresh, sign out from another tab)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) { setAuthUser(session.user); setAuthState('signed-in'); }
+      else          { setAuthUser(null); setAuthState('signed-out'); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignIn = async () => {
+    if (!email.trim() || !password.trim()) return;
+    setAuthLoading(true); setAuthError('');
+    const { session, error } = await sbSignIn(email.trim(), password.trim());
+    setAuthLoading(false);
+    if (error || !session) {
+      setAuthError(error?.message === 'Invalid login credentials'
+        ? '❌ Email o contraseña incorrectos'
+        : '❌ ' + (error?.message || 'Error de conexión'));
+    } else {
+      setAuthUser(session.user); setAuthState('signed-in');
+    }
   };
 
-  if (!pinAuth) return html`
+  const handleSignOut = async () => {
+    await sbSignOut();
+    setAuthState('signed-out'); setAuthUser(null);
+  };
+
+  // ── Checking session ──
+  if (authState === 'checking') return html`
     <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#F5F5F7' }}>
-      <div style=${{ ...gl, borderRadius:24, padding:'44px 38px', maxWidth:380, width:'100%', textAlign:'center', boxShadow:'0 8px 60px rgba(0,0,0,0.06)' }}>
+      <div style=${{ textAlign:'center', color:'#86868B' }}>
+        <div style=${{ fontSize:28, animation:'spin 1s linear infinite', display:'inline-block', marginBottom:8 }}>⏳</div>
+        <p style=${{ fontSize:14 }}>Verificando sesión…</p>
+      </div>
+    </div>`;
+
+  // ── Sign in form ──
+  if (authState === 'signed-out') return html`
+    <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#0057FF,#00C6FF)', padding:16 }}>
+      <div style=${{ background:'#FFF', borderRadius:24, padding:'44px 38px', maxWidth:400, width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,.15)' }}>
         <h1 class="wm" style=${{ fontSize:30, marginBottom:4 }}>revelio</h1>
-        <p style=${{ color:'#86868B', fontSize:14, marginBottom:28 }}>Panel de administración</p>
-        <div style=${{ fontSize:40, marginBottom:16 }}>🏰</div>
-        <input type="password" value=${pinInput} onInput=${e=>setPinInput(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&checkPin()}
-          placeholder="PIN de acceso" style=${{ ...iS, textAlign:'center', fontSize:18, letterSpacing:6, borderColor:pinError?'#FF3B30':'#E5E5EA', background:pinError?'#FFF5F5':'#FAFAFA', marginBottom:10 }} />
-        ${pinError && html`<p style=${{ color:'#FF3B30', fontSize:12, marginBottom:8, fontWeight:600 }}>❌ PIN incorrecto</p>`}
-        <button onClick=${checkPin} style=${{ ...bP, width:'100%', padding:14, fontSize:15 }}>🪄 Acceder</button>
-        <p style=${{ marginTop:16, fontSize:11, color:'#C7C7CC' }}>Solo el Scrum Master tiene acceso</p>
+        <p style=${{ color:'#86868B', fontSize:14, marginBottom:32 }}>Panel de administración</p>
+        <div style=${{ fontSize:40, marginBottom:24 }}>🏰</div>
+
+        <div style=${{ textAlign:'left', marginBottom:12 }}>
+          <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', letterSpacing:.5, display:'block', marginBottom:5 }}>Email</label>
+          <input type="email" value=${email} onInput=${e=>{ setEmail(e.target.value); setAuthError(''); }}
+            onKeyDown=${e=>e.key==='Enter'&&handleSignIn()}
+            placeholder="tu@email.com"
+            style=${{ ...iS, fontSize:14, marginBottom:0 }} />
+        </div>
+
+        <div style=${{ textAlign:'left', marginBottom:20 }}>
+          <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', letterSpacing:.5, display:'block', marginBottom:5 }}>Contraseña</label>
+          <input type="password" value=${password} onInput=${e=>{ setPassword(e.target.value); setAuthError(''); }}
+            onKeyDown=${e=>e.key==='Enter'&&handleSignIn()}
+            placeholder="••••••••"
+            style=${{ ...iS, fontSize:14, marginBottom:0 }} />
+        </div>
+
+        ${authError && html`
+          <div style=${{ background:'#FFF5F5', border:'1px solid #FF3B3025', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12, color:'#FF3B30', fontWeight:600 }}>
+            ${authError}
+          </div>
+        `}
+
+        <button onClick=${handleSignIn} disabled=${authLoading} style=${{ ...bP, width:'100%', padding:14, fontSize:15, opacity:authLoading?.6:1 }}>
+          ${authLoading ? '⏳ Accediendo…' : '🪄 Acceder'}
+        </button>
+
+        <p style=${{ marginTop:16, fontSize:11, color:'#C7C7CC', lineHeight:1.5 }}>
+          Acceso restringido al Scrum Master.<br/>
+          Credenciales gestionadas en Supabase Auth.
+        </p>
       </div>
     </div>`;
 
@@ -732,7 +798,10 @@ function RoomPicker() {
             <h1 class="wm" style=${{ fontSize:28, marginBottom:2 }}>revelio</h1>
             <p style=${{ color:'#86868B', fontSize:13 }}>Panel de administración</p>
           </div>
-          <button onClick=${()=>{clearAdminAuth();window.location.reload();}} style=${{ ...bS, padding:'5px 12px', fontSize:11, color:'#FF3B30', borderColor:'#FF3B3030' }}>🔒 Cerrar sesión</button>
+          <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
+            ${authUser && html`<span style=${{ fontSize:11, color:'#86868B' }}>${authUser.email}</span>`}
+            <button onClick=${handleSignOut} style=${{ ...bS, padding:'5px 12px', fontSize:11, color:'#FF3B30', borderColor:'#FF3B3030' }}>🔒 Cerrar sesión</button>
+          </div>
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
