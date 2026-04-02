@@ -493,6 +493,50 @@ function getHeatColor(impLvl, probLvl) {
   return '#34C759';
 }
 
+/* ═══ MEMBER FORM — top-level so Preact doesn't remount on every render ═══ */
+function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
+  const toggle = (slug) => {
+    const rs = m.rooms||[];
+    setM({...m, rooms: rs.includes(slug) ? rs.filter(r=>r!==slug) : [...rs,slug]});
+  };
+  return html`
+    <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style=${{ display:'grid', gridTemplateColumns:'52px 1fr 1fr', gap:8, alignItems:'center' }}>
+        <input value=${m.avatar||'👤'} onInput=${e=>setM({...m,avatar:e.target.value})} maxLength="2" title="Emoji"
+          style=${{ textAlign:'center', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px', fontSize:22, fontFamily:'inherit', outline:'none', background:'#FFF' }} />
+        <input value=${m.name||''} onInput=${e=>setM({...m,name:e.target.value})} placeholder="Nombre completo *"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+        <input value=${m.username||''} onInput=${e=>setM({...m,username:e.target.value})} placeholder="Usuario (login)"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+      </div>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+        <input value=${m.email||''} onInput=${e=>setM({...m,email:e.target.value})} placeholder="Email"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+        <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="PIN / contraseña" type="password"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+      </div>
+      <div>
+        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600 }}>📂 Proyectos asignados</p>
+        <div style=${{ display:'flex', flexWrap:'wrap', gap:6 }}>
+          ${rooms.map(r => {
+            const on = (m.rooms||[]).includes(r.slug);
+            return html`<button key=${r.slug} onClick=${()=>toggle(r.slug)}
+              style=${{ padding:'4px 12px', borderRadius:20, border:'1.5px solid '+(on?'#007AFF':'#E5E5EA'),
+                background:on?'#007AFF10':'#FFF', color:on?'#007AFF':'#6E6E73',
+                fontSize:11, fontWeight:on?700:400, cursor:'pointer' }}>${r.name}</button>`;
+          })}
+        </div>
+      </div>
+      <div style=${{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <button onClick=${onCancel} style=${{ padding:'9px 18px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+        <button onClick=${()=>onSave(m)} disabled=${saving||!(m.name||'').trim()}
+          style=${{ padding:'9px 18px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:(saving||!(m.name||'').trim())?.5:1 }}>
+          ${saving?'Guardando…':'Guardar'}
+        </button>
+      </div>
+    </div>`;
+}
+
 /* ═══ ADMIN USUARIOS ═══ */
 function AdminUsuarios({ rooms }) {
   const [members,    setMembers]   = useState([]);
@@ -524,45 +568,7 @@ function AdminUsuarios({ rooms }) {
     return {...m, rooms: rs.includes(slug) ? rs.filter(r=>r!==slug) : [...rs,slug]};
   };
 
-  const MemberForm = ({m, setM, onSave, onCancel}) => html`
-    <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
-      <div style=${{ display:'grid', gridTemplateColumns:'48px 1fr 1fr', gap:8, alignItems:'center' }}>
-        <input value=${m.avatar} onInput=${e=>setM({...m,avatar:e.target.value})}
-          style=${{ textAlign:'center', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px', fontSize:22, fontFamily:'inherit', outline:'none' }} maxLength="2" title="Emoji" />
-        <input value=${m.name} onInput=${e=>setM({...m,name:e.target.value})} placeholder="Nombre completo *"
-          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
-        <input value=${m.username||''} onInput=${e=>setM({...m,username:e.target.value})} placeholder="Usuario (login)"
-          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
-      </div>
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-        <input value=${m.email||''} onInput=${e=>setM({...m,email:e.target.value})} placeholder="Email"
-          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
-        <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="PIN / contraseña"
-          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} type="password" />
-      </div>
-      <!-- Room assignment -->
-      <div>
-        <p style=${{ fontSize:11, color:'#86868B', marginBottom:6, fontWeight:600 }}>📂 Proyectos asignados</p>
-        <div style=${{ display:'flex', flexWrap:'wrap', gap:6 }}>
-          ${rooms.map(r => {
-            const assigned = (m.rooms||[]).includes(r.slug);
-            return html`<button key=${r.slug} onClick=${()=>setM(toggleRoom(m,r.slug))}
-              style=${{ padding:'4px 12px', borderRadius:20, border:'1.5px solid '+(assigned?'#007AFF':'#E5E5EA'),
-                background:assigned?'#007AFF10':'#FFF', color:assigned?'#007AFF':'#6E6E73',
-                fontSize:11, fontWeight:assigned?700:400, cursor:'pointer' }}>
-              ${r.name}
-            </button>`;
-          })}
-        </div>
-      </div>
-      <div style=${{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-        <button onClick=${onCancel} style=${{ padding:'8px 16px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
-        <button onClick=${()=>onSave(m)} disabled=${saving||!m.name.trim()}
-          style=${{ padding:'8px 16px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:saving?.6:1 }}>
-          ${saving?'Guardando…':'Guardar'}
-        </button>
-      </div>
-    </div>`;
+  // MemberForm extracted — see top-level function below
 
   return html`
     <div>
@@ -577,7 +583,7 @@ function AdminUsuarios({ rooms }) {
       ${showAdd && html`
         <div style=${{ ...cS, padding:'16px', marginBottom:12, border:'2px solid #007AFF20', background:'#F8FBFF' }}>
           <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo miembro</h4>
-          <${MemberForm} m=${newMember} setM=${setNewMember}
+          <${MemberForm} m=${newMember} setM=${setNewMember} rooms=${rooms} saving=${saving}
             onSave=${m=>saveMember({...m, id:crypto.randomUUID()})}
             onCancel=${()=>setShowAdd(false)} />
         </div>
@@ -594,7 +600,7 @@ function AdminUsuarios({ rooms }) {
             ${members.map(m => editId===m.id ? html`
               <div key=${m.id} style=${{ ...cS, padding:'16px', border:'2px solid #007AFF30' }}>
                 <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>✏️ Editar ${m.name}</h4>
-                <${MemberForm} m=${editData} setM=${setEditData}
+                <${MemberForm} m=${editData} setM=${setEditData} rooms=${rooms} saving=${saving}
                   onSave=${saveMember}
                   onCancel=${()=>setEditId(null)} />
               </div>
@@ -839,12 +845,10 @@ function RoomPicker() {
   return html`
     <div style=${{ minHeight:'100vh', background:'#F5F5F7', padding:'24px 16px' }}>
       <div style=${{ maxWidth:980, margin:'0 auto' }}>
-        <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-          <div style=${{ textAlign:'center', flex:1 }}>
-            <h1 class="wm" style=${{ fontSize:28, marginBottom:2 }}>revelio</h1>
-            <p style=${{ color:'#86868B', fontSize:13 }}>Panel de administración</p>
-          </div>
-          <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
+        <div style=${{ position:'relative', textAlign:'center', marginBottom:20 }}>
+          <h1 class="wm" style=${{ fontSize:28, marginBottom:2 }}>revelio</h1>
+          <p style=${{ color:'#86868B', fontSize:13 }}>Panel de administración</p>
+          <div style=${{ position:'absolute', right:0, top:'50%', transform:'translateY(-50%)', display:'flex', alignItems:'center', gap:8 }}>
             ${authUser && html`<span style=${{ fontSize:11, color:'#86868B' }}>${authUser.email}</span>`}
             <button onClick=${handleSignOut} style=${{ ...bS, padding:'5px 12px', fontSize:11, color:'#FF3B30', borderColor:'#FF3B3030' }}>🔒 Cerrar sesión</button>
           </div>
@@ -856,7 +860,7 @@ function RoomPicker() {
           `)}
         </div>
 
-        ${tab === 'dashboard' ? html`
+        ${tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
           <!-- Project filter -->
           <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
             <span style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>Filtrar:</span>
@@ -1089,8 +1093,6 @@ function RoomPicker() {
           </div>
           <p style=${{ fontSize:11, color:'#C7C7CC', marginTop:16, textAlign:'center' }}>Datos sincronizados con Supabase</p>
         `}
-
-        ${tab === 'usuarios' && html`<${AdminUsuarios} rooms=${rooms} />`}
 
       </div>
 
