@@ -123,6 +123,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ═══ ADMIN AUTH ═══ */
 const ADMIN_PIN = 'revelio25';
+
+/* ─── Global error toast ─── */
+let _errorToast = null;
+function setGlobalError(msg) {
+  if (_errorToast) { _errorToast(msg); }
+}
+function useErrorToast() {
+  const [err, setErr] = useState(null);
+  useEffect(() => { _errorToast = setErr; return () => { _errorToast = null; }; }, []);
+  return err;
+}
 const isAdminAuth = () => localStorage.getItem('rf-admin-auth') === ADMIN_PIN;
 const setAdminAuth = () => localStorage.setItem('rf-admin-auth', ADMIN_PIN);
 const clearAdminAuth = () => localStorage.removeItem('rf-admin-auth');
@@ -136,7 +147,10 @@ async function sbLoadRooms() {
   return null;
 }
 async function sbSaveRoom(slug, name, tipo) {
-  try { await supabase.from('rooms').upsert({ slug, name, tipo }); } catch {}
+  try {
+    const {error} = await supabase.from('rooms').upsert({ slug, name, tipo });
+    if (error) setGlobalError('⚠️ Error guardando sala en Supabase');
+  } catch { setGlobalError('⚠️ Sin conexión con Supabase'); }
 }
 async function sbDeleteRoom(slug) {
   try { await supabase.from('rooms').delete().eq('slug', slug); } catch {}
@@ -156,12 +170,13 @@ async function sbLoadRetros() {
 }
 async function sbSaveRetroSnapshot(sala, tipo, stateData, userId) {
   try {
-    await supabase.from('retros').insert({
+    const {error} = await supabase.from('retros').insert({
       sala, tipo, status: 'closed',
       data: stateData,
       created_by: userId,
     });
-  } catch {}
+    if (error) setGlobalError('⚠️ Error guardando retro en Supabase');
+  } catch { setGlobalError('⚠️ Sin conexión con Supabase'); }
 }
 
 /* ═══ CONSTANTS ═══ */
@@ -216,7 +231,7 @@ const cS = { background:'#FFF', borderRadius:20, border:'1.5px solid #E5E5EA', o
 const params = new URLSearchParams(window.location.search);
 const SALA = params.get('sala') || 'general';
 const SALA_DISPLAY = SALA.charAt(0).toUpperCase() + SALA.slice(1);
-const TIPO = params.get('tipo') || 'agile';
+const TIPO_URL = params.get('tipo') || 'agile'; // hint only, Supabase overrides
 const IS_ADMIN = params.has('admin');
 
 const TASK_TEMPLATES = {
@@ -270,12 +285,15 @@ const TASK_TEMPLATES = {
   },
 };
 
-const TIPO_INFO = TASK_TEMPLATES[TIPO] || TASK_TEMPLATES.agile;
-const DEFAULT_TASKS = TIPO_INFO.tasks.map(t => ({ id: uid(), text: t, done: false }));
+// TIPO is resolved in App from Supabase; these are defaults
+const TIPO_INFO_DEFAULT_UNUSED = TASK_TEMPLATES[TIPO_URL] || TASK_TEMPLATES.agile;
 
 /* ═══ REALTIME STATE ═══ */
-function useRealtime(user) {
-  const [state, setState] = useState({ notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks() });
+function useRealtime(user, tipoParam) {
+  const resolvedTipo = tipoParam || TIPO_URL;
+  const tipoInfo = TASK_TEMPLATES[resolvedTipo] || TASK_TEMPLATES.agile;
+  const defaultTasks = tipoInfo.tasks.map(t => ({ id: uid(), text: t, done: false }));
+  const [state, setState] = useState({ notes:[], tasks:defaultTasks, actions:[], obj:{text:'',met:null}, risks:loadRisks() });
   const [online, setOnline] = useState({});
   const [cursors, setCursors] = useState({});
   const chRef = useRef(null);
@@ -310,6 +328,12 @@ function useRealtime(user) {
     ch.on('broadcast', { event:'sync' }, ({ payload }) => {
       if (payload.from === user.id) return;
       setState(prev => ({ ...prev, [payload.key]: payload.data }));
+    });
+
+    // Broadcast: timer sync
+    ch.on('broadcast', { event:'timer' }, ({ payload }) => {
+      if (payload.from === user.id) return;
+      if (typeof payload.seconds === 'number') _timerSync && _timerSync(payload.seconds, payload.running);
     });
 
     ch.on('broadcast', { event:'req' }, ({ payload }) => {
@@ -354,7 +378,7 @@ function useRealtime(user) {
   const reset = useCallback(() => {
     const currentRisks = stRef.current.risks || [];
     const openActions = (stRef.current.actions || []).filter(a => a.status !== 'done' && a.status !== 'discarded');
-    const fresh = { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:openActions, obj:{text:'',met:null}, risks:currentRisks };
+    const fresh = { notes:[], tasks:defaultTasks.map(t=>({...t,id:uid()})), actions:openActions, obj:{text:'',met:null}, risks:currentRisks };
     setState(fresh);
     if (chRef.current && user) {
       Object.keys(fresh).forEach(k => {
@@ -363,13 +387,20 @@ function useRealtime(user) {
     }
   }, [user]);
 
-  return { state, upd, online, cursors, moveCursor, reset };
+  const broadcastTimer = useCallback((seconds, running) => {
+    if (chRef.current && user) {
+      chRef.current.send({ type:'broadcast', event:'timer', payload:{ seconds, running, from:user.id } });
+    }
+  }, [user]);
+
+  return { state, upd, online, cursors, moveCursor, reset, broadcastTimer };
 }
 
 /* ═══ APP ═══ */
 function App() {
   const [user,       setUser]       = useState(() => params.has('sala') ? loadUser() : null);
   const [salaValid,  setSalaValid]  = useState(null); // null=checking, true=ok, false=blocked
+  const [roomTipo,   setRoomTipo]   = useState(TIPO_URL); // resolved from Supabase
 
   const handleJoin   = (u) => { saveUser(u); registerUser(u); setUser(u); };
   const handleLogout = () => { clearUser(); setUser(null); };
@@ -380,12 +411,15 @@ function App() {
     return html`<${NeedLink} />`;
   }
 
-  // Check sala exists in Supabase (runs once on mount)
+  // Check sala exists in Supabase AND get its tipo (runs once on mount)
   useEffect(() => {
     sbLoadRooms().then(rooms => {
-      if (!rooms) { setSalaValid(true); return; } // Supabase unreachable → allow
-      const exists = rooms.some(r => r.slug === SALA);
-      setSalaValid(exists);
+      if (!rooms) { setSalaValid(true); return; }
+      const room = rooms.find(r => r.slug === SALA);
+      if (!room) { setSalaValid(false); return; }
+      setSalaValid(true);
+      // Override tipo with Supabase value
+      if (room.tipo && TASK_TEMPLATES[room.tipo]) setRoomTipo(room.tipo);
     });
   }, []);
 
@@ -411,7 +445,7 @@ function App() {
     </div>`;
 
   if (!user) return html`<${Login} onJoin=${handleJoin} />`;
-  return html`<${RetroBoard} user=${user} onLogout=${handleLogout} />`;
+  return html`<${RetroBoard} user=${user} onLogout=${handleLogout} roomTipo=${roomTipo} />`;
 }
 
 /* ═══ NEED LINK SCREEN ═══ */
@@ -1103,11 +1137,21 @@ function Login({ onJoin }) {
 }
 
 /* ═══ RETRO BOARD ═══ */
-function RetroBoard({ user, onLogout }) {
-  const { state, upd, online, cursors, moveCursor, reset } = useRealtime(user);
+function RetroBoard({ user, onLogout, roomTipo }) {
+  const tipoResolved = roomTipo || TIPO_URL;
+  const TIPO_INFO = TASK_TEMPLATES[tipoResolved] || TASK_TEMPLATES.agile;
+  const { state, upd, online, cursors, moveCursor, reset, broadcastTimer } = useRealtime(user, tipoResolved);
   const [phase, setPhase] = useState(0);
   const [timer, setTimer] = useState(900);
   const [running, setRunning] = useState(false);
+
+  // Register timer sync receiver
+  useEffect(() => {
+    window._timerSync = (secs, run) => { setTimer(secs); setRunning(run); };
+    return () => { window._timerSync = null; };
+  }, []);
+
+  const syncTimer = (secs, run) => { setTimer(secs); setRunning(run); broadcastTimer(secs, run); };
   const [showReset, setShowReset] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
@@ -1216,11 +1260,11 @@ function RetroBoard({ user, onLogout }) {
         <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
           <div style=${{ background:running?'#1D1D1F':'#F2F2F7', color:running?'#FFF':'#1D1D1F', borderRadius:10, padding:'6px 10px', display:'flex', alignItems:'center', gap:5 }}>
             ${!running && html`<div style=${{ display:'flex', gap:2 }}>
-              ${[5,10,15,20].map(m => html`<button key=${m} onClick=${()=>{setTimer(m*60);setRunning(false)}} style=${{ padding:'3px 6px', borderRadius:6, border:'none', background:timer===m*60?'#007AFF':'transparent', color:timer===m*60?'#FFF':running?'#FFF':'#86868B', fontSize:10, fontWeight:600 }}>${m}'</button>`)}
+              ${[5,10,15,20].map(m => html`<button key=${m} onClick=${()=>syncTimer(m*60, false)} style=${{ padding:'3px 6px', borderRadius:6, border:'none', background:timer===m*60?'#007AFF':'transparent', color:timer===m*60?'#FFF':running?'#FFF':'#86868B', fontSize:10, fontWeight:600 }}>${m}'</button>`)}
             </div>`}
             <span style=${{ fontSize:18, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:52, textAlign:'center' }}>${fmt(timer)}</span>
-            <button onClick=${()=>setRunning(!running)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>${running?'⏸':'▶'}</button>
-            <button onClick=${()=>{setTimer(900);setRunning(false)}} style=${{ width:26, height:26, borderRadius:13, border:'none', background:'rgba(128,128,128,0.12)', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>↺</button>
+            <button onClick=${()=>syncTimer(timer, !running)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>${running?'⏸':'▶'}</button>
+            <button onClick=${()=>syncTimer(900, false)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:'rgba(128,128,128,0.12)', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>↺</button>
           </div>
         </div>
         <div style=${{ display:'flex', alignItems:'center' }}>
@@ -1235,6 +1279,11 @@ function RetroBoard({ user, onLogout }) {
       <div style=${{ flex:1, overflowY:'auto', padding:'14px 18px' }}>${content()}</div>
       ${toast && html`
         <div style=${{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1D1D1F', color:'#FFF', padding:'12px 24px', borderRadius:14, fontSize:14, fontWeight:600, boxShadow:'0 8px 30px rgba(0,0,0,0.15)', zIndex:300, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8 }}>${toast}</div>
+      `}
+      ${globalError && html`
+        <div style=${{ position:'fixed', bottom:toast?72:24, left:'50%', transform:'translateX(-50%)', background:'#FF3B30', color:'#FFF', padding:'11px 22px', borderRadius:14, fontSize:13, fontWeight:600, boxShadow:'0 8px 30px rgba(255,59,48,.3)', zIndex:301, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8, whiteSpace:'nowrap' }}>
+          ${globalError}
+        </div>
       `}
 
       ${showHistorial && html`<${HistorialModal} onClose=${()=>setShowHistorial(false)} />`}
@@ -1632,6 +1681,8 @@ function Board({ notes, sN, user, filter }) {
   const [eVal, setEVal] = useState('');
   const [dragId, setDragId] = useState(null);
   const [overCat, setOverCat] = useState(null);
+  const [touchDrag, setTouchDrag] = useState(null); // {id, startX, startY, curX, curY}
+  const touchRef = useRef(null);
 
   const addN = c => { if(!txt.trim())return; sN([...notes,{id:uid(),text:txt.trim(),category:c,userId:user.id,userName:user.name,userAvatar:user.avatar,userColor:user.color,voters:[],reactions:{}}]); setTxt(''); setAct(null); };
   const vote = nid => sN(notes.map(n=>{if(n.id!==nid)return n;const v=n.voters||[];return{...n,voters:v.includes(user.id)?v.filter(x=>x!==user.id):[...v,user.id]}}));
@@ -1640,17 +1691,54 @@ function Board({ notes, sN, user, filter }) {
   const saveE = () => { if(!eVal.trim())delN(eId); else sN(notes.map(n=>n.id===eId?{...n,text:eVal.trim()}:n)); setEId(null); };
   const drop = (e,c) => { e.preventDefault(); setOverCat(null); if(dragId)sN(notes.map(n=>n.id===dragId?{...n,category:c}:n)); setDragId(null); };
 
+  // ── Touch drag & drop ──
+  const onTouchStart = (e, noteId) => {
+    const t = e.touches[0];
+    touchRef.current = { id:noteId, startX:t.clientX, startY:t.clientY };
+    setTouchDrag({ id:noteId, x:t.clientX, y:t.clientY });
+  };
+  const onTouchMove = (e) => {
+    if (!touchRef.current) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    setTouchDrag(prev => prev ? {...prev, x:t.clientX, y:t.clientY} : null);
+    // highlight target column
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const col = el?.closest('[data-catid]');
+    setOverCat(col ? col.getAttribute('data-catid') : null);
+  };
+  const onTouchEnd = (e) => {
+    if (!touchRef.current) return;
+    const t = e.changedTouches[0];
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const col = el?.closest('[data-catid]');
+    if (col && touchRef.current.id) {
+      const catId = col.getAttribute('data-catid');
+      sN(notes.map(n => n.id===touchRef.current.id ? {...n, category:catId} : n));
+    }
+    touchRef.current = null;
+    setTouchDrag(null);
+    setOverCat(null);
+  };
+
   let fil = notes;
   if(filter==='mine') fil=notes.filter(n=>n.userId===user.id);
   else if(CATS.some(c=>c.id===filter)) fil=notes.filter(n=>n.category===filter);
   const cats2 = CATS.some(c=>c.id===filter)?CATS.filter(c=>c.id===filter):CATS;
 
   return html`
+    <div style=${{ position:'relative' }}>
+    ${touchDrag && html`
+      <div style=${{ position:'fixed', left:touchDrag.x-60, top:touchDrag.y-30, width:120, pointerEvents:'none', zIndex:9999, opacity:.85, transform:'rotate(3deg) scale(1.05)', background:'#FFF', border:'2px solid #007AFF', borderRadius:10, padding:'8px 10px', fontSize:11, fontWeight:600, boxShadow:'0 8px 24px rgba(0,0,0,.2)', color:'#007AFF' }}>
+        ✋ Moviendo nota
+      </div>
+    `}
     <div style=${{ display:'grid', gridTemplateColumns:cats2.length===1?'1fr':'repeat(4,1fr)', gap:10, height:'100%' }}>
       ${cats2.map(cat => {
         const cn = fil.filter(n=>n.category===cat.id).sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0));
         return html`
-          <div key=${cat.id} onDragOver=${e=>{e.preventDefault();setOverCat(cat.id)}} onDragLeave=${()=>setOverCat(null)} onDrop=${e=>drop(e,cat.id)}
+          <div key=${cat.id} data-catid=${cat.id}
+            onDragOver=${e=>{e.preventDefault();setOverCat(cat.id)}} onDragLeave=${()=>setOverCat(null)} onDrop=${e=>drop(e,cat.id)}
             style=${{ ...cS, display:'flex', flexDirection:'column', borderColor:overCat===cat.id?'#007AFF':'#E5E5EA', background:overCat===cat.id?'#007AFF04':'#FFF', transition:'all .2s' }}>
             <div style=${{ padding:'12px 14px 9px', background:cat.color+'06', borderBottom:'2.5px solid '+cat.color }}>
               <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -1662,8 +1750,12 @@ function Board({ notes, sN, user, filter }) {
               ${cn.map(note => {
                 const voted=note.voters?.includes(user.id); const mine=note.userId===user.id;
                 return html`
-                  <div key=${note.id} draggable=${true} onDragStart=${e=>{setDragId(note.id);e.dataTransfer.effectAllowed='move'}}
-                    style=${{ background:cat.bg, borderRadius:12, padding:'10px 12px', border:'1px solid '+cat.color+'15', borderLeft:mine?'3px solid '+cat.color:'1px solid '+cat.color+'15', cursor:'grab', opacity:dragId===note.id?0.4:1 }}>
+                  <div key=${note.id} draggable=${true}
+                    onDragStart=${e=>{setDragId(note.id);e.dataTransfer.effectAllowed='move'}}
+                    onTouchStart=${e=>onTouchStart(e,note.id)}
+                    onTouchMove=${onTouchMove}
+                    onTouchEnd=${onTouchEnd}
+                    style=${{ background:cat.bg, borderRadius:12, padding:'10px 12px', border:'1px solid '+cat.color+'15', borderLeft:mine?'3px solid '+cat.color:'1px solid '+cat.color+'15', cursor:'grab', opacity:(dragId===note.id||touchDrag?.id===note.id)?0.4:1, touchAction:'none', userSelect:'none' }}>
                     ${eId===note.id
                       ? html`<div>
                           <textarea autofocus value=${eVal} onInput=${e=>setEVal(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveE()}if(e.key==='Escape')setEId(null)}} style=${{ ...iS, height:48, resize:'none', fontSize:12, padding:'8px 10px' }} />
@@ -1705,6 +1797,7 @@ function Board({ notes, sN, user, filter }) {
               : html`<button onClick=${()=>{setAct(cat.id);setTxt('')}} style=${{ margin:'5px 8px 8px', padding:'8px', borderRadius:9, border:'1.5px dashed '+cat.color+'30', background:'transparent', color:cat.color, fontSize:12, fontWeight:600 }}>+ Añadir nota</button>`}
           </div>`;
       })}
+    </div>
     </div>
   `;
 }
