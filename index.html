@@ -240,6 +240,11 @@ function useRealtime(user) {
       setState(prev => ({ ...prev, [payload.key]: payload.data }));
     });
 
+    ch.on('broadcast', { event:'timer' }, ({ payload }) => {
+      if (payload.from === user.id) return;
+      if (window.__timerRecv) window.__timerRecv(payload.secs, payload.isRunning);
+    });
+
     ch.on('broadcast', { event:'req' }, ({ payload }) => {
       if (payload.from === user.id) return;
       const s = stRef.current;
@@ -291,7 +296,13 @@ function useRealtime(user) {
     }
   }, [user]);
 
-  return { state, upd, online, cursors, moveCursor, reset };
+  const broadcastTimer = useCallback((secs, isRunning) => {
+    if (chRef.current && user) {
+      chRef.current.send({ type:'broadcast', event:'timer', payload:{ secs, isRunning, from:user.id } });
+    }
+  }, [user]);
+
+  return { state, upd, online, cursors, moveCursor, reset, broadcastTimer };
 }
 
 /* ═══ APP ═══ */
@@ -744,22 +755,22 @@ function RoomPicker() {
             <div style=${{ display:'grid', gridTemplateColumns:'200px 1fr', gap:12, marginBottom:12 }}>
 
               <!-- Donut % accionables -->
-              <div style=${{ ...cS, padding:'20px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-                <h3 style=${{ fontSize:12, fontWeight:700, marginBottom:10 }}>🎯 Accionables</h3>
+              <div style=${{ ...cS, padding:'20px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center' }}>
+                <h3 style=${{ fontSize:12, fontWeight:700, marginBottom:12 }}>🎯 Accionables</h3>
                 ${(() => {
-                  const r=50, circ=2*Math.PI*r;
+                  const r=46, circ=2*Math.PI*r;
                   const dash = (actionRate/100)*circ;
                   const col = actionRate>=75?'#34C759':actionRate>=40?'#FF9500':'#FF3B30';
                   return html`
-                    <svg width="120" height="120" viewBox="0 0 120 120">
-                      <circle cx="60" cy="60" r=${r} fill="none" stroke="#F2F2F7" stroke-width="13"/>
-                      <circle cx="60" cy="60" r=${r} fill="none" stroke=${col} stroke-width="13"
+                    <svg width="110" height="110" viewBox="0 0 110 110" style=${{ display:'block', margin:'0 auto' }}>
+                      <circle cx="55" cy="55" r=${r} fill="none" stroke="#F2F2F7" stroke-width="12"/>
+                      <circle cx="55" cy="55" r=${r} fill="none" stroke=${col} stroke-width="12"
                         stroke-dasharray="${dash} ${circ}" stroke-dashoffset=${circ/4} stroke-linecap="round"/>
-                      <text x="60" y="55" text-anchor="middle" font-size="19" font-weight="800" fill="#1D1D1F">${Math.round(actionRate)}%</text>
-                      <text x="60" y="70" text-anchor="middle" font-size="9" fill="#86868B">completado</text>
+                      <text x="55" y="50" text-anchor="middle" dominant-baseline="middle" font-size="18" font-weight="800" fill="#1D1D1F">${Math.round(actionRate)}%</text>
+                      <text x="55" y="66" text-anchor="middle" font-size="9" fill="#86868B">completado</text>
                     </svg>
-                    <div style=${{ fontSize:12, color:'#86868B', marginTop:6 }}>
-                      <span style=${{ color:'#34C759', fontWeight:700 }}>${totalActionsDone}</span> creados
+                    <div style=${{ fontSize:12, color:'#86868B', marginTop:10, lineHeight:1.8 }}>
+                      <div><span style=${{ color:'#34C759', fontWeight:700 }}>${totalActionsDone}</span> completados</div>
                       <div><span style=${{ color:col, fontWeight:700 }}>${totalActions - totalActionsDone}</span> pendientes</div>
                     </div>`;
                 })()}
@@ -1043,10 +1054,22 @@ function Login({ onJoin }) {
 
 /* ═══ RETRO BOARD ═══ */
 function RetroBoard({ user, onLogout }) {
-  const { state, upd, online, cursors, moveCursor, reset } = useRealtime(user);
+  const { state, upd, online, cursors, moveCursor, reset, broadcastTimer } = useRealtime(user);
   const [phase, setPhase] = useState(0);
-  const [timer, setTimer] = useState(900);
+  const [timer,   setTimer]   = useState(900);
   const [running, setRunning] = useState(false);
+
+  // Register timer receiver (for broadcast from other users)
+  useEffect(() => {
+    window.__timerRecv = (secs, isRunning) => { setTimer(secs); setRunning(isRunning); };
+    return () => { window.__timerRecv = null; };
+  }, []);
+
+  // Helper: set timer + broadcast to all
+  const syncTimer = useCallback((secs, isRunning) => {
+    setTimer(secs); setRunning(isRunning);
+    broadcastTimer(secs, isRunning);
+  }, [broadcastTimer]);
   const [showReset, setShowReset] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
@@ -1156,15 +1179,15 @@ function RetroBoard({ user, onLogout }) {
         <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
           <div style=${{ background:running?'#1D1D1F':'#F2F2F7', color:running?'#FFF':'#1D1D1F', borderRadius:10, padding:'6px 10px', display:'flex', alignItems:'center', gap:5 }}>
             ${!running && html`<div style=${{ display:'flex', gap:2 }}>
-              ${[5,10,15,20].map(m => html`<button key=${m} onClick=${()=>{setTimer(m*60);setRunning(false)}} style=${{ padding:'3px 6px', borderRadius:6, border:'none', background:timer===m*60?'#007AFF':'transparent', color:timer===m*60?'#FFF':running?'#FFF':'#86868B', fontSize:10, fontWeight:600 }}>${m}'</button>`)}
+              ${[5,10,15,20].map(m => html`<button key=${m} onClick=${()=>syncTimer(m*60,false)} style=${{ padding:'3px 6px', borderRadius:6, border:'none', background:timer===m*60?'#007AFF':'transparent', color:timer===m*60?'#FFF':running?'#FFF':'#86868B', fontSize:10, fontWeight:600 }}>${m}'</button>`)}
             </div>`}
             <span style=${{ fontSize:18, fontWeight:700, fontVariantNumeric:'tabular-nums', minWidth:52, textAlign:'center' }}>${fmt(timer)}</span>
-            <button onClick=${()=>setRunning(!running)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>${running?'⏸':'▶'}</button>
-            <button onClick=${()=>{setTimer(900);setRunning(false)}} style=${{ width:26, height:26, borderRadius:13, border:'none', background:'rgba(128,128,128,0.12)', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>↺</button>
+            <button onClick=${()=>syncTimer(timer,!running)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>${running?'⏸':'▶'}</button>
+            <button onClick=${()=>syncTimer(900,false)} style=${{ width:26, height:26, borderRadius:13, border:'none', background:'rgba(128,128,128,0.12)', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>↺</button>
           </div>
         </div>
         <div style=${{ display:'flex', alignItems:'center' }}>
-          ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:28, height:28, borderRadius:14, background:u.color, border:'2px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, marginLeft:i>0?-5:0, zIndex:10-i }}>${u.avatar}</div>`)}
+          ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:36, height:36, borderRadius:18, background:u.color, border:'2.5px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, marginLeft:i>0?-8:0, zIndex:10-i, boxShadow:'0 2px 6px rgba(0,0,0,.1)' }}>${u.avatar}</div>`)}
           ${uList.length>0 && html`<span style=${{ fontSize:11, color:'#86868B', marginLeft:8 }}>${uList.length} online</span>`}
           <button onClick=${onLogout} style=${{ marginLeft:6, padding:'3px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, color:'#86868B', cursor:'pointer' }} title="Cambiar usuario">👤 ${user.name} ✕</button>
         </div>
