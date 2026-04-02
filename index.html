@@ -388,6 +388,18 @@ const DEFAULT_ROOMS = [
 function loadRooms() {
   try { const s = localStorage.getItem('rf-rooms'); return s ? JSON.parse(s) : DEFAULT_ROOMS; } catch { return DEFAULT_ROOMS; }
 }
+function loadTeam(slug) {
+  try { return JSON.parse(localStorage.getItem('rf-team-'+slug) || '[]'); } catch { return []; }
+}
+function saveTeam(slug, team) {
+  try { localStorage.setItem('rf-team-'+slug, JSON.stringify(team)); } catch {}
+}
+function loadVacations(slug) {
+  try { return JSON.parse(localStorage.getItem('rf-vacations-'+slug) || '[]'); } catch { return []; }
+}
+function saveVacations(slug, vacs) {
+  try { localStorage.setItem('rf-vacations-'+slug, JSON.stringify(vacs)); } catch {}
+}
 function saveRooms(rooms) {
   try { localStorage.setItem('rf-rooms', JSON.stringify(rooms)); } catch {}
 }
@@ -892,47 +904,112 @@ function RoomPicker() {
               const users = loadUserRegistry(r.slug);
               const link = window.location.origin + window.location.pathname + '?sala=' + r.slug + '&tipo=' + (r.tipo||'agile');
               const rTipo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
+              const [sTab,    setSTab]    = useState('general'); // 'general'|'usuarios'|'vacaciones'
+              const [team,    setTeam]    = useState(() => loadTeam(r.slug));
+              const [vacs,    setVacs]    = useState(() => loadVacations(r.slug));
+              const [newMem,  setNewMem]  = useState('');
+              const [newVac,  setNewVac]  = useState({name:'',from:'',to:'',note:''});
+
+              const addMember = () => {
+                if (!newMem.trim()) return;
+                const t = [...team, {id:uid(), name:newMem.trim(), role:'', avatar:'👤'}];
+                setTeam(t); saveTeam(r.slug, t); setNewMem('');
+              };
+              const delMember = (id) => { const t=team.filter(m=>m.id!==id); setTeam(t); saveTeam(r.slug,t); };
+              const updMember = (id, field, val) => { const t=team.map(m=>m.id===id?{...m,[field]:val}:m); setTeam(t); saveTeam(r.slug,t); };
+
+              const addVac = () => {
+                if (!newVac.name.trim()||!newVac.from) return;
+                const v=[...vacs,{id:uid(),...newVac}]; setVacs(v); saveVacations(r.slug,v);
+                setNewVac({name:'',from:'',to:'',note:''});
+              };
+              const delVac = (id) => { const v=vacs.filter(x=>x.id!==id); setVacs(v); saveVacations(r.slug,v); };
+
               return html`
                 <div key=${r.slug} style=${{ ...cS }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:8, padding:'14px 16px' }}>
+                  <!-- Header -->
+                  <div style=${{ display:'flex', alignItems:'center', gap:8, padding:'12px 16px', borderBottom:'1px solid #F2F2F7' }}>
                     <button onClick=${()=>go(r.slug,r.tipo)} style=${{ flex:1, background:'none', border:'none', textAlign:'left', cursor:'pointer', padding:0 }}>
-                      <div>
-                        <span style=${{ fontSize:14, fontWeight:600, color:'#1D1D1F' }}>${r.name} <span style=${{ fontSize:9, fontWeight:500, color:rTipo.color, background:rTipo.color+'10', padding:'1px 6px', borderRadius:4 }}>${rTipo.icon} ${rTipo.label}</span></span>
-                        <div style=${{ fontSize:11, color:'#86868B', marginTop:1 }}>${window.location.host}?sala=${r.slug}</div>
-                      </div>
+                      <span style=${{ fontSize:14, fontWeight:600, color:'#1D1D1F' }}>${r.name}</span>
+                      <span style=${{ fontSize:9, fontWeight:500, color:rTipo.color, background:rTipo.color+'10', padding:'1px 6px', borderRadius:4, marginLeft:6 }}>${rTipo.icon} ${rTipo.label}</span>
+                      <div style=${{ fontSize:10, color:'#C7C7CC', marginTop:1 }}>${window.location.host}?sala=${r.slug}</div>
                     </button>
-                    <button onClick=${()=>{navigator.clipboard.writeText(link);}} title="Copiar enlace" style=${{ ...bS, padding:'5px 8px', fontSize:10, flexShrink:0 }}>📋</button>
-                    <button onClick=${()=>go(r.slug,r.tipo)} title="Entrar a la sala" style=${{ ...bS, padding:'5px 8px', fontSize:10, flexShrink:0 }}>→</button>
-                    <button onClick=${()=>setEditRoom({slug:r.slug, name:r.name, tipo:r.tipo||'agile'})} title="Editar" style=${{ border:'none', background:'none', fontSize:14, color:'#86868B', flexShrink:0, padding:'4px', cursor:'pointer' }}>✏️</button>
-                    <button onClick=${()=>remove(r.slug)} title="Eliminar sala" style=${{ border:'none', background:'none', fontSize:14, color:'#FF3B30', flexShrink:0, padding:'4px', cursor:'pointer', opacity:.6 }}>🗑</button>
+                    <button onClick=${()=>{navigator.clipboard.writeText(link);}} title="Copiar enlace" style=${{ ...bS, padding:'4px 7px', fontSize:10 }}>📋</button>
+                    <button onClick=${()=>go(r.slug,r.tipo)} title="Entrar" style=${{ ...bS, padding:'4px 7px', fontSize:10 }}>→</button>
+                    <button onClick=${()=>setEditRoom({slug:r.slug,name:r.name,tipo:r.tipo||'agile'})} style=${{ border:'none',background:'none',fontSize:13,color:'#86868B',padding:'3px',cursor:'pointer' }}>✏️</button>
+                    <button onClick=${()=>remove(r.slug)} style=${{ border:'none',background:'none',fontSize:13,color:'#FF3B30',padding:'3px',cursor:'pointer',opacity:.6 }}>🗑</button>
                   </div>
-                  <div style=${{ padding:'0 16px 10px', display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
-                    ${rm.length>0 ? html`
-                      <span style=${{ fontSize:11, color:'#86868B' }}>📊 ${rm.length} retros</span>
-                      <span style=${{ fontSize:11, color:'#86868B' }}>📝 ${rm.reduce((s,rt)=>s+(rt.data?.notes?.length||0),0)} notas</span>
-                    ` : html`<span style=${{ fontSize:11, color:'#C7C7CC' }}>Sin retros guardadas</span>`}
-                    ${users.length > 0 && html`
-                      <button onClick=${()=>{ ['rf-reg-','rf-user-'].forEach(k=>localStorage.removeItem(k+r.slug)); location.reload(); }}
-                        style=${{ marginLeft:'auto', fontSize:9, color:'#86868B', background:'none', border:'1px solid #E5E5EA', borderRadius:5, padding:'2px 7px', cursor:'pointer' }}
-                        title="Limpiar usuarios del localStorage">
-                        👥 ${users.length} usuarios · limpiar
-                      </button>
-                    `}
+
+                  <!-- Tabs -->
+                  <div style=${{ display:'flex', gap:0, borderBottom:'1px solid #F2F2F7' }}>
+                    ${[['general','📊 General'],['usuarios','👥 Equipo'],['vacaciones','🏖️ Vacaciones']].map(([tid,tlabel])=>html`
+                      <button key=${tid} onClick=${()=>setSTab(tid)}
+                        style=${{ flex:1, padding:'7px 4px', border:'none', borderBottom:sTab===tid?'2px solid #007AFF':'2px solid transparent',
+                          background:'transparent', fontSize:11, fontWeight:sTab===tid?700:400, color:sTab===tid?'#007AFF':'#86868B', cursor:'pointer' }}>
+                        ${tlabel}
+                      </button>`)}
                   </div>
-                  ${users.length > 0 && html`
-                    <div style=${{ padding:'0 16px 10px' }}>
-                      <details>
-                        <summary style=${{ fontSize:11, color:'#86868B', cursor:'pointer', fontWeight:600 }}>👥 Ver usuarios (${users.length})</summary>
-                        <div style=${{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
-                          ${users.map(u => html`
-                            <div key=${u.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:8, background:'#F9F9FB' }}>
-                              <div style=${{ width:22, height:22, borderRadius:11, background:u.color||'#007AFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, flexShrink:0 }}>${u.avatar||'👤'}</div>
-                              <span style=${{ fontSize:12, fontWeight:600, flex:1 }}>${u.name}</span>
-                              <span style=${{ fontSize:9, color:'#C7C7CC' }}>${u.lastSeen ? fd(u.lastSeen) : ''}</span>
-                            </div>
-                          `)}
-                        </div>
-                      </details>
+
+                  <!-- Tab: General -->
+                  ${sTab==='general' && html`
+                    <div style=${{ padding:'10px 16px 12px', display:'flex', gap:14, flexWrap:'wrap', alignItems:'center' }}>
+                      ${rm.length>0 ? html`
+                        <span style=${{ fontSize:11, color:'#86868B' }}>📊 ${rm.length} retros</span>
+                        <span style=${{ fontSize:11, color:'#86868B' }}>📝 ${rm.reduce((s,rt)=>s+(rt.data?.notes?.length||0),0)} notas</span>
+                        <span style=${{ fontSize:11, color:'#86868B' }}>👥 ${[...new Set(rm.flatMap(rt=>(rt.data?.notes||[]).map(n=>n.userName)))].length} personas únicas</span>
+                      ` : html`<span style=${{ fontSize:11, color:'#C7C7CC' }}>Sin retros guardadas</span>`}
+                    </div>
+                  `}
+
+                  <!-- Tab: Equipo -->
+                  ${sTab==='usuarios' && html`
+                    <div style=${{ padding:'10px 16px 12px' }}>
+                      <div style=${{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
+                        ${team.map(m => html`
+                          <div key=${m.id} style=${{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px', borderRadius:9, background:'#F9F9FB', border:'1px solid #E5E5EA' }}>
+                            <input value=${m.avatar} onInput=${e=>updMember(m.id,'avatar',e.target.value)}
+                              style=${{ width:28, textAlign:'center', border:'1px solid #E5E5EA', borderRadius:6, padding:'2px', fontSize:14, background:'#FFF' }} maxLength="2" />
+                            <input value=${m.name} onInput=${e=>updMember(m.id,'name',e.target.value)}
+                              style=${{ flex:1, border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:12, background:'#FFF' }} placeholder="Nombre" />
+                            <input value=${m.role||''} onInput=${e=>updMember(m.id,'role',e.target.value)}
+                              style=${{ width:90, border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:11, background:'#FFF', color:'#86868B' }} placeholder="Rol" />
+                            <button onClick=${()=>delMember(m.id)} style=${{ border:'none', background:'none', color:'#FF3B30', fontSize:14, cursor:'pointer', padding:'2px' }}>✕</button>
+                          </div>`)}
+                      </div>
+                      <div style=${{ display:'flex', gap:6 }}>
+                        <input value=${newMem} onInput=${e=>setNewMem(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&addMember()}
+                          placeholder="Nombre del miembro" style=${{ ...iS, flex:1, fontSize:12 }} />
+                        <button onClick=${addMember} style=${{ ...bP, padding:'6px 12px', fontSize:12 }}>+ Añadir</button>
+                      </div>
+                    </div>
+                  `}
+
+                  <!-- Tab: Vacaciones -->
+                  ${sTab==='vacaciones' && html`
+                    <div style=${{ padding:'10px 16px 12px' }}>
+                      <div style=${{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
+                        ${vacs.length===0 && html`<p style=${{ fontSize:11, color:'#C7C7CC', textAlign:'center', padding:'8px 0' }}>Sin vacaciones registradas</p>`}
+                        ${vacs.map(v => {
+                          const today = new Date().toISOString().slice(0,10);
+                          const active = v.from <= today && (!v.to || v.to >= today);
+                          return html`
+                            <div key=${v.id} style=${{ display:'flex', alignItems:'center', gap:6, padding:'6px 10px', borderRadius:9,
+                              background:active?'#FFF9E6':'#F9F9FB', border:'1px solid '+(active?'#FF9500':'#E5E5EA') }}>
+                              <span style=${{ fontSize:13 }}>${active?'🏖️':'📅'}</span>
+                              <span style=${{ fontSize:12, fontWeight:600, flex:1 }}>${v.name}</span>
+                              <span style=${{ fontSize:10, color:'#86868B' }}>${v.from}${v.to?' → '+v.to:''}</span>
+                              ${v.note && html`<span style=${{ fontSize:10, color:'#86868B', fontStyle:'italic' }}>${v.note}</span>`}
+                              <button onClick=${()=>delVac(v.id)} style=${{ border:'none', background:'none', color:'#C7C7CC', fontSize:13, cursor:'pointer', padding:'2px' }}>✕</button>
+                            </div>`;
+                        })}
+                      </div>
+                      <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:6 }}>
+                        <input value=${newVac.name} onInput=${e=>setNewVac({...newVac,name:e.target.value})} placeholder="Persona" style=${{ ...iS, fontSize:11 }} />
+                        <input value=${newVac.note||''} onInput=${e=>setNewVac({...newVac,note:e.target.value})} placeholder="Nota (opcional)" style=${{ ...iS, fontSize:11 }} />
+                        <input type="date" value=${newVac.from} onInput=${e=>setNewVac({...newVac,from:e.target.value})} style=${{ ...iS, fontSize:11 }} />
+                        <input type="date" value=${newVac.to||''} onInput=${e=>setNewVac({...newVac,to:e.target.value})} placeholder="Fin (opcional)" style=${{ ...iS, fontSize:11 }} />
+                      </div>
+                      <button onClick=${addVac} style=${{ ...bP, width:'100%', padding:'7px', fontSize:12 }}>+ Registrar vacaciones</button>
                     </div>
                   `}
                 </div>`;
@@ -1328,6 +1405,45 @@ ${risks.length?'<h2>⚠️ Riesgos ('+risks.length+')</h2>'+risks.map(r=>'<div c
           </div>
         </div>
         <div style=${{ flex:1, overflowY:'auto', padding:'18px 24px 24px' }}>
+          <!-- Summary KPIs -->
+          ${(() => {
+            const d = viewRetro.data || {};
+            const parts2 = [...new Set((d.notes||[]).map(n=>n.userName))];
+            const doneA  = (d.actions||[]).filter(a=>a.status==='done').length;
+            const totalA = (d.actions||[]).length;
+            const openR  = (d.risks||[]).filter(r=>r.status!=='mitigated').length;
+            return html`
+              <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
+                ${[
+                  ['👥','Personas', parts2.length, '#5856D6'],
+                  ['📝','Notas',    (d.notes||[]).length, '#007AFF'],
+                  ['🎯','Accionables', doneA+'/'+totalA, '#34C759'],
+                  ['⚠️','Riesgos',  openR, '#FF9500'],
+                ].map(([ic,lb,val,col]) => html`
+                  <div style=${{ background:'#F9F9FB', borderRadius:10, padding:'8px', textAlign:'center', border:'1px solid #E5E5EA' }}>
+                    <div style=${{ fontSize:14, marginBottom:2 }}>${ic}</div>
+                    <div style=${{ fontSize:16, fontWeight:800, color:col }}>${val}</div>
+                    <div style=${{ fontSize:9, color:'#86868B' }}>${lb}</div>
+                  </div>`)}
+              </div>
+              <!-- Participants -->
+              ${parts2.length>0 && html`
+                <div style=${{ marginBottom:14, padding:'10px 14px', borderRadius:10, background:'#F9F9FB', border:'1px solid #E5E5EA' }}>
+                  <p style=${{ fontSize:11, fontWeight:700, marginBottom:8, color:'#86868B' }}>👥 Participantes</p>
+                  <div style=${{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    ${parts2.map((name,i) => {
+                      const nu = (d.notes||[]).find(n=>n.userName===name);
+                      const notesCount = (d.notes||[]).filter(n=>n.userName===name).length;
+                      return html`<div key=${i} style=${{ display:'flex', alignItems:'center', gap:5, background:'#FFF', border:'1px solid #E5E5EA', borderRadius:20, padding:'3px 10px 3px 3px' }}>
+                        <div style=${{ width:22, height:22, borderRadius:11, background:nu?.userColor||'#86868B', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12 }}>${nu?.userAvatar||'👤'}</div>
+                        <span style=${{ fontSize:11, fontWeight:600 }}>${name}</span>
+                        <span style=${{ fontSize:9, color:'#86868B' }}>${notesCount} notas</span>
+                      </div>`;
+                    })}
+                  </div>
+                </div>
+              `}`;
+          })()}
           ${(viewRetro.data?.obj?.text) && html`
             <div style=${{ padding:'10px 14px', borderRadius:10, background:'#F9F9FB', border:'1px solid #E5E5EA', marginBottom:14 }}>
               <p style=${{ fontSize:12, fontWeight:700, marginBottom:2 }}>🎯 ${viewRetro.data.obj.text}</p>
@@ -1396,27 +1512,46 @@ ${risks.length?'<h2>⚠️ Riesgos ('+risks.length+')</h2>'+risks.map(r=>'<div c
               const pctColor = pct>=75?'#34C759':pct>=40?'#FF9500':'#FF3B30';
               const parts = [...new Set((r.data?.notes||[]).map(n=>n.userName))];
               const rTipo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
+              const riskC = (r.data?.risks||[]).filter(x=>x.status!=='mitigated').length;
               return html`
-                <div key=${r.id} class="hl" style=${{ padding:'13px 16px', borderRadius:14, border:'1.5px solid #E5E5EA', marginBottom:9, display:'flex', alignItems:'center', gap:12, background:'#FAFAFA', cursor:'pointer' }}
+                <div key=${r.id} class="hl" style=${{ padding:'14px 16px', borderRadius:14, border:'1.5px solid #E5E5EA', marginBottom:10, background:'#FAFAFA', cursor:'pointer' }}
                   onClick=${()=>setViewRetro(r)}>
-                  <div style=${{ flex:1 }}>
-                    <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <!-- Header row -->
+                  <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                    <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
                       <span style=${{ fontSize:13, fontWeight:700 }}>${fd(r.created_at)}</span>
                       <span style=${{ fontSize:9, color:rTipo.color, background:rTipo.color+'18', padding:'1px 6px', borderRadius:4, fontWeight:700 }}>${rTipo.icon} ${rTipo.label}</span>
                     </div>
-                    <div style=${{ fontSize:11, color:'#86868B', display:'flex', gap:10, flexWrap:'wrap' }}>
-                      <span>📝 ${nC} notas</span>
-                      <span>🎯 ${dC}/${aC} accionables</span>
-                      ${parts.length>0 && html`<span>👥 ${parts.slice(0,3).join(', ')}${parts.length>3?' +'+( parts.length-3):''}</span>`}
-                    </div>
-                    <div style=${{ display:'flex', alignItems:'center', gap:6, marginTop:5 }}>
-                      <div style=${{ flex:1, maxWidth:120, height:4, background:'#E5E5EA', borderRadius:2, overflow:'hidden' }}>
-                        <div style=${{ width:pct+'%', height:'100%', background:pctColor, borderRadius:2 }} />
-                      </div>
-                      <span style=${{ fontSize:10, color:pctColor, fontWeight:700 }}>${pct}% completado</span>
-                    </div>
+                    <span style=${{ color:'#C7C7CC', fontSize:14 }}>›</span>
                   </div>
-                  <div style=${{ color:'#C7C7CC', fontSize:16 }}>›</div>
+                  <!-- Stats row -->
+                  <div style=${{ display:'flex', gap:14, marginBottom:8 }}>
+                    <span style=${{ fontSize:11, color:'#86868B' }}>📝 <b style=${{ color:'#1D1D1F' }}>${nC}</b> notas</span>
+                    <span style=${{ fontSize:11, color:'#86868B' }}>🎯 <b style=${{ color:pctColor }}>${dC}/${aC}</b> accionables</span>
+                    ${riskC>0 && html`<span style=${{ fontSize:11, color:'#FF9500' }}>⚠️ <b>${riskC}</b> riesgos</span>`}
+                    <span style=${{ fontSize:11, color:'#86868B' }}>👥 <b style=${{ color:'#5856D6' }}>${parts.length}</b> personas</span>
+                  </div>
+                  <!-- Participants avatars -->
+                  ${parts.length>0 && html`
+                    <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:8, flexWrap:'wrap' }}>
+                      ${parts.map((name,i) => {
+                        const noteOfUser = (r.data?.notes||[]).find(n=>n.userName===name);
+                        const col = noteOfUser?.userColor || '#86868B';
+                        const av  = noteOfUser?.userAvatar || '👤';
+                        return html`<div key=${i} title=${name} style=${{ display:'flex', alignItems:'center', gap:4, background:'#FFF', border:'1px solid #E5E5EA', borderRadius:20, padding:'2px 8px 2px 2px' }}>
+                          <div style=${{ width:20, height:20, borderRadius:10, background:col, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, flexShrink:0 }}>${av}</div>
+                          <span style=${{ fontSize:10, fontWeight:600, color:'#1D1D1F' }}>${name}</span>
+                        </div>`;
+                      })}
+                    </div>
+                  `}
+                  <!-- Progress bar -->
+                  <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style=${{ flex:1, height:4, background:'#E5E5EA', borderRadius:2, overflow:'hidden' }}>
+                      <div style=${{ width:pct+'%', height:'100%', background:pctColor, borderRadius:2 }} />
+                    </div>
+                    <span style=${{ fontSize:10, color:pctColor, fontWeight:700, minWidth:60 }}>${pct}% hecho</span>
+                  </div>
                 </div>`;
             })
           }
