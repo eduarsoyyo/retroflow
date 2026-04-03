@@ -161,6 +161,7 @@ const MAIN_TABS = [
   { id:'retro',      label:'Retro',      icon:'📋' },
   { id:'equipo',     label:'Equipo',     icon:'👥' },
   { id:'vacaciones', label:'Vacaciones', icon:'🏖️' },
+  { id:'riesgos',    label:'Riesgos',    icon:'⚠️' },
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
 const ROLES = ['Scrum Master','Product Owner','Desarrollador/a','QA / Tester','Diseñador/a','DevOps','Tech Lead','Analista','Project Manager','Stakeholder','Otro'];
@@ -599,11 +600,13 @@ function AdminCalendarios() {
   const [newHol,  setNewHol]  = useState({date:'', name:''});
   const [saving,  setSaving]  = useState(false);
 
+  const [calMembers, setCalMembers] = useState([]);
   useEffect(() => {
     sbLoadCalendars().then(data => {
       setCals(data); setLoading(false);
       window.__calendars = data;
     });
+    sbLoadTeamMembers().then(m => setCalMembers(m||[]));
   }, []);
 
   const saveCal = async (cal) => {
@@ -712,15 +715,27 @@ function AdminCalendarios() {
                 <div style=${{ width:42, height:42, borderRadius:12, background:'linear-gradient(135deg,#5856D6,#007AFF)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📅</div>
                 <div style=${{ flex:1 }}>
                   <span style=${{ fontSize:14, fontWeight:700 }}>${c.name}</span>
-                  <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${(c.holidays||[]).length} festivos definidos</div>
+                  <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${(c.holidays||[]).length} festivos</div>
                   <div style=${{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
-                    ${(c.holidays||[]).slice(0,6).map((h,i) => html`
-                      <span key=${i} style=${{ fontSize:9, background:'#5856D610', color:'#5856D6', padding:'2px 7px', borderRadius:10, fontWeight:600 }}>${h.date} ${h.name}</span>`)}
-                    ${(c.holidays||[]).length>6 && html`<span style=${{ fontSize:9, color:'#86868B' }}>+${(c.holidays||[]).length-6} más</span>`}
+                    ${(c.holidays||[]).slice(0,4).map((h,i) => html`
+                      <span key=${i} style=${{ fontSize:9, background:'#5856D610', color:'#5856D6', padding:'2px 7px', borderRadius:10, fontWeight:600 }}>${h.date.slice(5)} ${h.name}</span>`)}
+                    ${(c.holidays||[]).length>4 && html`<span style=${{ fontSize:9, color:'#86868B' }}>+${(c.holidays||[]).length-4} festivos</span>`}
                   </div>
+                  ${(() => {
+                    const assigned = calMembers.filter(m=>m.calendar_id===c.id);
+                    if (!assigned.length) return null;
+                    return html`<div style=${{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                      ${assigned.map(m=>html`
+                        <span key=${m.id} style=${{ fontSize:10, display:'flex', alignItems:'center', gap:3, background:'#F9F9FB', border:'1px solid #E5E5EA', borderRadius:12, padding:'2px 8px 2px 4px' }}>
+                          <span style=${{ fontSize:13 }}>${m.avatar||'👤'}</span><span style=${{ fontWeight:600 }}>${m.name}</span>
+                        </span>`)}
+                    </div>`;
+                  })()}
                 </div>
                 <button onClick=${()=>{ setEditId(c.id); setEditCal({...c, holidays:[...(c.holidays||[])]}) }}
                   style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>✏️ Editar</button>
+                <button onClick=${()=>saveCal({...c, id:crypto.randomUUID(), name:'Copia de '+c.name})}
+                  style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #5856D620', background:'#FFF', color:'#5856D6', fontSize:11, cursor:'pointer' }}>📋 Clonar</button>
                 <button onClick=${()=>deleteCal(c.id)}
                   style=${{ padding:'5px 10px', borderRadius:7, border:'1.5px solid #FF3B3020', background:'#FFF', color:'#FF3B30', fontSize:11, cursor:'pointer' }}>✕</button>
               </div>
@@ -1049,7 +1064,7 @@ function RoomPicker() {
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Salas'},{id:'usuarios',label:'👥 Usuarios'},{id:'calendarios',label:'📅 Calendarios'}].map(t => html`
+          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Proyectos'},{id:'usuarios',label:'👥 Usuarios'},{id:'calendarios',label:'📅 Calendarios'}].map(t => html`
             <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
           `)}
         </div>
@@ -1255,9 +1270,9 @@ function RoomPicker() {
           `}
 
         ` : html`
-          <!-- ── SALAS ── -->
+          <!-- ── PROYECTOS ── -->
           <div style=${{ ...cS, padding:'20px', marginBottom:12 }}>
-            <h3 style=${{ fontSize:14, fontWeight:700, marginBottom:14 }}>➕ Nueva sala</h3>
+            <h3 style=${{ fontSize:14, fontWeight:700, marginBottom:14 }}>➕ Nuevo proyecto</h3>
             <div style=${{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
               <input value=${room} onInput=${e=>{
                 setRoom(e.target.value);
@@ -1582,20 +1597,229 @@ function PEquipo() {
         })}
       </div>
 
-      <!-- Add member -->
-      <div style=${{ display:'flex', gap:8, padding:'14px 16px', borderRadius:14, background:'#F9F9FB', border:'1.5px solid #E5E5EA' }}>
-        <input value=${newMem} onInput=${e=>setNewMem(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&addMember()}
-          placeholder="Nombre del nuevo miembro…"
-          style=${{ flex:1, border:'1.5px solid #E5E5EA', borderRadius:10, padding:'10px 14px', fontSize:14,
-            outline:'none', fontFamily:'inherit', background:'#FFF' }} />
-        <button onClick=${addMember}
-          style=${{ padding:'10px 20px', borderRadius:10, border:'none', background:'#1D1D1F', color:'#FFF',
-            fontSize:14, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>+ Añadir</button>
+      <!-- Members managed from Admin → Usuarios -->
+      <div style=${{ padding:'12px 16px', borderRadius:12, background:'#F0F7FF', border:'1px solid #007AFF20', textAlign:'center' }}>
+        <p style=${{ fontSize:12, color:'#007AFF' }}>👥 Para añadir o quitar miembros, ve a <strong>Admin → Usuarios</strong> y asigna el proyecto</p>
       </div>
     </div>`;
 }
 
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
+
+/* ═══ PRIESGOS — Risk Management Dashboard ═══ */
+function PRiesgos({ risks, sR, notes, retroHistory }) {
+  const [subTab, setSubTab] = useState('riesgos');
+  const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:''});
+  const [eId,    setEId]    = useState(null);
+  const [eF,     setEF]     = useState({});
+
+  // Merge retro risks (from current session) with portfolio risks
+  const allRisks = risks || [];
+
+  // Also pull risks from retro history snapshots
+  const histRisks = (retroHistory||[]).flatMap(r =>
+    (r.data?.risks||[]).map(risk => ({...risk, _fromRetro: fd(r.created_at), _retroId: r.id}))
+  );
+  // Deduplicate by id
+  const histOnly = histRisks.filter(hr => !allRisks.some(r=>r.id===hr.id));
+
+  const byType = (type, arr) => arr.filter(r => (r.type||'riesgo')===type && r.status!=='mitigated');
+  const riesgos     = byType('riesgo', allRisks);
+  const problemas   = byType('problema', allRisks);
+  const oportunidades = byType('oportunidad', allRisks);
+  const mitigados   = allRisks.filter(r=>r.status==='mitigated');
+  const histRisk    = byType('riesgo', histOnly);
+
+  const IMPACT_LEVELS = {alto:'#FF3B30', medio:'#FF9500', bajo:'#34C759'};
+  const PROB_LEVELS   = {alta:'#FF3B30', media:'#FF9500', baja:'#34C759'};
+  const heatColor = (imp, prob) => {
+    const iv={alto:3,medio:2,bajo:1}[imp]||2;
+    const pv={alta:3,media:2,baja:1}[prob]||2;
+    const score=iv*pv;
+    return score>=6?'#FF3B30':score>=3?'#FF9500':'#34C759';
+  };
+
+  const addItem = () => {
+    if (!form.text.trim()) return;
+    sR([...allRisks, {
+      id: uid(), type: form.type, text: form.text.trim(),
+      impact: form.impact, prob: form.prob,
+      owner: form.owner, mitigation: form.mitigation,
+      opportunity: form.opportunity,
+      status: 'open', impactVotes:{}, probVotes:{},
+      createdAt: new Date().toISOString()
+    }]);
+    setForm({type:form.type, text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:''});
+  };
+  const upd = (id, patch) => sR(allRisks.map(r=>r.id===id?{...r,...patch}:r));
+  const del = (id) => sR(allRisks.filter(r=>r.id!==id));
+  const saveE = () => { sR(allRisks.map(r=>r.id===eId?{...r,...eF}:r)); setEId(null); };
+
+  const TYPE_CONFIG = {
+    riesgo:      { label:'Riesgos',       icon:'⚠️', color:'#FF9500', bg:'#FFF9E6', desc:'Amenazas potenciales', btn:'+ Riesgo' },
+    problema:    { label:'Problemas',     icon:'🔴', color:'#FF3B30', bg:'#FFF5F5', desc:'Issues activos',       btn:'+ Problema' },
+    oportunidad: { label:'Oportunidades', icon:'🌟', color:'#34C759', bg:'#F0FFF4', desc:'Mejoras potenciales',  btn:'+ Oportunidad' },
+  };
+  const cur = TYPE_CONFIG[subTab] || TYPE_CONFIG.riesgo;
+  const curItems = subTab==='riesgos'?riesgos:subTab==='problemas'?problemas:subTab==='oportunidades'?oportunidades:mitigados;
+
+  const RiskCard = ({r, fromHist}) => {
+    const tc = TYPE_CONFIG[r.type||'riesgo'];
+    const hc = heatColor(r.impact||'medio', r.prob||'media');
+    return html`
+      <div style=${{ borderRadius:14, background:'#FFF', border:'1.5px solid #E5E5EA',
+        borderLeft:'4px solid '+hc, padding:'12px 14px', position:'relative',
+        opacity: fromHist ? .7 : 1 }}>
+        ${fromHist && html`<div style=${{ position:'absolute', top:8, right:8, fontSize:9, color:'#86868B', background:'#F2F2F7', padding:'1px 6px', borderRadius:4 }}>📚 ${r._fromRetro}</div>`}
+        ${eId===r.id ? html`
+          <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
+            <textarea value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px', fontSize:12, resize:'vertical', fontFamily:'inherit', outline:'none', minHeight:60 }} />
+            <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              <select value=${eF.impact} onChange=${e=>setEF({...eF,impact:e.target.value})} style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px', fontSize:11, outline:'none' }}>
+                ${['alto','medio','bajo'].map(v=>html`<option value=${v}>Impacto: ${v}</option>`)}
+              </select>
+              <select value=${eF.prob} onChange=${e=>setEF({...eF,prob:e.target.value})} style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px', fontSize:11, outline:'none' }}>
+                ${['alta','media','baja'].map(v=>html`<option value=${v}>Prob: ${v}</option>`)}
+              </select>
+              <input value=${eF.owner||''} onInput=${e=>setEF({...eF,owner:e.target.value})} placeholder="Responsable"
+                style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+              <input value=${eF.mitigation||''} onInput=${e=>setEF({...eF,mitigation:e.target.value})} placeholder="Mitigación"
+                style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+            </div>
+            <div style=${{ display:'flex', gap:6 }}>
+              <button onClick=${saveE} style=${{ padding:'6px 14px', borderRadius:7, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer' }}>Guardar</button>
+              <button onClick=${()=>setEId(null)} style=${{ padding:'6px 12px', borderRadius:7, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>Cancelar</button>
+            </div>
+          </div>
+        ` : html`
+          <div style=${{ display:'flex', alignItems:'flex-start', gap:10 }}>
+            <div style=${{ flex:1 }}>
+              <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                <span style=${{ fontSize:11, fontWeight:700, color:'#FFF', background:hc, padding:'2px 8px', borderRadius:20 }}>
+                  ${r.impact||'medio'} · ${r.prob||'media'}
+                </span>
+                ${r.owner && html`<span style=${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>${r.owner}</span>`}
+              </div>
+              <p style=${{ fontSize:13, fontWeight:600, lineHeight:1.4, marginBottom:4 }}>${r.text}</p>
+              ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B' }}>🛡️ ${r.mitigation}</p>`}
+              ${r.opportunity && html`<p style=${{ fontSize:11, color:'#34C759', fontWeight:600 }}>🌟 ${r.opportunity}</p>`}
+            </div>
+            ${!fromHist && html`
+              <div style=${{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
+                <select value=${r.status||'open'} onChange=${e=>upd(r.id,{status:e.target.value})}
+                  style=${{ fontSize:9, padding:'3px 5px', borderRadius:5, border:'1px solid #E5E5EA', outline:'none', background:'#FFF', cursor:'pointer' }}>
+                  <option value="open">Abierto</option>
+                  <option value="mitigated">Mitigado</option>
+                  <option value="accepted">Aceptado</option>
+                </select>
+                <button onClick=${()=>{setEId(r.id);setEF({text:r.text,impact:r.impact||'medio',prob:r.prob||'media',owner:r.owner||'',mitigation:r.mitigation||'',opportunity:r.opportunity||''})}}
+                  style=${{ fontSize:11, padding:'3px 7px', borderRadius:5, border:'1px solid #E5E5EA', background:'#FFF', cursor:'pointer' }}>✏️</button>
+                <button onClick=${()=>del(r.id)}
+                  style=${{ fontSize:11, padding:'3px 7px', borderRadius:5, border:'none', background:'none', color:'#C7C7CC', cursor:'pointer' }}>✕</button>
+              </div>
+            `}
+          </div>
+        `}
+      </div>`;
+  };
+
+  return html`
+    <div style=${{ maxWidth:1000, margin:'0 auto' }}>
+
+      <!-- KPI row -->
+      <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:18 }}>
+        ${[
+          ['⚠️','Riesgos',      riesgos.length,      '#FF9500'],
+          ['🔴','Problemas',     problemas.length,    '#FF3B30'],
+          ['🌟','Oportunidades', oportunidades.length,'#34C759'],
+          ['✅','Mitigados',     mitigados.length,    '#007AFF'],
+        ].map(([ic,lb,val,col])=>html`
+          <div style=${{ background:'#FFF', borderRadius:14, padding:'14px 16px', border:'1.5px solid #E5E5EA', textAlign:'center' }}>
+            <div style=${{ fontSize:22, marginBottom:4 }}>${ic}</div>
+            <div style=${{ fontSize:24, fontWeight:800, color:col }}>${val}</div>
+            <div style=${{ fontSize:10, color:'#86868B' }}>${lb}</div>
+          </div>`)}
+      </div>
+
+      <!-- Sub-tabs -->
+      <div style=${{ display:'flex', gap:0, borderBottom:'2px solid #F2F2F7', marginBottom:16 }}>
+        ${[['riesgos','⚠️ Riesgos'],['problemas','🔴 Problemas'],['oportunidades','🌟 Oportunidades'],['mitigados','✅ Resueltos'],['historial','📚 Historial']].map(([tid,tlabel])=>html`
+          <button key=${tid} onClick=${()=>setSubTab(tid)}
+            style=${{ padding:'9px 16px', fontSize:12, fontWeight:subTab===tid?700:500,
+              color:subTab===tid?'#007AFF':'#86868B', background:'transparent',
+              border:'none', borderBottom:subTab===tid?'2px solid #007AFF':'2px solid transparent',
+              cursor:'pointer', marginBottom:'-2px', whiteSpace:'nowrap' }}>
+            ${tlabel}
+          </button>`)}
+      </div>
+
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14, alignItems:'start' }}>
+
+        <!-- Main list -->
+        <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+          ${subTab==='historial' ? html`
+            <h4 style=${{ fontSize:13, fontWeight:700, color:'#86868B', marginBottom:4 }}>📚 Riesgos de retros anteriores (solo lectura)</h4>
+            ${histOnly.length===0
+              ? html`<div style=${{ textAlign:'center', padding:32, color:'#C7C7CC' }}><p style=${{ fontSize:32 }}>📭</p><p>Sin historial de riesgos</p></div>`
+              : histOnly.map(r => html`<${RiskCard} key=${r.id} r=${r} fromHist=${true} />`)}
+          ` : subTab==='mitigados' ? html`
+            ${mitigados.length===0
+              ? html`<div style=${{ textAlign:'center', padding:32, color:'#C7C7CC' }}><p style=${{ fontSize:32 }}>✅</p><p>Sin elementos resueltos aún</p></div>`
+              : mitigados.map(r => html`<${RiskCard} key=${r.id} r=${r} fromHist=${false} />`)}
+          ` : html`
+            ${curItems.length===0 && html`
+              <div style=${{ textAlign:'center', padding:32, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:14 }}>
+                <p style=${{ fontSize:32, marginBottom:8 }}>${cur.icon}</p>
+                <p style=${{ fontSize:14 }}>Sin ${cur.label.toLowerCase()} activos</p>
+                <p style=${{ fontSize:12, marginTop:4 }}>${cur.desc}</p>
+              </div>`}
+            ${curItems.map(r => html`<${RiskCard} key=${r.id} r=${r} fromHist=${false} />`)}
+          `}
+        </div>
+
+        <!-- Add form (right panel) -->
+        ${subTab!=='mitigados' && subTab!=='historial' && html`
+          <div style=${{ background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', padding:'16px', position:'sticky', top:0 }}>
+            <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo ${subTab==='riesgos'?'riesgo':subTab==='problemas'?'problema':'oportunidad'}</h4>
+            <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+              <textarea value=${form.text} onInput=${e=>setForm({...form,text:e.target.value,type:subTab==='riesgos'?'riesgo':subTab==='problemas'?'problema':'oportunidad'})}
+                placeholder=${subTab==='oportunidades'?'Describe la oportunidad…':'Describe el riesgo o problema…'}
+                onKeyDown=${e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addItem();}}}
+                style=${{ border:'1.5px solid #E5E5EA', borderRadius:10, padding:'9px 12px', fontSize:13, resize:'vertical', fontFamily:'inherit', outline:'none', minHeight:72 }} />
+              ${subTab!=='oportunidades' && html`
+                <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                  <select value=${form.impact} onChange=${e=>setForm({...form,impact:e.target.value})}
+                    style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, outline:'none', fontFamily:'inherit' }}>
+                    <option value="alto">Impacto: Alto</option>
+                    <option value="medio">Impacto: Medio</option>
+                    <option value="bajo">Impacto: Bajo</option>
+                  </select>
+                  <select value=${form.prob} onChange=${e=>setForm({...form,prob:e.target.value})}
+                    style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, outline:'none', fontFamily:'inherit' }}>
+                    <option value="alta">Prob: Alta</option>
+                    <option value="media">Prob: Media</option>
+                    <option value="baja">Prob: Baja</option>
+                  </select>
+                </div>
+              `}
+              <input value=${form.owner} onInput=${e=>setForm({...form,owner:e.target.value})} placeholder="Responsable"
+                style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 12px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+              <input value=${form.mitigation||''} onInput=${e=>setForm({...form,mitigation:e.target.value})}
+                placeholder=${subTab==='oportunidades'?'¿Cómo aprovecharla?':'Plan de mitigación'}
+                style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 12px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+              <button onClick=${addItem}
+                style=${{ padding:'9px', borderRadius:9, border:'none', background:cur.color, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ${cur.btn}
+              </button>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>`;
+}
+
+
 function PVacaciones() {
   const [team,    setTeam]   = useState(loadTeamData);
   const [sbMembers, setSbMembers] = useState([]);
@@ -1977,8 +2201,11 @@ function RetroBoard({ user, onLogout }) {
     <div ref=${bRef} style=${{ display:'flex', flexDirection:'column', height:'100vh', position:'relative' }}>
       ${Object.entries(cursors).map(([id,c])=>html`
         <div key=${id} style=${{ position:'fixed', left:c.x+'%', top:c.y+'%', pointerEvents:'none', zIndex:9999, transition:'left .4s ease-out, top .4s ease-out' }}>
-          <svg width="16" height="16" viewBox="0 0 20 20"><path d="M3 2L17 10L10 11L7 18L3 2Z" fill=${c.color} stroke="#FFF" stroke-width="1.5"/></svg>
-          <span style=${{ position:'absolute', left:14, top:10, background:c.color, color:'#FFF', fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:4, whiteSpace:'nowrap' }}>${c.avatar} ${c.name}</span>
+          <svg width="22" height="22" viewBox="0 0 20 20"><path d="M3 2L17 10L10 11L7 18L3 2Z" fill=${c.color} stroke="#FFF" stroke-width="1.5"/></svg>
+          <div style=${{ position:'absolute', left:18, top:12, background:c.color, color:'#FFF', borderRadius:20, padding:'3px 8px 3px 4px', display:'flex', alignItems:'center', gap:4, whiteSpace:'nowrap', boxShadow:'0 2px 8px rgba(0,0,0,.2)' }}>
+            <span style=${{ fontSize:18, lineHeight:1 }}>${c.avatar}</span>
+            <span style=${{ fontSize:11, fontWeight:700 }}>${c.name}</span>
+          </div>
         </div>
       `)}
       <header style=${{ ...gl, padding:'9px 18px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(0,0,0,0.06)', flexShrink:0, zIndex:100 }}>
@@ -2056,8 +2283,9 @@ function RetroBoard({ user, onLogout }) {
       <!-- ── CONTENT ── -->
       <div style=${{ flex:1, overflowY:'auto', padding:'14px 18px' }}>
         ${mainTab==='retro'      ? content()              : ''}
-        ${mainTab==='equipo'     ? html`<${PEquipo} />`   : ''}
-        ${mainTab==='vacaciones' ? html`<${PVacaciones} />` : ''}
+        ${mainTab==='equipo'     ? html`<${PEquipo} />`                                  : ''}
+        ${mainTab==='vacaciones' ? html`<${PVacaciones} />`                               : ''}
+        ${mainTab==='riesgos'    ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} retroHistory=${sbRetroHistory} />` : ''}
       </div>
       ${toast && html`
         <div style=${{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1D1D1F', color:'#FFF', padding:'12px 24px', borderRadius:14, fontSize:14, fontWeight:600, boxShadow:'0 8px 30px rgba(0,0,0,0.15)', zIndex:300, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8 }}>${toast}</div>
@@ -2629,6 +2857,7 @@ function P4({ notes, actions, risks, sA, user }) {
   const [eId, setEId] = useState(null);
   const [eF, setEF] = useState({});
   const [actFilter, setActFilter] = useState('all');
+  const [viewMode, setViewMode]   = useState('kanban'); // 'kanban' | 'list'
   const topN = [...notes].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0)).slice(0,12);
   const openRisks = (risks||[]).filter(r => r.status !== 'mitigated');
   const addA = fn => {
@@ -2668,34 +2897,112 @@ function P4({ notes, actions, risks, sA, user }) {
             <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})} style=${{ ...iS, width:100, flex:'none' }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
             <button onClick=${()=>addA(null)} style=${bP}>+ Añadir</button>
           </div>
-          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea accionables o selecciona notas/riesgos →</p></div>`}
-          <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
-            ${[...actions].filter(a => actFilter==='mine' ? a.createdBy===user.id : actFilter==='done' ? a.status==='done' : true).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a=>{
-              const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1]; const st=STS.find(s=>s.id===a.status); const ct=a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
-              if(eId===a.id) return html`
-                <div key=${a.id} style=${{ padding:'14px 16px', borderRadius:13, background:'#F9F9FB', border:'2px solid #007AFF30', animation:'fadeIn .2s' }}>
-                  <div style=${{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                    <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
-                    <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:80, fontSize:13 }} />
-                    <input type="date" value=${eF.date} onInput=${e=>setEF({...eF,date:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:13 }} />
-                    <select value=${eF.priority} onChange=${e=>setEF({...eF,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', fontSize:13 }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
-                  </div>
-                  <div style=${{ display:'flex', gap:6 }}><button onClick=${saveEA} style=${{ ...bP, padding:'8px 16px', fontSize:12 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'8px 14px', fontSize:12 }}>Cancelar</button></div>
-                </div>`;
-              return html`
-                <div key=${a.id} class="hl" style=${{ padding:'12px 14px', borderRadius:13, background:'#FFF', border:'1.5px solid #E5E5EA', display:'flex', alignItems:'center', gap:10 }}>
-                  <div style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, minWidth:40 }}><span style=${{ fontSize:14 }}>${pr.icon}</span><span style=${{ fontSize:8, fontWeight:700, color:pr.color, textTransform:'uppercase' }}>${pr.label}</span></div>
-                  <div style=${{ flex:1 }}>
-                    ${ct&&html`<span style=${{ fontSize:9, fontWeight:700, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:3, display:'inline-block', marginBottom:2 }}>${ct.emoji} ${ct.label}</span>`}
-                    <p style=${{ fontSize:13, fontWeight:600 }}>${a.text}</p>
-                    <div style=${{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}><span style=${{ fontSize:11, color:'#007AFF', fontWeight:600 }}>${a.owner}</span>${a.date&&html`<span style=${{ fontSize:10, color:'#86868B' }}>📅 ${fd(a.date)}</span>`}</div>
-                  </div>
-                  <select value=${a.status} onChange=${e=>upSt(a.id,e.target.value)} style=${{ padding:'5px 8px', borderRadius:7, border:'1.5px solid '+st.color+'28', background:st.bg, color:st.color, fontSize:11, fontWeight:600, outline:'none' }}>${STS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}</select>
-                  <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none', background:'none', fontSize:14, color:'#86868B' }}>✏️</button>
-                  <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC' }}>✕</button>
-                </div>`;
-            })}
+          <!-- View toggle -->
+          <div style=${{ display:'flex', gap:4, marginBottom:10 }}>
+            <button onClick=${()=>setViewMode('kanban')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='kanban'?'none':'1px solid #E5E5EA', background:viewMode==='kanban'?'#1D1D1F':'#FFF', color:viewMode==='kanban'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>⬜ Kanban</button>
+            <button onClick=${()=>setViewMode('list')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='list'?'none':'1px solid #E5E5EA', background:viewMode==='list'?'#1D1D1F':'#FFF', color:viewMode==='list'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>☰ Lista</button>
           </div>
+
+          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea accionables o selecciona notas/riesgos →</p></div>`}
+
+          <!-- KANBAN VIEW -->
+          ${viewMode==='kanban' && actions.length > 0 && html`
+            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, minHeight:200 }}>
+              ${[
+                {id:'pending',    label:'Pendiente',  color:'#FF9500', bg:'#FFF9E6'},
+                {id:'inprogress', label:'En proceso',  color:'#007AFF', bg:'#EEF5FF'},
+                {id:'done',       label:'Completado',  color:'#34C759', bg:'#F0FFF4'},
+                {id:'discarded',  label:'Descartado',  color:'#C7C7CC', bg:'#F9F9F9'},
+              ].map(col => {
+                const colActs = [...actions].filter(a =>
+                  (actFilter==='mine'?a.createdBy===user.id:true) && a.status===col.id
+                ).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0));
+                return html`
+                  <div key=${col.id} style=${{ background:col.bg, borderRadius:14, border:'1.5px solid '+col.color+'25', display:'flex', flexDirection:'column', minHeight:120 }}>
+                    <!-- Column header -->
+                    <div style=${{ padding:'10px 12px 8px', borderBottom:'2px solid '+col.color+'20', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span style=${{ fontSize:12, fontWeight:700, color:col.color }}>${col.label}</span>
+                      <span style=${{ fontSize:11, fontWeight:700, background:col.color+'20', color:col.color, padding:'1px 7px', borderRadius:10 }}>${colActs.length}</span>
+                    </div>
+                    <!-- Cards -->
+                    <div style=${{ flex:1, padding:'6px', display:'flex', flexDirection:'column', gap:5, overflowY:'auto', maxHeight:400 }}>
+                      ${colActs.map(a => {
+                        const pr = PRIS.find(p=>p.id===a.priority)||PRIS[1];
+                        const ct = a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
+                        return html`
+                          <div key=${a.id} style=${{ background:'#FFF', borderRadius:10, padding:'9px 10px', border:'1px solid '+col.color+'20', boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>
+                            <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
+                              <span style=${{ fontSize:11 }}>${pr.icon}</span>
+                              ${ct&&html`<span style=${{ fontSize:8, color:ct.color, background:ct.color+'10', padding:'1px 4px', borderRadius:3, fontWeight:700 }}>${ct.emoji}</span>`}
+                              <div style=${{ flex:1 }}/>
+                              <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none',background:'none',fontSize:11,color:'#C7C7CC',cursor:'pointer',padding:'1px' }}>✏️</button>
+                              <button onClick=${()=>delA(a.id)} style=${{ border:'none',background:'none',fontSize:11,color:'#E5E5EA',cursor:'pointer',padding:'1px' }}>✕</button>
+                            </div>
+                            <p style=${{ fontSize:12, fontWeight:600, lineHeight:1.3, marginBottom:4 }}>${a.text}</p>
+                            <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                              <span style=${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>${a.owner||''}</span>
+                              ${a.date&&html`<span style=${{ fontSize:9, color:'#86868B' }}>📅${fd(a.date).slice(0,5)}</span>`}
+                            </div>
+                            <!-- Move buttons -->
+                            <div style=${{ display:'flex', gap:2, marginTop:6, flexWrap:'wrap' }}>
+                              ${[
+                                {id:'pending',label:'Pend.'},
+                                {id:'inprogress',label:'En proc.'},
+                                {id:'done',label:'Hecho'},
+                                {id:'discarded',label:'Desc.'},
+                              ].filter(s=>s.id!==col.id).map(s=>html`
+                                <button key=${s.id} onClick=${()=>upSt(a.id,s.id)}
+                                  style=${{ fontSize:8, padding:'2px 5px', borderRadius:4, border:'1px solid #E5E5EA', background:'#FFF', cursor:'pointer', color:'#86868B' }}>→${s.label}</button>`)}
+                            </div>
+                            ${eId===a.id && html`
+                              <div style=${{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
+                                <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})}
+                                  style=${{ border:'1px solid #007AFF40', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+                                <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} placeholder="Responsable"
+                                  style=${{ border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+                                <div style=${{ display:'flex', gap:4 }}>
+                                  <button onClick=${saveEA} style=${{ flex:1, padding:'4px', borderRadius:6, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:10, fontWeight:600, cursor:'pointer' }}>Guardar</button>
+                                  <button onClick=${()=>setEId(null)} style=${{ padding:'4px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, cursor:'pointer' }}>✕</button>
+                                </div>
+                              </div>`}
+                          </div>`;
+                      })}
+                    </div>
+                  </div>`;
+              })}
+            </div>
+          `}
+
+          <!-- LIST VIEW -->
+          ${viewMode==='list' && html`
+            <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
+              ${[...actions].filter(a => actFilter==='mine' ? a.createdBy===user.id : actFilter==='done' ? a.status==='done' : true).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a=>{
+                const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1]; const st=STS.find(s=>s.id===a.status); const ct=a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
+                if(eId===a.id) return html`
+                  <div key=${a.id} style=${{ padding:'14px 16px', borderRadius:13, background:'#F9F9FB', border:'2px solid #007AFF30' }}>
+                    <div style=${{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                      <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
+                      <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:80, fontSize:13 }} />
+                      <input type="date" value=${eF.date} onInput=${e=>setEF({...eF,date:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:13 }} />
+                      <select value=${eF.priority} onChange=${e=>setEF({...eF,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', fontSize:13 }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
+                    </div>
+                    <div style=${{ display:'flex', gap:6 }}><button onClick=${saveEA} style=${{ ...bP, padding:'8px 16px', fontSize:12 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'8px 14px', fontSize:12 }}>Cancelar</button></div>
+                  </div>`;
+                return html`
+                  <div key=${a.id} class="hl" style=${{ padding:'12px 14px', borderRadius:13, background:'#FFF', border:'1.5px solid #E5E5EA', display:'flex', alignItems:'center', gap:10 }}>
+                    <div style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, minWidth:40 }}><span style=${{ fontSize:14 }}>${pr.icon}</span><span style=${{ fontSize:8, fontWeight:700, color:pr.color, textTransform:'uppercase' }}>${pr.label}</span></div>
+                    <div style=${{ flex:1 }}>
+                      ${ct&&html`<span style=${{ fontSize:9, fontWeight:700, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:3, display:'inline-block', marginBottom:2 }}>${ct.emoji} ${ct.label}</span>`}
+                      <p style=${{ fontSize:13, fontWeight:600 }}>${a.text}</p>
+                      <div style=${{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}><span style=${{ fontSize:11, color:'#007AFF', fontWeight:600 }}>${a.owner}</span>${a.date&&html`<span style=${{ fontSize:10, color:'#86868B' }}>📅 ${fd(a.date)}</span>`}</div>
+                    </div>
+                    <select value=${a.status} onChange=${e=>upSt(a.id,e.target.value)} style=${{ padding:'5px 8px', borderRadius:7, border:'1.5px solid '+st.color+'28', background:st.bg, color:st.color, fontSize:11, fontWeight:600, outline:'none' }}>${STS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}</select>
+                    <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none', background:'none', fontSize:14, color:'#86868B' }}>✏️</button>
+                    <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC' }}>✕</button>
+                  </div>`;
+              })}
+            </div>
+          `}
         </div>
         <div style=${{ ...cS, padding:18, overflowY:'auto', maxHeight:'80vh' }}>
           <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas más votadas</h4>
