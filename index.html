@@ -79,6 +79,17 @@ async function sbSaveTeamMember(m) {
 async function sbDeleteTeamMember(id) {
   try { await supabase.from('team_members').delete().eq('id',id); } catch {}
 }
+async function sbLoadOrgChart(sala) {
+  try { const {data}=await supabase.from('org_chart').select('*').eq('sala',sala); return data||[]; } catch { return []; }
+}
+async function sbSaveOrgNode(sala, memberId, managerId) {
+  try {
+    await supabase.from('org_chart').upsert(
+      { sala, member_id: memberId, manager_id: managerId || null },
+      { onConflict: 'sala,member_id' }
+    );
+  } catch {}
+}
 async function sbLoadCalendars() {
   try { const {data}=await supabase.from('calendars').select('*').order('name'); return data||[]; } catch { return []; }
 }
@@ -615,6 +626,8 @@ function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
       </div>
       <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
         <input value=${m.email||''} onInput=${e=>setM({...m,email:e.target.value})} placeholder="Email"
+          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+        <input value=${m.company||''} onInput=${e=>setM({...m,company:e.target.value})} placeholder="Empresa / Organización"
           style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
         <input value=${m.pin||''} onInput=${e=>setM({...m,pin:e.target.value})} placeholder="Contraseña" type="password"
           style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'9px 12px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
@@ -1816,109 +1829,327 @@ async function saveTeamSupabase(team, vacs) {
 
 /* ═══ PHASE 7 — EQUIPO ═══ */
 function PEquipo() {
-  const [team,    setTeam]   = useState(loadTeamData);
+  const [team,    setTeam]   = useState([]);
   const [loading, setLoading]= useState(true);
-  const [newMem,  setNewMem] = useState('');
-  const [saving,  setSaving] = useState(false);
-  const vacs = loadVacsData();
+  const [subTab,  setSubTab] = useState('lista');
+  const [org,     setOrg]    = useState({}); // { memberId: managerId }
+  const [orgSaving, setOrgSaving] = useState(false);
 
-  // Always load from Supabase — team_members assigned to this sala
   useEffect(() => {
-    sbLoadTeamMembers().then(data => {
+    Promise.all([sbLoadTeamMembers(), sbLoadOrgChart(SALA)]).then(([data, chart]) => {
       const salaMembers = data.filter(m => (m.rooms||[]).includes(SALA));
-      if (salaMembers.length > 0) {
-        const t = salaMembers.map(m => ({
-          id: m.id, name: m.name, avatar: m.avatar||'👤',
-          role: m.role||'', color: m.color||'#007AFF'
-        }));
-        setTeam(t); saveTeamLocal(t);
-      }
+      setTeam(salaMembers);
+      saveTeamLocal(salaMembers.map(m=>({id:m.id,name:m.name,avatar:m.avatar||'👤',role:m.role_label||'',color:m.color||'#007AFF'})));
+      const orgMap = {};
+      chart.forEach(n => { orgMap[n.member_id] = n.manager_id || null; });
+      setOrg(orgMap);
       setLoading(false);
     });
   }, []);
 
-  const persist = async (t) => {
-    saveTeamLocal(t);
-    setSaving(true);
-    await saveTeamSupabase(t, vacs);
-    setSaving(false);
+  const setManager = async (memberId, managerId) => {
+    setOrgSaving(true);
+    const newOrg = {...org, [memberId]: managerId || null};
+    setOrg(newOrg);
+    await sbSaveOrgNode(SALA, memberId, managerId || null);
+    setOrgSaving(false);
   };
-  const addMember = () => {
-    if (!newMem.trim()) return;
-    const t=[...team,{id:uid(),name:newMem.trim(),role:'',avatar:'👤'}];
-    setTeam(t); setNewMem(''); persist(t);
-  };
-  const delMember = id => { const t=team.filter(m=>m.id!==id); setTeam(t); persist(t); };
-  const updMember = (id,field,val) => {
-    const t=team.map(m=>m.id===id?{...m,[field]:val}:m); setTeam(t);
-    clearTimeout(window['_tedit_'+id]);
-    window['_tedit_'+id]=setTimeout(()=>persist(t),800);
-  };
+
+  const today = new Date().toISOString().slice(0,10);
+  const ROLE_COLORS = {'Scrum Master':'#007AFF','Product Owner':'#5856D6','Desarrollador/a':'#34C759','QA / Tester':'#FF9500','Diseñador/a':'#FF2D55','DevOps':'#00C7BE','Tech Lead':'#FF3B30','Analista':'#AF52DE','Project Manager':'#007AFF','Stakeholder':'#86868B'};
+  const rc = (r) => ROLE_COLORS[r] || '#5856D6';
+
+  // Build org tree
+  const buildTree = (managerId) => team.filter(m => (org[m.id]||null) === managerId);
+  const roots = buildTree(null);
 
   return html`
-    <div style=${{ maxWidth:700, margin:'0 auto' }}>
-      <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+    <div style=${{ maxWidth:960, margin:'0 auto' }}>
+      <!-- Header + sub-tabs -->
+      <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <div>
           <h2 style=${{ fontSize:20, fontWeight:700 }}>👥 Equipo</h2>
-          <p style=${{ fontSize:12, color:'#86868B', marginTop:2 }}>${team.length} miembros en ${SALA_DISPLAY}</p>
+          <p style=${{ fontSize:12, color:'#86868B', marginTop:2 }}>${team.length} miembros · ${SALA_DISPLAY}</p>
         </div>
-        ${saving && html`<span style=${{ fontSize:11, color:'#007AFF' }}>💾 Guardando…</span>`}
+        ${orgSaving && html`<span style=${{ fontSize:11, color:'#007AFF' }}>💾 Guardando…</span>`}
+      </div>
+      <div style=${{ display:'flex', gap:0, borderBottom:'2px solid #F2F2F7', marginBottom:16 }}>
+        ${[['lista','👤 Lista'],['organigrama','🏢 Organigrama']].map(([tid,tl])=>html`
+          <button key=${tid} onClick=${()=>setSubTab(tid)}
+            style=${{ padding:'9px 20px', fontSize:12, fontWeight:subTab===tid?700:500,
+              color:subTab===tid?'#007AFF':'#86868B', background:'transparent', border:'none',
+              borderBottom:subTab===tid?'2px solid #007AFF':'2px solid transparent',
+              cursor:'pointer', marginBottom:'-2px' }}>${tl}</button>`)}
       </div>
 
-      <!-- Member list -->
-      <div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
-        ${loading ? html`<div style=${{ textAlign:'center', padding:40, color:'#86868B' }}>⏳ Cargando equipo…</div>` :
-        team.length===0 ? html`
-          <div style=${{ textAlign:'center', padding:'48px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
-            <p style=${{ fontSize:40, marginBottom:8 }}>👤</p>
-            <p style=${{ fontSize:14 }}>Sin miembros asignados a este proyecto</p>
-            <p style=${{ fontSize:12, marginTop:6 }}>Añádelos desde Admin → Usuarios asignando este proyecto</p>
-          </div>` :
-        team.map(m => {
-          const mVacs = loadVacsData().filter(v=>v.memberId===m.id||v.name===m.name);
-          const today = new Date().toISOString().slice(0,10);
-          const onVac = mVacs.some(v=>v.from<=today&&(!v.to||v.to>=today));
+      ${loading ? html`<div style=${{ textAlign:'center', padding:40, color:'#86868B' }}>⏳ Cargando equipo…</div>` : html`
+
+        <!-- ── LISTA ── -->
+        ${subTab==='lista' && html`
+          <div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            ${team.length===0 ? html`
+              <div style=${{ textAlign:'center', padding:'48px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
+                <p style=${{ fontSize:40, marginBottom:8 }}>👤</p>
+                <p style=${{ fontSize:14 }}>Sin miembros asignados a este proyecto</p>
+                <p style=${{ fontSize:12, marginTop:6 }}>Añádelos desde Admin → Usuarios</p>
+              </div>` :
+              team.map(m => {
+                const onVac = (m.vacations||[]).some(v=>v.from<=today&&(!v.to||v.to>=today));
+                const color = rc(m.role_label||'');
+                const managerName = m.manager_id ? (team.find(x=>x.id===org[m.id])?.name || '') : '';
+                return html`
+                  <div key=${m.id} style=${{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderRadius:14,
+                    background:onVac?'#FFF9E6':'#FFF', border:'1.5px solid '+(onVac?'#FF9500':'#E5E5EA') }}>
+                    <div style=${{ width:48, height:48, borderRadius:14, background:m.color||'#E5E5EA',
+                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0 }}>
+                      ${m.avatar||'👤'}
+                    </div>
+                    <div style=${{ flex:1 }}>
+                      <div style=${{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                        <span style=${{ fontSize:14, fontWeight:700 }}>${m.name}</span>
+                        ${m.role_label && html`
+                          <span style=${{ fontSize:10, fontWeight:700, color:'#FFF', background:color, padding:'2px 8px', borderRadius:10 }}>${m.role_label}</span>`}
+                        ${m.company && html`
+                          <span style=${{ fontSize:10, color:'#86868B', background:'#F2F2F7', padding:'2px 8px', borderRadius:10 }}>🏢 ${m.company}</span>`}
+                        ${onVac && html`<span style=${{ fontSize:10, color:'#FF9500', fontWeight:700, background:'#FF950015', padding:'2px 8px', borderRadius:10 }}>🏖️ Vacaciones</span>`}
+                      </div>
+                      ${org[m.id] && html`
+                        <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>
+                          Reporta a: <strong>${team.find(x=>x.id===org[m.id])?.name || '—'}</strong>
+                        </div>`}
+                      ${m.email && html`<div style=${{ fontSize:11, color:'#C7C7CC', marginTop:1 }}>${m.email}</div>`}
+                    </div>
+                  </div>`;
+              })}
+          </div>
+          <div style=${{ padding:'10px 14px', borderRadius:10, background:'#F0F7FF', border:'1px solid #007AFF15', textAlign:'center' }}>
+            <p style=${{ fontSize:11, color:'#007AFF' }}>Para añadir o quitar miembros ve a <strong>Admin → Usuarios</strong></p>
+          </div>
+        `}
+
+        <!-- ── ORGANIGRAMA ── -->
+        ${subTab==='organigrama' && html`
+          <div>
+            <!-- Manager assignment table -->
+            <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px', marginBottom:16 }}>
+              <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>⚙️ Configurar jerarquía</h4>
+              <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
+                ${team.map(m => html`
+                  <div key=${m.id} style=${{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:10, background:'#F9F9FB' }}>
+                    <div style=${{ width:32, height:32, borderRadius:9, background:m.color||'#E5E5EA', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>${m.avatar||'👤'}</div>
+                    <span style=${{ flex:1, fontSize:13, fontWeight:600 }}>${m.name}</span>
+                    ${m.role_label && html`<span style=${{ fontSize:9, color:'#FFF', background:rc(m.role_label), padding:'2px 7px', borderRadius:9, fontWeight:700 }}>${m.role_label}</span>`}
+                    <span style=${{ fontSize:11, color:'#86868B', marginRight:4 }}>Reporta a:</span>
+                    <select value=${org[m.id]||''} onChange=${e=>setManager(m.id, e.target.value||null)}
+                      style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'5px 8px', fontSize:12, fontFamily:'inherit', outline:'none', background:'#FFF', maxWidth:160 }}>
+                      <option value="">— Nadie (raíz) —</option>
+                      ${team.filter(x=>x.id!==m.id).map(x=>html`<option key=${x.id} value=${x.id}>${x.name}</option>`)}
+                    </select>
+                  </div>`)}
+              </div>
+            </div>
+
+            <!-- Visual org chart -->
+            ${roots.length===0 ? html`
+              <div style=${{ textAlign:'center', padding:32, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:14 }}>
+                <p style=${{ fontSize:28, marginBottom:8 }}>🏢</p>
+                <p style=${{ fontSize:13 }}>Asigna reportes arriba para ver el organigrama</p>
+              </div>` :
+              html`<${OrgTree} nodes=${roots} all=${team} org=${org} rc=${rc} depth=${0} />`}
+          </div>
+        `}
+      `}
+    </div>`;
+}
+
+/* ─── OrgTree — recursive org chart renderer ─── */
+function OrgTree({ nodes, all, org, rc, depth }) {
+  if (!nodes.length) return null;
+  return html`
+    <div style=${{ display:'flex', gap:24, justifyContent:'center', position:'relative', padding:'0 8px' }}>
+      ${nodes.map((m, i) => {
+        const children = all.filter(x => org[x.id] === m.id);
+        const color = rc(m.role_label||'');
+        return html`
+          <div key=${m.id} style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:0 }}>
+            <!-- Connector line from parent -->
+            ${depth > 0 && html`<div style=${{ width:2, height:24, background:'#E5E5EA' }}></div>`}
+            <!-- Card -->
+            <div style=${{ background:'#FFF', borderRadius:14, border:'2px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),
+              padding:'12px 14px', minWidth:130, textAlign:'center', boxShadow:depth===0?'0 4px 16px rgba(0,0,0,.08)':'0 2px 8px rgba(0,0,0,.04)',
+              position:'relative' }}>
+              <div style=${{ width:44, height:44, borderRadius:12, background:m.color||'#E5E5EA',
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:24,
+                margin:'0 auto 6px' }}>${m.avatar||'👤'}</div>
+              <p style=${{ fontSize:12, fontWeight:700, margin:'0 0 4px' }}>${m.name}</p>
+              ${m.role_label && html`
+                <span style=${{ fontSize:9, color:'#FFF', background:color, padding:'2px 8px', borderRadius:8, fontWeight:700, display:'inline-block' }}>${m.role_label}</span>`}
+              ${m.company && html`
+                <p style=${{ fontSize:9, color:'#86868B', marginTop:4 }}>🏢 ${m.company}</p>`}
+              ${children.length > 0 && html`
+                <div style=${{ position:'absolute', bottom:-2, left:'50%', transform:'translateX(-50%)',
+                  width:2, height:24, background:'#E5E5EA', bottom:-24 }}></div>`}
+            </div>
+            <!-- Children -->
+            ${children.length > 0 && html`
+              <div style=${{ marginTop:24, position:'relative' }}>
+                <!-- Horizontal line connecting children -->
+                ${children.length > 1 && html`
+                  <div style=${{ position:'absolute', top:0, left:'50%', width:${children.length > 1 ? '80%':'0'}, height:2, background:'#E5E5EA', transform:'translateX(-50%)' }}></div>`}
+                <${OrgTree} nodes=${children} all=${all} org=${org} rc=${rc} depth=${depth+1} />
+              </div>`}
+          </div>`;
+      })}
+    </div>`;
+}
+
+/* ═══ ESCALADO PANEL ═══ */
+function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
+  const openRisks = risks.filter(r => r.status !== 'mitigated' && (r.type||'riesgo') !== 'oportunidad');
+
+  const ESCALATION_LEVELS = [
+    { id:'equipo',      label:'Equipo',             color:'#34C759', desc:'Se resuelve en el equipo' },
+    { id:'pm',          label:'Project Manager',     color:'#FF9500', desc:'Escalar al PM del proyecto' },
+    { id:'sponsor',     label:'Sponsor',             color:'#FF3B30', desc:'Requiere decisión del sponsor' },
+    { id:'comite',      label:'Comité directivo',    color:'#5856D6', desc:'Elevar a comité ejecutivo' },
+    { id:'externo',     label:'Externo / Cliente',   color:'#1D1D1F', desc:'Involucra a stakeholder externo' },
+  ];
+  const STATUS = [
+    { id:'pendiente',   label:'Pendiente',   color:'#FF9500' },
+    { id:'en_curso',    label:'En curso',    color:'#007AFF' },
+    { id:'resuelto',    label:'Resuelto',    color:'#34C759' },
+    { id:'bloqueado',   label:'Bloqueado',   color:'#FF3B30' },
+  ];
+
+  const escalated = risks.filter(r => r.escalation);
+  const byLevel = (level) => escalated.filter(r => r.escalation?.level === level);
+
+  const saveEscalation = () => {
+    if (!escalForm.riskId) return;
+    upd(escalForm.riskId, {
+      escalation: {
+        level: escalForm.level,
+        responsible: escalForm.responsible,
+        deadline: escalForm.deadline,
+        note: escalForm.note,
+        status: escalForm.status,
+        createdAt: new Date().toISOString(),
+      }
+    });
+    setEscalForm({riskId:'', level:'pm', responsible:'', deadline:'', note:'', status:'pendiente'});
+  };
+  const removeEscalation = (id) => upd(id, { escalation: null });
+
+  return html`
+    <div>
+      <!-- Level overview -->
+      <div style=${{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8, marginBottom:16 }}>
+        ${ESCALATION_LEVELS.map(l => {
+          const cnt = byLevel(l.id).length;
           return html`
-            <div key=${m.id} style=${{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', borderRadius:14,
-              background:onVac?'#FFF9E6':'#FAFAFA', border:'1.5px solid '+(onVac?'#FF9500':'#E5E5EA') }}>
-              <div style=${{ position:'relative', flexShrink:0 }}>
-                <div style=${{ width:52, height:52, borderRadius:14, background:m.color||'#E5E5EA', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, cursor:'pointer', border:'1.5px solid rgba(0,0,0,.06)' }}
-                  onClick=${e=>{ e.stopPropagation(); const d=document.getElementById('avp-'+m.id); if(d) d.style.display=d.style.display==='none'?'flex':'none'; }}>
-                  ${m.avatar||'👤'}
-                </div>
-                <div id=${'avp-'+m.id} style=${{ display:'none', position:'absolute', top:56, left:0, zIndex:999, background:'#FFF', border:'1.5px solid #E5E5EA', borderRadius:14, padding:8, flexWrap:'wrap', gap:4, width:220, boxShadow:'0 8px 24px rgba(0,0,0,.12)' }}>
-                  ${[...AVATARS,'😀','😎','🤓','🦸','🧑‍💻','🧑‍🎨','🧑‍🔬','👩‍💼','👨‍💼'].map(a => html`
-                    <button key=${a} onClick=${e=>{ e.stopPropagation(); updMember(m.id,'avatar',a); document.getElementById('avp-'+m.id).style.display='none'; }}
-                      style=${{ width:34, height:34, borderRadius:8, border:m.avatar===a?'2px solid #007AFF':'1px solid #E5E5EA', background:m.avatar===a?'#007AFF10':'#FAFAFA', fontSize:20, cursor:'pointer' }}>${a}</button>`)}
-                </div>
-              </div>
-              <div style=${{ flex:1 }}>
-                <input value=${m.name} onInput=${e=>updMember(m.id,'name',e.target.value)}
-                  style=${{ display:'block', width:'100%', border:'none', background:'transparent',
-                    fontSize:15, fontWeight:600, color:'#1D1D1F', outline:'none', fontFamily:'inherit', marginBottom:2 }} placeholder="Nombre" />
-                <input value=${m.role||''} onInput=${e=>updMember(m.id,'role',e.target.value)}
-                  style=${{ display:'block', width:'100%', border:'none', background:'transparent',
-                    fontSize:12, color:'#86868B', outline:'none', fontFamily:'inherit' }} placeholder="Rol (opcional)" />
-              </div>
-              ${onVac && html`<span style=${{ fontSize:10, color:'#FF9500', fontWeight:700, background:'#FF950020', padding:'3px 8px', borderRadius:5 }}>🏖️ Vacaciones</span>`}
-              <button onClick=${()=>delMember(m.id)}
-                style=${{ width:28, height:28, border:'none', background:'#FFF', borderRadius:8, color:'#FF3B30', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+            <div style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', padding:'12px 10px', textAlign:'center',
+              borderTop:'3px solid '+l.color }}>
+              <div style=${{ fontSize:18, fontWeight:800, color:l.color }}>${cnt||'—'}</div>
+              <div style=${{ fontSize:10, fontWeight:700, color:'#1D1D1F', marginTop:2 }}>${l.label}</div>
+              <div style=${{ fontSize:9, color:'#86868B', marginTop:2, lineHeight:1.3 }}>${l.desc}</div>
             </div>`;
         })}
       </div>
 
-      <!-- Members managed from Admin → Usuarios -->
-      <div style=${{ padding:'12px 16px', borderRadius:12, background:'#F0F7FF', border:'1px solid #007AFF20', textAlign:'center' }}>
-        <p style=${{ fontSize:12, color:'#007AFF' }}>👥 Para añadir o quitar miembros, ve a <strong>Admin → Usuarios</strong> y asigna el proyecto</p>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14, alignItems:'start' }}>
+
+        <!-- Escalated risks list -->
+        <div>
+          ${escalated.length===0 ? html`
+            <div style=${{ textAlign:'center', padding:32, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:14 }}>
+              <p style=${{ fontSize:28, marginBottom:8 }}>📈</p>
+              <p style=${{ fontSize:13 }}>Sin riesgos escalados</p>
+              <p style=${{ fontSize:11, marginTop:4 }}>Usa el formulario para escalar un riesgo</p>
+            </div>` :
+            ESCALATION_LEVELS.map(l => {
+              const items = byLevel(l.id);
+              if (!items.length) return null;
+              return html`
+                <div key=${l.id} style=${{ marginBottom:14 }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:8, paddingBottom:6, borderBottom:'2px solid '+l.color+'30' }}>
+                    <div style=${{ width:10, height:10, borderRadius:5, background:l.color }}></div>
+                    <span style=${{ fontSize:12, fontWeight:700, color:l.color }}>${l.label}</span>
+                    <span style=${{ fontSize:10, color:'#86868B' }}>${items.length} riesgo${items.length>1?'s':''}</span>
+                  </div>
+                  ${items.map(r => {
+                    const esc = r.escalation;
+                    const st = STATUS.find(s=>s.id===esc.status)||STATUS[0];
+                    const rn = risks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
+                    const prefix = (r.type||'riesgo')==='problema'?'P':'R';
+                    return html`
+                      <div style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA',
+                        borderLeft:'4px solid '+l.color, padding:'10px 14px', marginBottom:6 }}>
+                        <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                          <span style=${{ fontSize:12, fontWeight:800, color:l.color }}>${prefix}${rn}</span>
+                          <span style=${{ fontSize:12, flex:1, fontWeight:600 }}>${r.text}</span>
+                          <span style=${{ fontSize:9, fontWeight:700, color:st.color, background:st.color+'15', padding:'2px 8px', borderRadius:10 }}>${st.label}</span>
+                          <button onClick=${()=>removeEscalation(r.id)} style=${{ border:'none', background:'none', color:'#C7C7CC', fontSize:12, cursor:'pointer' }}>✕</button>
+                        </div>
+                        <div style=${{ display:'flex', gap:12, fontSize:10, color:'#86868B' }}>
+                          ${esc.responsible && html`<span>👤 ${esc.responsible}</span>`}
+                          ${esc.deadline && html`<span>📅 ${esc.deadline}</span>`}
+                          ${esc.note && html`<span>📝 ${esc.note}</span>`}
+                        </div>
+                      </div>`;
+                  })}
+                </div>`;
+            })}
+        </div>
+
+        <!-- Add escalation form -->
+        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px', position:'sticky', top:0 }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>📈 Escalar riesgo</h4>
+          <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
+            <select value=${escalForm.riskId} onChange=${e=>setEscalForm({...escalForm,riskId:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
+              <option value="">— Selecciona riesgo —</option>
+              ${openRisks.map((r,i) => {
+                const prefix = (r.type||'riesgo')==='problema'?'P':'R';
+                const n = risks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
+                return html`<option key=${r.id} value=${r.id}>${prefix}${n}: ${r.text.slice(0,40)}${r.text.length>40?'…':''}</option>`;
+              })}
+            </select>
+            <select value=${escalForm.level} onChange=${e=>setEscalForm({...escalForm,level:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
+              ${ESCALATION_LEVELS.map(l=>html`<option key=${l.id} value=${l.id}>${l.label}</option>`)}
+            </select>
+            <select value=${escalForm.status} onChange=${e=>setEscalForm({...escalForm,status:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
+              ${STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+            </select>
+            <input value=${escalForm.responsible} onInput=${e=>setEscalForm({...escalForm,responsible:e.target.value})}
+              placeholder="Responsable de gestión"
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+            <div>
+              <label style=${{ fontSize:10, color:'#86868B', display:'block', marginBottom:3 }}>Fecha límite</label>
+              <input type="date" value=${escalForm.deadline} onInput=${e=>setEscalForm({...escalForm,deadline:e.target.value})}
+                style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 8px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+            </div>
+            <textarea value=${escalForm.note} onInput=${e=>setEscalForm({...escalForm,note:e.target.value})}
+              placeholder="Nota / justificación del escalado…" rows="3"
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none', resize:'vertical' }}></textarea>
+            <button onClick=${saveEscalation} disabled=${!escalForm.riskId}
+              style=${{ padding:'9px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', opacity:escalForm.riskId?1:.4 }}>
+              📈 Escalar
+            </button>
+          </div>
+        </div>
       </div>
     </div>`;
 }
+
 
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
 
 /* ═══ PRIESGOS — Risk Management Dashboard ═══ */
 function PRiesgos({ risks, sR, notes, retroHistory }) {
-  const [subTab, setSubTab] = useState('riesgos');
+  const [subTab,    setSubTab]    = useState('riesgos');
+  const [escalForm, setEscalForm] = useState({riskId:'', level:'alto_mando', responsible:'', deadline:'', note:'', status:'pendiente'});
   const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:''});
   const [eId,    setEId]    = useState(null);
   const [eF,     setEF]     = useState({});
@@ -2159,7 +2390,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
 
       <!-- Sub-tabs -->
       <div style=${{ display:'flex', gap:0, borderBottom:'2px solid #F2F2F7', marginBottom:16 }}>
-        ${[['riesgos','⚠️ Riesgos'],['problemas','🔴 Problemas'],['oportunidades','🌟 Oportunidades'],['mitigados','✅ Resueltos'],['historial','📚 Historial']].map(([tid,tlabel])=>html`
+        ${[['riesgos','⚠️ Riesgos'],['problemas','🔴 Problemas'],['oportunidades','🌟 Oportunidades'],['mitigados','✅ Resueltos'],['escalado','📈 Escalado'],['historial','📚 Historial']].map(([tid,tlabel])=>html`
           <button key=${tid} onClick=${()=>setSubTab(tid)}
             style=${{ padding:'9px 16px', fontSize:12, fontWeight:subTab===tid?700:500,
               color:subTab===tid?'#007AFF':'#86868B', background:'transparent',
@@ -2173,7 +2404,9 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
 
         <!-- Main list -->
         <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-          ${subTab==='historial' ? html`
+          ${subTab==='escalado' ? html`
+            <${EscaladoPanel} risks=${allRisks} upd=${upd} escalForm=${escalForm} setEscalForm=${setEscalForm} />
+          ` : subTab==='historial' ? html`
             <h4 style=${{ fontSize:13, fontWeight:700, color:'#86868B', marginBottom:4 }}>📚 Riesgos de retros anteriores (solo lectura)</h4>
             ${histOnly.length===0
               ? html`<div style=${{ textAlign:'center', padding:32, color:'#C7C7CC' }}><p style=${{ fontSize:32 }}>📭</p><p>Sin historial de riesgos</p></div>`
@@ -2194,7 +2427,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
         </div>
 
         <!-- Add form (right panel) -->
-        ${subTab!=='mitigados' && subTab!=='historial' && html`
+        ${subTab!=='mitigados' && subTab!=='historial' && subTab!=='escalado' && html`
           <div style=${{ background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', padding:'16px', position:'sticky', top:0 }}>
             <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo ${subTab==='riesgos'?'riesgo':subTab==='problemas'?'problema':'oportunidad'}</h4>
             <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
