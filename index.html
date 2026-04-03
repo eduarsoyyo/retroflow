@@ -974,6 +974,7 @@ function RoomPicker() {
     });
     sbLoadRetros().then(data => { setSbRetros(data); setLoadingSb(false); });
     sbLoadCalendars().then(cals => { window.__calendars = cals; });
+    sbLoadTeamMembers().then(members => { window.__allMembers = members||[]; });
   }, []);
 
   const go = (slug, t) => { window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(slug) + '&tipo=' + (t || 'agile'); };
@@ -1097,25 +1098,100 @@ function RoomPicker() {
             </div>
           ` : html`
 
-            <!-- KPI cards (2 rows × 4) -->
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
-              ${[
-                {l:'Proyectos',      v:rooms.length,           i:'📂', c:'#5856D6'},
-                {l:'Retros',         v:totalRetros,            i:'📊', c:'#007AFF'},
-                {l:'Notas',          v:totalNotes,             i:'📝', c:'#FF9500'},
-                {l:'Votos',          v:totalVotes,             i:'👍', c:'#FF2D55'},
-                {l:'Accionables',    v:totalActions,           i:'🎯', c:'#34C759'},
-                {l:'Completados',    v:Math.round(actionRate)+'%', i:'✅', c:actionRate>=75?'#34C759':actionRate>=40?'#FF9500':'#FF3B30'},
-                {l:'Riesgos ('+(allRisks.filter(r=>r.status==='mitigated').length)+' mitigados)',
-                                     v:totalRisksOpen,         i:'⚠️', c:totalRisksOpen>0?'#FF3B30':'#34C759'},
-                {l:'Personas',       v:allParticipants.length, i:'👥', c:'#AF52DE'},
-              ].map((k,i) => html`
-                <div key=${i} style=${{ ...cS, padding:'16px 10px', textAlign:'center' }}>
-                  <div style=${{ fontSize:20, marginBottom:4 }}>${k.i}</div>
-                  <div style=${{ fontSize:22, fontWeight:800, color:k.c, lineHeight:1.1 }}>${k.v}</div>
-                  <div style=${{ fontSize:9, color:'#86868B', marginTop:3 }}>${k.l}</div>
-                </div>`)}
-            </div>
+            <!-- KPI grid: Retro + Equipo + Riesgos + Vacaciones -->
+            ${(() => {
+              const allMembers = window.__allMembers || [];
+              const salaMembers = filterProject==='all' ? allMembers : allMembers.filter(m=>(m.rooms||[]).includes(filterProject));
+              const today = new Date().toISOString().slice(0,10);
+              const onVacToday = salaMembers.filter(m=>(m.vacations||[]).some(v=>v.from<=today&&(!v.to||v.to>=today))).length;
+              const totalRisksFromRetros = filteredStats.reduce((s,x)=>s+x.risksOpen,0);
+              const totalProblemas = filteredStats.flatMap(s=>s.entries.flatMap(rt=>(rt.data?.risks||[]).filter(r=>(r.type||'riesgo')==='problema'&&r.status!=='mitigated'))).length;
+
+              return html`
+                <!-- Row 1: Retro metrics -->
+                <p style=${{ fontSize:10, fontWeight:700, color:'#86868B', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>📋 Retro</p>
+                <div style=${{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:14 }}>
+                  ${[
+                    {l:'Proyectos',  v:rooms.length,    i:'📂', c:'#5856D6'},
+                    {l:'Retros',     v:totalRetros,     i:'📊', c:'#007AFF'},
+                    {l:'Notas',      v:totalNotes,      i:'📝', c:'#FF9500'},
+                    {l:'Accionables',v:totalActions,    i:'🎯', c:'#34C759'},
+                    {l:'% Hecho',    v:Math.round(actionRate)+'%', i:'✅', c:actionRate>=75?'#34C759':actionRate>=40?'#FF9500':'#FF3B30'},
+                    {l:'Personas',   v:allParticipants.length, i:'👥', c:'#AF52DE'},
+                  ].map((k,i) => html`
+                    <div key=${i} style=${{ ...cS, padding:'12px 8px', textAlign:'center' }}>
+                      <div style=${{ fontSize:18, marginBottom:3 }}>${k.i}</div>
+                      <div style=${{ fontSize:20, fontWeight:800, color:k.c, lineHeight:1.1 }}>${k.v}</div>
+                      <div style=${{ fontSize:9, color:'#86868B', marginTop:2 }}>${k.l}</div>
+                    </div>`)}
+                </div>
+
+                <!-- Row 2: Equipo + Riesgos + Vacaciones -->
+                <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:14 }}>
+
+                  <!-- Equipo -->
+                  <div style=${{ ...cS, padding:'14px 16px' }}>
+                    <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:10 }}>👥 Equipo</h4>
+                    <div style=${{ display:'flex', gap:8, marginBottom:8 }}>
+                      <div style=${{ flex:1, textAlign:'center' }}>
+                        <div style=${{ fontSize:22, fontWeight:800, color:'#5856D6' }}>${salaMembers.length}</div>
+                        <div style=${{ fontSize:9, color:'#86868B' }}>miembros</div>
+                      </div>
+                      <div style=${{ flex:1, textAlign:'center' }}>
+                        <div style=${{ fontSize:22, fontWeight:800, color:onVacToday>0?'#FF9500':'#34C759' }}>${onVacToday}</div>
+                        <div style=${{ fontSize:9, color:'#86868B' }}>de vacaciones hoy</div>
+                      </div>
+                    </div>
+                    <div style=${{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                      ${salaMembers.slice(0,8).map(m=>html`
+                        <div title=${m.name} style=${{ width:28, height:28, borderRadius:8, background:m.color||'#E5E5EA', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15 }}>${m.avatar||'👤'}</div>`)}
+                      ${salaMembers.length>8&&html`<div style=${{ width:28, height:28, borderRadius:8, background:'#F2F2F7', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, color:'#86868B', fontWeight:700 }}>+${salaMembers.length-8}</div>`}
+                    </div>
+                  </div>
+
+                  <!-- Riesgos -->
+                  <div style=${{ ...cS, padding:'14px 16px' }}>
+                    <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:10 }}>⚠️ Riesgos</h4>
+                    <div style=${{ display:'flex', gap:6 }}>
+                      ${[
+                        {l:'Riesgos',     v:totalRisksFromRetros, c:'#FF9500', i:'⚠️'},
+                        {l:'Problemas',   v:totalProblemas,       c:'#FF3B30', i:'🔴'},
+                        {l:'Mitigados',   v:filteredStats.flatMap(s=>s.entries.flatMap(rt=>(rt.data?.risks||[]).filter(r=>r.status==='mitigated'))).length, c:'#34C759', i:'✅'},
+                      ].map(k=>html`
+                        <div style=${{ flex:1, textAlign:'center', padding:'6px 4px', borderRadius:8, background:k.c+'10' }}>
+                          <div style=${{ fontSize:9, marginBottom:2 }}>${k.i}</div>
+                          <div style=${{ fontSize:18, fontWeight:800, color:k.c }}>${k.v}</div>
+                          <div style=${{ fontSize:8, color:'#86868B' }}>${k.l}</div>
+                        </div>`)}
+                    </div>
+                  </div>
+
+                  <!-- Vacaciones -->
+                  <div style=${{ ...cS, padding:'14px 16px' }}>
+                    <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:10 }}>🏖️ Vacaciones</h4>
+                    ${(() => {
+                      const vacToday = salaMembers.filter(m=>(m.vacations||[]).some(v=>v.from<=today&&(!v.to||v.to>=today)));
+                      const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth()+1);
+                      const vacSoon = salaMembers.filter(m=>(m.vacations||[]).some(v=>{
+                        const d=new Date(v.from); return d>new Date()&&d<=nextMonth;
+                      }));
+                      return html`
+                        ${vacToday.length>0
+                          ? html`<div style=${{ marginBottom:6 }}>
+                              <span style=${{ fontSize:10, color:'#FF9500', fontWeight:700 }}>Hoy: </span>
+                              ${vacToday.map(m=>html`<span key=${m.id} style=${{ fontSize:11, marginRight:4 }}>${m.avatar||'👤'} ${m.name}</span>`)}
+                            </div>`
+                          : html`<p style=${{ fontSize:11, color:'#C7C7CC', marginBottom:6 }}>Nadie de vacaciones hoy</p>`}
+                        ${vacSoon.length>0 && html`<div>
+                          <span style=${{ fontSize:10, color:'#86868B', fontWeight:700 }}>Próximo mes: </span>
+                          ${vacSoon.slice(0,3).map(m=>html`<span key=${m.id} style=${{ fontSize:11, marginRight:4 }}>${m.avatar||'👤'} ${m.name}</span>`)}
+                        </div>`}
+                      `;
+                    })()}
+                  </div>
+                </div>
+              `;
+            })()}
 
             <!-- Sparklines row -->
             <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
@@ -1664,12 +1740,18 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
   const curItems = subTab==='riesgos'?riesgos:subTab==='problemas'?problemas:subTab==='oportunidades'?oportunidades:mitigados;
 
   // rNum: sequential number for display (R1, R2…)
-  const riskNum = (r) => allRisks.indexOf(r) + 1;
+  // Sequential numbers per type
+  const riskNum = (r) => {
+    const sameType = allRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo'));
+    return sameType.indexOf(r) + 1;
+  };
 
   const IMPACT_BTNS = [{id:'alto',label:'Alto',color:'#FF3B30'},{id:'medio',label:'Medio',color:'#FF9500'},{id:'bajo',label:'Bajo',color:'#34C759'}];
 
   const RiskCard = ({r, fromHist}) => {
-    const hc = heatColor(r.impact||'medio', r.prob||'media');
+    const typeKey = r.type||'riesgo';
+    const prefix = typeKey==='problema'?'P':typeKey==='oportunidad'?'O':'R';
+    const hc = typeKey==='problema' ? '#FF3B30' : heatColor(r.impact||'medio', r.prob||'media');
     const idx = riskNum(r);
     return html`
       <div style=${{ borderRadius:14, background:'#FFF', border:'1.5px solid #E5E5EA',
@@ -1693,7 +1775,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
         ` : html`
           <div>
             <div style=${{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:8 }}>
-              <span style=${{ fontSize:13, fontWeight:800, color:hc, minWidth:30 }}>R${idx}</span>
+              <span style=${{ fontSize:13, fontWeight:800, color:hc, minWidth:30 }}>${prefix}${idx}</span>
               <div style=${{ flex:1 }}>
                 <p style=${{ fontSize:13, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
                 ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
@@ -1780,6 +1862,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
                            : '#34C759';
                   const cellRisks = allRisks.filter(r=>
                     r.status!=='mitigated' &&
+                    (r.type||'riesgo')!=='problema' &&
                     (r.impact||'medio')===imp &&
                     (r.prob||'media')===prob
                   );
@@ -1789,22 +1872,25 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
                       ${cellRisks.length===0 && html`<span style=${{ fontSize:10, color:hc+'50', alignSelf:'center', margin:'auto' }}>·</span>`}
                       ${cellRisks.map(r => {
                         const rn = riskNum(r);
+                        const prefix = (r.type||'riesgo')==='oportunidad' ? 'O' : 'R';
+                        const dotColor = (r.type||'riesgo')==='oportunidad' ? '#34C759' : hc;
+                        const targetTab = (r.type||'riesgo')==='oportunidad' ? 'oportunidades' : 'riesgos';
                         return html`
                           <div key=${r.id} style=${{ position:'relative' }}
                             onMouseEnter=${e=>{ const t=e.currentTarget.querySelector('.rtip'); if(t) t.style.display='block'; }}
                             onMouseLeave=${e=>{ const t=e.currentTarget.querySelector('.rtip'); if(t) t.style.display='none'; }}>
-                            <div style=${{ width:28, height:28, borderRadius:14, background:hc, color:'#FFF',
+                            <div style=${{ width:28, height:28, borderRadius:14, background:dotColor, color:'#FFF',
                               fontSize:10, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center',
-                              border:'2px solid #FFF', boxShadow:'0 2px 6px '+hc+'50', cursor:'pointer' }}
-                              onClick=${()=>setSubTab('riesgos')}>
-                              R${rn}
+                              border:'2px solid #FFF', boxShadow:'0 2px 6px '+dotColor+'50', cursor:'pointer' }}
+                              onClick=${()=>setSubTab(targetTab)}>
+                              ${prefix}${rn}
                             </div>
                             <!-- Hover tooltip -->
                             <div class="rtip" style=${{ display:'none', position:'absolute', bottom:34, left:'50%', transform:'translateX(-50%)',
                               background:'#1D1D1F', color:'#FFF', borderRadius:10, padding:'8px 10px', fontSize:11,
                               zIndex:9999, width:180, boxShadow:'0 4px 16px rgba(0,0,0,.25)', pointerEvents:'none',
                               lineHeight:1.4 }}>
-                              <div style=${{ fontWeight:700, marginBottom:3, color:hc }}>R${rn}</div>
+                              <div style=${{ fontWeight:700, marginBottom:3, color:dotColor }}>${prefix}${rn} ${(r.type||'riesgo')==='oportunidad'?'🌟':'⚠️'}</div>
                               <div style=${{ marginBottom:4 }}>${r.text}</div>
                               ${r.owner && html`<div style=${{ fontSize:10, color:'#86868B' }}>👤 ${r.owner}</div>`}
                               ${r.mitigation && html`<div style=${{ fontSize:10, color:'#86868B' }}>🛡️ ${r.mitigation}</div>`}
