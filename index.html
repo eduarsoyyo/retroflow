@@ -440,7 +440,7 @@ function NeedLink({ onLogin, showLogin, onJoin, onCloseLogin }) {
 
       <!-- Descripción -->
       <p style=${{ fontSize:'clamp(14px,1.8vw,17px)', color:'rgba(255,255,255,.8)', marginTop:20, marginBottom:48, maxWidth:520, lineHeight:1.7, zIndex:1 }}>
-        Plataforma colaborativa para equipos ágiles. Gestiona retrospectivas, riesgos, accionables, equipo y vacaciones — todo en tiempo real y en un solo lugar.
+        Ningún proyecto debería moverse en las sombras.
       </p>
 
       <!-- CTA card -->
@@ -620,6 +620,17 @@ function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
                 background:on?'#007AFF10':'#FFF', color:on?'#007AFF':'#6E6E73',
                 fontSize:11, fontWeight:on?700:400, cursor:'pointer' }}>${r.name}</button>`;
           })}
+        </div>
+      </div>
+      <div style=${{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10, background:m.is_superuser?'#5856D610':'#F9F9FB', border:'1.5px solid '+(m.is_superuser?'#5856D6':'#E5E5EA') }}>
+        <button onClick=${()=>setM({...m, is_superuser:!m.is_superuser})}
+          style=${{ width:36, height:20, borderRadius:10, border:'none', cursor:'pointer', position:'relative', flexShrink:0,
+            background:m.is_superuser?'#5856D6':'#E5E5EA', transition:'background .2s' }}>
+          <div style=${{ position:'absolute', top:2, left:m.is_superuser?18:2, width:16, height:16, borderRadius:8, background:'#FFF', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }}></div>
+        </button>
+        <div>
+          <p style=${{ fontSize:12, fontWeight:700, color:m.is_superuser?'#5856D6':'#1D1D1F', margin:0 }}>🧙 Superusuario</p>
+          <p style=${{ fontSize:10, color:'#86868B', margin:0 }}>Accede al panel de administración</p>
         </div>
       </div>
       <div style=${{ display:'flex', gap:8, justifyContent:'flex-end' }}>
@@ -862,8 +873,9 @@ function AdminUsuarios({ rooms }) {
                   <div style=${{ width:48, height:48, borderRadius:14, background:m.color||'#007AFF',
                     display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0 }}>${m.avatar||'👤'}</div>
                   <div style=${{ flex:1 }}>
-                    <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
+                    <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:2, flexWrap:'wrap' }}>
                       <span style=${{ fontSize:14, fontWeight:700 }}>${m.name}</span>
+                      ${m.is_superuser && html`<span style=${{ fontSize:9, color:'#5856D6', background:'#5856D610', padding:'1px 7px', borderRadius:10, fontWeight:700 }}>🧙 Superusuario</span>`}
                       ${m.username && html`<code style=${{ fontSize:10, color:'#86868B', background:'#F2F2F7', padding:'1px 6px', borderRadius:4 }}>${m.username}</code>`}
                       ${m.email && html`<span style=${{ fontSize:11, color:'#86868B' }}>${m.email}</span>`}
                     </div>
@@ -1413,7 +1425,7 @@ function RoomPicker() {
               <div style=${{ fontSize:11, color:'#86868B', flex:1, minWidth:140 }}>
                 🔗 ${window.location.host}?sala=<b>${slug||'…'}</b>
               </div>
-              <button onClick=${create} disabled=${!room.trim()||!slug.trim()} style=${{ ...bP, opacity:(!room.trim()||!slug.trim())?.4:1 }}>+ Crear sala</button>
+              <button onClick=${create} disabled=${!room.trim()||!slug.trim()} style=${{ ...bP, opacity:(!room.trim()||!slug.trim())?.4:1 }}>+ Crear proyecto</button>
             </div>
           </div>
 
@@ -1425,20 +1437,20 @@ function RoomPicker() {
 
       </div>
 
-      <!-- ── MODAL: Confirmar eliminar sala ── -->
+      <!-- ── MODAL: Confirmar eliminar proyecto ── -->
       ${confirmDelete && html`
         <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick=${()=>setConfirmDelete(null)}>
           <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:20, padding:'28px 30px', maxWidth:400, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,0.2)', textAlign:'center' }}>
             <div style=${{ fontSize:40, marginBottom:10 }}>🗑</div>
             <h3 style=${{ fontSize:17, fontWeight:700, marginBottom:6 }}>¿Eliminar sala?</h3>
             <p style=${{ fontSize:13, color:'#86868B', marginBottom:14, lineHeight:1.5 }}>
-              Sala: <strong style=${{ color:'#1D1D1F' }}>${rooms.find(r=>r.slug===confirmDelete)?.name || confirmDelete}</strong>
+              Proyecto: <strong style=${{ color:'#1D1D1F' }}>${rooms.find(r=>r.slug===confirmDelete)?.name || confirmDelete}</strong>
             </p>
             <div style=${{ background:'#FFF5F5', border:'1.5px solid #FF3B3020', borderRadius:12, padding:'12px 16px', marginBottom:20, textAlign:'left' }}>
               <p style=${{ fontSize:12, fontWeight:700, color:'#FF3B30', marginBottom:6 }}>Se borrará permanentemente:</p>
               <p style=${{ fontSize:12, color:'#86868B', lineHeight:1.7 }}>
                 • Todas las retros guardadas en Supabase<br/>
-                • Los riesgos de esta sala<br/>
+                • Los riesgos de este proyecto<br/>
                 • El registro de usuarios<br/>
                 • Las métricas históricas
               </p>
@@ -1451,11 +1463,11 @@ function RoomPicker() {
         </div>
       `}
 
-      <!-- ── MODAL: Editar sala ── -->
+      <!-- ── MODAL: Editar proyecto ── -->
       ${editRoom && html`
         <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick=${()=>setEditRoom(null)}>
           <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:20, padding:'28px 30px', maxWidth:420, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
-            <h3 style=${{ fontSize:17, fontWeight:700, marginBottom:18 }}>✏️ Editar sala</h3>
+            <h3 style=${{ fontSize:17, fontWeight:700, marginBottom:18 }}>✏️ Editar proyecto</h3>
             <p style=${{ fontSize:11, color:'#86868B', marginBottom:6 }}>Nombre</p>
             <input value=${editRoom.name} onInput=${e=>setEditRoom({...editRoom,name:e.target.value})}
               onKeyDown=${e=>e.key==='Enter'&&saveEdit()}
@@ -1465,7 +1477,7 @@ function RoomPicker() {
               style=${{ ...iS, marginBottom:20 }}>
               ${Object.entries(TASK_TEMPLATES).map(([k,v]) => html`<option key=${k} value=${k}>${v.icon} ${v.label}</option>`)}
             </select>
-            <p style=${{ fontSize:10, color:'#C7C7CC', marginBottom:14 }}>El slug (<code>${editRoom.slug}</code>) no se puede cambiar — es la URL de la sala.</p>
+            <p style=${{ fontSize:10, color:'#C7C7CC', marginBottom:14 }}>El slug (<code>${editRoom.slug}</code>) no se puede cambiar — es la URL del proyecto.</p>
             <div style=${{ display:'flex', gap:10 }}>
               <button onClick=${()=>setEditRoom(null)} style=${{ ...bS, flex:1, padding:'11px' }}>Cancelar</button>
               <button onClick=${saveEdit} style=${{ ...bP, flex:1, padding:'11px' }}>Guardar cambios</button>
@@ -1562,11 +1574,18 @@ function Login({ onJoin, isModal }) {
     if (!member) { setLoading(false); setError('❌ Usuario no encontrado'); return; }
     if (!member.pin || member.pin !== password) { setLoading(false); setError('❌ Contraseña incorrecta'); return; }
 
+    // Superuser → admin panel directly, no sala needed
+    if (member.is_superuser) {
+      setLoading(false);
+      window.location.href = window.location.pathname + '?admin';
+      return;
+    }
+
     // Check if member is in the selected sala
     const targetSala = selRoom || SALA;
     if (!(member.rooms||[]).includes(targetSala)) {
       setLoading(false);
-      setError('❌ No tienes acceso a esta sala');
+      setError('❌ No tienes acceso a este proyecto');
       return;
     }
 
@@ -1616,10 +1635,10 @@ function Login({ onJoin, isModal }) {
           <!-- Room selector (if member has multiple rooms) -->
           ${memberRooms.length > 1 && html`
             <div>
-              <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', display:'block', marginBottom:4 }}>Sala</label>
+              <label style=${{ fontSize:11, fontWeight:700, color:'#86868B', textTransform:'uppercase', display:'block', marginBottom:4 }}>Proyecto</label>
               <select value=${selRoom} onChange=${e=>setSelRoom(e.target.value)}
                 style=${{ ...iS, fontSize:13, background:'#FFF' }}>
-                <option value="">— Selecciona sala —</option>
+                <option value="">— Selecciona proyecto —</option>
                 ${memberRooms.map(r=>html`<option key=${r.slug} value=${r.slug}>${r.name}</option>`)}
               </select>
             </div>
@@ -1627,7 +1646,7 @@ function Login({ onJoin, isModal }) {
 
           ${memberRooms.length === 1 && selRoom !== memberRooms[0].slug && html`
             <div style=${{ padding:'8px 12px', background:'#F0F7FF', borderRadius:8, fontSize:12, color:'#007AFF' }}>
-              📂 Sala: <strong>${memberRooms[0].name}</strong>
+              📂 Proyecto: <strong>${memberRooms[0].name}</strong>
               ${(()=>{ if(selRoom!==memberRooms[0].slug) setSelRoom(memberRooms[0].slug); })()}
             </div>
           `}
