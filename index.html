@@ -355,12 +355,11 @@ function useRealtime(user) {
 function App() {
   const [user,      setUser]      = useState(() => params.has('sala') ? loadUser() : null);
   const [salaValid, setSalaValid] = useState(null);
-  const [showLogin, setShowLogin] = useState(false); // for NeedLink popup
+  const [showLogin, setShowLogin] = useState(false);
 
   const handleJoin = (u) => {
     saveUser(u); registerUser(u); setUser(u);
     setShowLogin(false);
-    // If user logged in from NeedLink and has a sala, navigate there
     if (u.sala && !params.has('sala')) {
       window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(u.sala);
     }
@@ -373,13 +372,34 @@ function App() {
     return html`<${NeedLink} onLogin=${()=>setShowLogin(true)} showLogin=${showLogin} onJoin=${handleJoin} onCloseLogin=${()=>setShowLogin(false)} />`;
   }
 
-  // Validate sala
+  // Validate sala + auto-login admin via Supabase session
   useEffect(() => {
     sbLoadRooms().then(rooms => {
       if (!rooms) { setSalaValid(true); return; }
       const exists = rooms.some(r => r.slug === SALA);
       setSalaValid(exists);
     });
+
+    // If no user in localStorage, check if there's an active Supabase admin session
+    if (!loadUser()) {
+      sbGetSession().then(session => {
+        if (session?.user) {
+          const adminUser = {
+            id: session.user.id,
+            name: session.user.email.split('@')[0],
+            avatar: '🧙',
+            color: '#5856D6',
+            role: 'Admin',
+            username: session.user.email,
+            sala: SALA,
+            _isAdmin: true,
+          };
+          saveUser(adminUser);
+          registerUser(adminUser);
+          setUser(adminUser);
+        }
+      });
+    }
   }, []);
 
   if (salaValid === null) return html`
