@@ -353,22 +353,30 @@ function useRealtime(user) {
 
 /* ═══ APP ═══ */
 function App() {
-  const [user,       setUser]       = useState(() => params.has('sala') ? loadUser() : null);
-  const [salaValid,  setSalaValid]  = useState(null); // null=checking, true=ok, false=blocked
+  const [user,      setUser]      = useState(() => params.has('sala') ? loadUser() : null);
+  const [salaValid, setSalaValid] = useState(null);
+  const [showLogin, setShowLogin] = useState(false); // for NeedLink popup
 
-  const handleJoin   = (u) => { saveUser(u); registerUser(u); setUser(u); };
+  const handleJoin = (u) => {
+    saveUser(u); registerUser(u); setUser(u);
+    setShowLogin(false);
+    // If user logged in from NeedLink and has a sala, navigate there
+    if (u.sala && !params.has('sala')) {
+      window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(u.sala);
+    }
+  };
   const handleLogout = () => { clearUser(); setUser(null); };
 
-  // No sala → admin sees picker, others see landing
+  // No sala param → admin or landing
   if (!params.has('sala')) {
     if (IS_ADMIN) return html`<${RoomPicker} />`;
-    return html`<${NeedLink} />`;
+    return html`<${NeedLink} onLogin=${()=>setShowLogin(true)} showLogin=${showLogin} onJoin=${handleJoin} onCloseLogin=${()=>setShowLogin(false)} />`;
   }
 
-  // Check sala exists in Supabase (runs once on mount)
+  // Validate sala
   useEffect(() => {
     sbLoadRooms().then(rooms => {
-      if (!rooms) { setSalaValid(true); return; } // Supabase unreachable → allow
+      if (!rooms) { setSalaValid(true); return; }
       const exists = rooms.some(r => r.slug === SALA);
       setSalaValid(exists);
     });
@@ -378,7 +386,7 @@ function App() {
     <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#F5F5F7' }}>
       <div style=${{ textAlign:'center', color:'#86868B' }}>
         <div style=${{ fontSize:32, marginBottom:8, animation:'spin 1s linear infinite', display:'inline-block' }}>⏳</div>
-        <p style=${{ fontSize:14 }}>Verificando sala…</p>
+        <p style=${{ fontSize:14 }}>Verificando proyecto…</p>
       </div>
     </div>`;
 
@@ -386,11 +394,10 @@ function App() {
     <div style=${{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#F5F5F7' }}>
       <div style=${{ background:'#FFF', borderRadius:24, padding:'44px 40px', maxWidth:420, width:'90%', textAlign:'center', boxShadow:'0 8px 40px rgba(0,0,0,0.08)' }}>
         <div style=${{ fontSize:52, marginBottom:12 }}>🚫</div>
-        <h2 style=${{ fontSize:20, fontWeight:700, marginBottom:8 }}>Sala no encontrada</h2>
+        <h2 style=${{ fontSize:20, fontWeight:700, marginBottom:8 }}>Proyecto no encontrado</h2>
         <p style=${{ fontSize:14, color:'#86868B', marginBottom:6, lineHeight:1.5 }}>
-          La sala <code style=${{ background:'#F2F2F7', padding:'2px 8px', borderRadius:5, fontSize:13 }}>${SALA}</code> no existe o no está registrada.
+          El proyecto <code style=${{ background:'#F2F2F7', padding:'2px 8px', borderRadius:5, fontSize:13 }}>${SALA}</code> no existe o no está registrado.
         </p>
-        <p style=${{ fontSize:13, color:'#C7C7CC', marginBottom:24 }}>Pide a tu Scrum Master el enlace correcto.</p>
         <a href="/" style=${{ display:'inline-block', padding:'11px 24px', background:'linear-gradient(135deg,#007AFF,#5856D6)', color:'#FFF', borderRadius:12, fontSize:14, fontWeight:600, textDecoration:'none' }}>← Volver al inicio</a>
       </div>
     </div>`;
@@ -400,26 +407,47 @@ function App() {
 }
 
 /* ═══ NEED LINK SCREEN ═══ */
-function NeedLink() {
+function NeedLink({ onLogin, showLogin, onJoin, onCloseLogin }) {
   return html`
     <div style=${{ minHeight:'100vh', background:'linear-gradient(135deg,#0057FF 0%,#0099FF 50%,#00C6FF 100%)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24, textAlign:'center', position:'relative', overflow:'hidden' }}>
 
-      <!-- Orbs decorativos -->
+      <!-- Orbs -->
       <div style=${{ position:'absolute', top:'-20%', right:'-15%', width:'50vw', height:'50vw', maxWidth:480, maxHeight:480, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,255,255,.15),transparent 65%)', pointerEvents:'none' }} />
       <div style=${{ position:'absolute', bottom:'-15%', left:'-10%', width:'40vw', height:'40vw', maxWidth:400, maxHeight:400, borderRadius:'50%', background:'radial-gradient(circle,rgba(0,30,120,.3),transparent 65%)', pointerEvents:'none' }} />
 
       <!-- Logo -->
       <h1 style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:'clamp(52px,10vw,88px)', fontWeight:400, letterSpacing:6, color:'#FFF', margin:0, lineHeight:1, textShadow:'0 4px 32px rgba(0,0,0,.15)', zIndex:1 }}>revelio</h1>
 
-      <p style=${{ fontSize:'clamp(14px,2vw,18px)', color:'rgba(255,255,255,.75)', marginTop:16, marginBottom:64, letterSpacing:1.5, textTransform:'uppercase', fontWeight:400, zIndex:1 }}>Retrospectivas ágiles · Tiempo real</p>
+      <!-- Descripción -->
+      <p style=${{ fontSize:'clamp(14px,1.8vw,17px)', color:'rgba(255,255,255,.8)', marginTop:20, marginBottom:48, maxWidth:520, lineHeight:1.7, zIndex:1 }}>
+        Plataforma colaborativa para equipos ágiles. Gestiona retrospectivas, riesgos, accionables, equipo y vacaciones — todo en tiempo real y en un solo lugar.
+      </p>
 
-      <!-- Card CTA -->
-      <div style=${{ background:'rgba(255,255,255,.12)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(255,255,255,.25)', borderRadius:24, padding:'28px 36px', maxWidth:380, width:'100%', zIndex:1, boxShadow:'0 8px 48px rgba(0,0,0,.12)' }}>
-        <p style=${{ fontSize:17, fontWeight:600, color:'#FFF', marginBottom:8 }}>¿Listo para la retro?</p>
-        <p style=${{ fontSize:14, color:'rgba(255,255,255,.7)', lineHeight:1.6 }}>Pide a tu Scrum Master el enlace de acceso a tu sala.</p>
+      <!-- CTA card -->
+      <div style=${{ background:'rgba(255,255,255,.12)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(255,255,255,.25)', borderRadius:24, padding:'28px 36px', maxWidth:360, width:'100%', zIndex:1, boxShadow:'0 8px 48px rgba(0,0,0,.12)' }}>
+        <div style=${{ display:'flex', gap:8, justifyContent:'center', marginBottom:14 }}>
+          ${['⚡ Tiempo real','⚠️ Riesgos','🏖️ Equipo','🎯 Kanban'].map(f=>html`
+            <span style=${{ fontSize:10, color:'rgba(255,255,255,.7)', background:'rgba(255,255,255,.1)', padding:'3px 9px', borderRadius:20 }}>${f}</span>`)}
+        </div>
+        <button onClick=${onLogin}
+          style=${{ width:'100%', padding:'14px 24px', borderRadius:14, border:'none',
+            background:'#FFF', color:'#007AFF', fontSize:16, fontWeight:700, cursor:'pointer',
+            boxShadow:'0 4px 20px rgba(0,0,0,.15)', transition:'transform .15s' }}
+          onMouseOver=${e=>e.currentTarget.style.transform='scale(1.03)'}
+          onMouseOut=${e=>e.currentTarget.style.transform='scale(1)'}>
+          Acceder →
+        </button>
       </div>
 
-      <p style=${{ fontSize:11, color:'rgba(255,255,255,.3)', marginTop:40, zIndex:1 }}>Hecho con ✨ y sin Horcruxes</p>
+      <!-- Login popup -->
+      ${showLogin && html`
+        <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick=${e=>{ if(e.target===e.currentTarget) onCloseLogin(); }}>
+          <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:24, maxWidth:420, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.2)', overflow:'hidden' }}>
+            <${Login} onJoin=${onJoin} isModal=${true} />
+          </div>
+        </div>
+      `}
     </div>
   `;
 }
@@ -1435,7 +1463,50 @@ function RoomPicker() {
 }
 
 /* ═══ LOGIN ═══ */
-function Login({ onJoin }) {
+/* ═══ PROJECT LIST — muestra proyectos del usuario y permite cambiar ═══ */
+function ProjectList({ currentSala, userId }) {
+  const [rooms,   setRooms]   = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([sbLoadRooms(), sbLoadTeamMembers()]).then(([allRooms, members]) => {
+      const me = members.find(m => m.id === userId);
+      if (!me) { setLoading(false); return; }
+      const myRooms = (allRooms||[]).filter(r => (me.rooms||[]).includes(r.slug));
+      setRooms(myRooms); setLoading(false);
+    });
+  }, [userId]);
+
+  if (loading) return html`<div style=${{ textAlign:'center', padding:12, color:'#86868B', fontSize:12 }}>⏳ Cargando…</div>`;
+  if (!rooms.length) return html`<p style=${{ fontSize:12, color:'#C7C7CC', textAlign:'center', padding:8 }}>Sin proyectos asignados</p>`;
+
+  return html`
+    <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
+      ${rooms.map(r => {
+        const isCurrent = r.slug === currentSala;
+        const tInfo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
+        return html`
+          <button key=${r.slug}
+            onClick=${()=>{ if(!isCurrent) window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(r.slug); }}
+            style=${{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:12,
+              border: isCurrent ? '2px solid #007AFF' : '1.5px solid #E5E5EA',
+              background: isCurrent ? '#EEF5FF' : '#FFF',
+              cursor: isCurrent ? 'default' : 'pointer', textAlign:'left' }}>
+            <span style=${{ fontSize:20 }}>${tInfo.icon}</span>
+            <div style=${{ flex:1 }}>
+              <p style=${{ fontSize:13, fontWeight:700, color: isCurrent ? '#007AFF' : '#1D1D1F', margin:0 }}>${r.name}</p>
+              <p style=${{ fontSize:10, color:'#86868B', margin:0 }}>${tInfo.label}</p>
+            </div>
+            ${isCurrent
+              ? html`<span style=${{ fontSize:10, color:'#007AFF', fontWeight:700, background:'#007AFF20', padding:'2px 8px', borderRadius:10 }}>Aquí</span>`
+              : html`<span style=${{ fontSize:12, color:'#C7C7CC' }}>→</span>`}
+          </button>`;
+      })}
+    </div>`;
+}
+
+
+function Login({ onJoin, isModal }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rooms,    setRooms]    = useState([]);
@@ -1492,8 +1563,8 @@ function Login({ onJoin }) {
     : [];
 
   return html`
-    <div style=${{ minHeight:'100vh', background:'linear-gradient(135deg,#0057FF,#00C6FF)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style=${{ background:'#FFF', borderRadius:24, padding:'40px 36px', maxWidth:420, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.15)' }}>
+    <div style=${{ ...(!isModal ? { minHeight:'100vh', background:'linear-gradient(135deg,#0057FF,#00C6FF)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 } : {}) }}>
+      <div style=${{ background:'#FFF', borderRadius:24, padding:'36px 32px', maxWidth:420, width:'100%', ...(!isModal ? { boxShadow:'0 20px 60px rgba(0,0,0,.15)' } : {}) }}>
 
         <div style=${{ textAlign:'center', marginBottom:28 }}>
           <h1 style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:32, fontWeight:400, letterSpacing:2, background:'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>revelio</h1>
@@ -2289,9 +2360,10 @@ function RetroBoard({ user, onLogout }) {
     }, 10000);
     return () => clearInterval(iv);
   }, [running, broadcastTimer]);
-  const [showReset, setShowReset] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-  const [showHistorial, setShowHistorial] = useState(false);
+  const [showReset,         setShowReset]         = useState(false);
+  const [showGuide,         setShowGuide]         = useState(false);
+  const [showHistorial,     setShowHistorial]     = useState(false);
+  const [showProjectSwitch, setShowProjectSwitch] = useState(false);
   const [sbRetroHistory, setSbRetroHistory] = useState([]);
   useEffect(() => {
     sbLoadRetros().then(all => setSbRetroHistory((all||[]).filter(r=>r.sala===SALA)));
@@ -2406,7 +2478,11 @@ function RetroBoard({ user, onLogout }) {
         <div style=${{ display:'flex', alignItems:'center' }}>
           ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:52, height:52, borderRadius:26, background:u.color, border:'3px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, marginLeft:i>0?-12:0, zIndex:10-i, boxShadow:'0 2px 10px rgba(0,0,0,.18)' }}>${u.avatar}</div>`)}
           ${uList.length>0 && html`<span style=${{ fontSize:11, color:'#86868B', marginLeft:8 }}>${uList.length} online</span>`}
-          <button onClick=${onLogout} style=${{ marginLeft:6, padding:'3px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, color:'#86868B', cursor:'pointer' }} title="Cambiar usuario">👤 ${user.name} ✕</button>
+          <button onClick=${()=>setShowProjectSwitch(true)} style=${{ marginLeft:6, padding:'4px 10px', borderRadius:7, border:'1px solid #E5E5EA', background:'#FFF', fontSize:11, color:'#86868B', cursor:'pointer', display:'flex', alignItems:'center', gap:4 }} title="Cambiar proyecto">
+            <span style=${{ fontSize:13 }}>${user.avatar}</span>
+            <span style=${{ fontWeight:600 }}>${user.name}</span>
+            <span style=${{ fontSize:9, color:'#C7C7CC' }}>▾</span>
+          </button>
         </div>
       </header>
       <!-- ── MAIN TABS ── -->
@@ -2482,6 +2558,29 @@ function RetroBoard({ user, onLogout }) {
       `}
 
       ${showHistorial && html`<${HistorialModal} onClose=${()=>setShowHistorial(false)} />`}
+
+      ${showProjectSwitch && html`
+        <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick=${()=>setShowProjectSwitch(false)}>
+          <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:22, padding:'24px 28px', maxWidth:380, width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style=${{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+              <div style=${{ width:44, height:44, borderRadius:14, background:user.color||'#007AFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>${user.avatar}</div>
+              <div>
+                <p style=${{ fontSize:15, fontWeight:700 }}>${user.name}</p>
+                ${user.role && html`<p style=${{ fontSize:12, color:'#86868B' }}>${user.role}</p>`}
+              </div>
+            </div>
+            <p style=${{ fontSize:12, fontWeight:700, color:'#86868B', marginBottom:10, textTransform:'uppercase', letterSpacing:.5 }}>Mis proyectos</p>
+            <${ProjectList} currentSala=${SALA} userId=${user.id} />
+            <div style=${{ borderTop:'1px solid #F2F2F7', marginTop:16, paddingTop:14 }}>
+              <button onClick=${()=>{ onLogout(); setShowProjectSwitch(false); }}
+                style=${{ width:'100%', padding:'10px', borderRadius:10, border:'1.5px solid #FF3B3030', background:'#FFF', color:'#FF3B30', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                🚪 Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      `}
 
       ${showReset && html`<${NewRetroModal}
         user=${user} state=${state}
