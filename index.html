@@ -17,6 +17,10 @@
   .hl { transition: transform .15s, box-shadow .15s; }
   .hl:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.07); }
   .wm { font-family: 'Comfortaa', sans-serif; font-weight: 400; letter-spacing: 2px; background: linear-gradient(90deg,#007AFF,#5856D6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: inline-block; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
 </style>
 <script type="importmap">
 {
@@ -2004,55 +2008,185 @@ function OrgTree({ nodes, all, org, rc, depth }) {
     </div>`;
 }
 
+/* ═══ SUGGESTED ESCALATIONS ═══ */
+function SuggestedEscalations({ risks, allRisks, getAlerts, upd, setSubTab, setEscalForm }) {
+  if (!risks.length) return html`
+    <div style=${{ textAlign:'center', padding:'48px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:16 }}>
+      <p style=${{ fontSize:36, marginBottom:8 }}>🔔</p>
+      <p style=${{ fontSize:14 }}>Sin escalados sugeridos</p>
+      <p style=${{ fontSize:12, marginTop:6 }}>Los riesgos que lleven más de 5 días sin actualizar, aparezcan en 2+ retros o tengan accionables vencidos aparecerán aquí</p>
+    </div>`;
+
+  const ALERT_COLORS = { stale:'#FF9500', retros:'#FF3B30', overdue:'#FF3B30' };
+  const ALERT_ICONS  = { stale:'⏱', retros:'🔁', overdue:'⚠️' };
+  const ALERT_DESC   = {
+    stale: 'No se ha actualizado en varios días — nadie lo está gestionando activamente.',
+    retros: 'Ha aparecido en múltiples retros consecutivas — el equipo no puede resolverlo solo.',
+    overdue: 'Tiene un accionable de mitigación vencido — la solución está bloqueada.',
+  };
+
+  return html`
+    <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style=${{ padding:'12px 16px', borderRadius:12, background:'#FFF9E6', border:'1.5px solid #FF950040', marginBottom:4 }}>
+        <p style=${{ fontSize:12, fontWeight:700, color:'#FF9500', marginBottom:2 }}>🔔 Escalados sugeridos automáticamente</p>
+        <p style=${{ fontSize:11, color:'#86868B' }}>Estos riesgos cumplen criterios que indican que el equipo no puede resolverlos sin ayuda externa. Revísalos y decide si escalar.</p>
+      </div>
+
+      ${risks.map(r => {
+        const alerts = getAlerts(r);
+        const rn = allRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
+        const prefix = (r.type||'riesgo')==='problema'?'P':'R';
+        const topAlert = alerts[0];
+        const color = ALERT_COLORS[topAlert?.type] || '#FF9500';
+
+        return html`
+          <div key=${r.id} style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid '+color+'40', borderLeft:'4px solid '+color, padding:'14px 16px' }}>
+            <div style=${{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:10 }}>
+              <span style=${{ fontSize:13, fontWeight:800, color:color }}>${prefix}${rn}</span>
+              <div style=${{ flex:1 }}>
+                <p style=${{ fontSize:13, fontWeight:600, margin:'0 0 4px' }}>${r.text}</p>
+                ${r.owner && html`<span style=${{ fontSize:11, color:'#007AFF' }}>👤 ${r.owner}</span>`}
+              </div>
+            </div>
+
+            <!-- Alert pills with explanation -->
+            <div style=${{ display:'flex', flexDirection:'column', gap:4, marginBottom:12 }}>
+              ${alerts.map(a => html`
+                <div key=${a.type} style=${{ display:'flex', alignItems:'flex-start', gap:8, padding:'6px 10px', borderRadius:9, background:ALERT_COLORS[a.type]+'10', border:'1px solid '+ALERT_COLORS[a.type]+'25' }}>
+                  <span style=${{ fontSize:14 }}>${ALERT_ICONS[a.type]}</span>
+                  <div>
+                    <span style=${{ fontSize:11, fontWeight:700, color:ALERT_COLORS[a.type] }}>${a.label}</span>
+                    <p style=${{ fontSize:10, color:'#86868B', margin:'2px 0 0' }}>${ALERT_DESC[a.type]}</p>
+                  </div>
+                </div>`)}
+            </div>
+
+            <!-- Actions -->
+            <div style=${{ display:'flex', gap:8 }}>
+              <button onClick=${()=>{ setSubTab('escalado'); setEscalForm({riskId:r.id, memberId:'', deadline:'', note:'', status:'pendiente'}); }}
+                style=${{ flex:1, padding:'8px', borderRadius:9, border:'none', background:color, color:'#FFF', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                📈 Iniciar escalado
+              </button>
+              <button onClick=${()=>upd(r.id,{updatedAt:new Date().toISOString(),_snoozed:true})}
+                style=${{ padding:'8px 14px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, color:'#86868B', cursor:'pointer' }}
+                title="Posponer — marcar como revisado hoy">
+                😴 Posponer
+              </button>
+            </div>
+          </div>`;
+      })}
+    </div>`;
+}
+
+
 /* ═══ ESCALADO PANEL ═══ */
 function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
-  const openRisks = risks.filter(r => r.status !== 'mitigated' && (r.type||'riesgo') !== 'oportunidad');
+  const [team, setTeam]  = useState([]);
+  const [org,  setOrg]   = useState({});  // { memberId: managerId }
 
-  const ESCALATION_LEVELS = [
-    { id:'equipo',      label:'Equipo',             color:'#34C759', desc:'Se resuelve en el equipo' },
-    { id:'pm',          label:'Project Manager',     color:'#FF9500', desc:'Escalar al PM del proyecto' },
-    { id:'sponsor',     label:'Sponsor',             color:'#FF3B30', desc:'Requiere decisión del sponsor' },
-    { id:'comite',      label:'Comité directivo',    color:'#5856D6', desc:'Elevar a comité ejecutivo' },
-    { id:'externo',     label:'Externo / Cliente',   color:'#1D1D1F', desc:'Involucra a stakeholder externo' },
-  ];
+  useEffect(() => {
+    Promise.all([sbLoadTeamMembers(), sbLoadOrgChart(SALA)]).then(([members, chart]) => {
+      setTeam(members.filter(m=>(m.rooms||[]).includes(SALA)));
+      const map = {};
+      chart.forEach(n => { map[n.member_id] = n.manager_id || null; });
+      setOrg(map);
+    });
+  }, []);
+
   const STATUS = [
-    { id:'pendiente',   label:'Pendiente',   color:'#FF9500' },
-    { id:'en_curso',    label:'En curso',    color:'#007AFF' },
-    { id:'resuelto',    label:'Resuelto',    color:'#34C759' },
-    { id:'bloqueado',   label:'Bloqueado',   color:'#FF3B30' },
+    { id:'pendiente', label:'Pendiente', color:'#FF9500' },
+    { id:'en_curso',  label:'En curso',  color:'#007AFF' },
+    { id:'resuelto',  label:'Resuelto',  color:'#34C759' },
+    { id:'bloqueado', label:'Bloqueado', color:'#FF3B30' },
   ];
 
+  const openRisks = risks.filter(r => r.status !== 'mitigated' && (r.type||'riesgo') !== 'oportunidad');
   const escalated = risks.filter(r => r.escalation);
-  const byLevel = (level) => escalated.filter(r => r.escalation?.level === level);
+
+  // Build chain from a member up the org tree
+  const getChain = (memberId) => {
+    const chain = [];
+    let cur = memberId;
+    const seen = new Set();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const m = team.find(x=>x.id===cur);
+      if (m) chain.push(m);
+      cur = org[cur] || null;
+    }
+    return chain; // [self, manager, gm, ...]
+  };
+
+  // For a risk, determine next escalation step
+  const getNextEscalation = (r) => {
+    const ownerMember = team.find(m=>m.name===r.owner || m.id===r.owner);
+    if (!ownerMember) return null;
+    const currentLevel = r.escalation?.memberId;
+    const chain = getChain(ownerMember.id);
+    if (!currentLevel) return chain[1] || null; // first escalation: direct manager
+    const idx = chain.findIndex(m=>m.id===currentLevel);
+    return idx >= 0 && idx+1 < chain.length ? chain[idx+1] : null;
+  };
+
+  // Escalation chain visual
+  const getRiskChain = (r) => {
+    const ownerMember = team.find(m=>m.name===r.owner || m.id===r.owner);
+    if (!ownerMember) return [];
+    return getChain(ownerMember.id);
+  };
 
   const saveEscalation = () => {
-    if (!escalForm.riskId) return;
+    if (!escalForm.riskId || !escalForm.memberId) return;
+    const member = team.find(m=>m.id===escalForm.memberId);
     upd(escalForm.riskId, {
       escalation: {
-        level: escalForm.level,
-        responsible: escalForm.responsible,
+        memberId: escalForm.memberId,
+        memberName: member?.name || '',
+        memberRole: member?.role_label || '',
         deadline: escalForm.deadline,
         note: escalForm.note,
         status: escalForm.status,
         createdAt: new Date().toISOString(),
       }
     });
-    setEscalForm({riskId:'', level:'pm', responsible:'', deadline:'', note:'', status:'pendiente'});
+    setEscalForm({riskId:'', memberId:'', deadline:'', note:'', status:'pendiente'});
   };
   const removeEscalation = (id) => upd(id, { escalation: null });
+  const escalateNext = (r) => {
+    const next = getNextEscalation(r);
+    if (!next) return;
+    upd(r.id, {
+      escalation: {
+        ...(r.escalation||{}),
+        memberId: next.id,
+        memberName: next.name,
+        memberRole: next.role_label||'',
+        status: 'pendiente',
+        createdAt: new Date().toISOString(),
+      }
+    });
+  };
+
+  // Colors by org depth
+  const DEPTH_COLORS = ['#34C759','#FF9500','#FF3B30','#5856D6','#1D1D1F'];
+  const depthColor = (r) => {
+    const ownerMember = team.find(m=>m.name===r.owner||m.id===r.owner);
+    if (!ownerMember || !r.escalation?.memberId) return '#86868B';
+    const chain = getChain(ownerMember.id);
+    const idx = chain.findIndex(m=>m.id===r.escalation.memberId);
+    return DEPTH_COLORS[Math.min(idx, DEPTH_COLORS.length-1)];
+  };
 
   return html`
     <div>
-      <!-- Level overview -->
-      <div style=${{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8, marginBottom:16 }}>
-        ${ESCALATION_LEVELS.map(l => {
-          const cnt = byLevel(l.id).length;
+      <!-- KPI: escalation by status -->
+      <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+        ${STATUS.map(s => {
+          const cnt = escalated.filter(r=>r.escalation?.status===s.id).length;
           return html`
-            <div style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', padding:'12px 10px', textAlign:'center',
-              borderTop:'3px solid '+l.color }}>
-              <div style=${{ fontSize:18, fontWeight:800, color:l.color }}>${cnt||'—'}</div>
-              <div style=${{ fontSize:10, fontWeight:700, color:'#1D1D1F', marginTop:2 }}>${l.label}</div>
-              <div style=${{ fontSize:9, color:'#86868B', marginTop:2, lineHeight:1.3 }}>${l.desc}</div>
+            <div style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', padding:'12px 10px', textAlign:'center', borderTop:'3px solid '+s.color }}>
+              <div style=${{ fontSize:22, fontWeight:800, color:s.color }}>${cnt||'—'}</div>
+              <div style=${{ fontSize:11, fontWeight:700, color:'#1D1D1F', marginTop:2 }}>${s.label}</div>
             </div>`;
         })}
       </div>
@@ -2067,46 +2201,68 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
               <p style=${{ fontSize:13 }}>Sin riesgos escalados</p>
               <p style=${{ fontSize:11, marginTop:4 }}>Usa el formulario para escalar un riesgo</p>
             </div>` :
-            ESCALATION_LEVELS.map(l => {
-              const items = byLevel(l.id);
-              if (!items.length) return null;
+            escalated.map(r => {
+              const esc = r.escalation;
+              const st = STATUS.find(s=>s.id===esc.status)||STATUS[0];
+              const rn = risks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
+              const prefix = (r.type||'riesgo')==='problema'?'P':'R';
+              const color = depthColor(r);
+              const chain = getRiskChain(r);
+              const curIdx = chain.findIndex(m=>m.id===esc.memberId);
+              const next = getNextEscalation(r);
               return html`
-                <div key=${l.id} style=${{ marginBottom:14 }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:8, paddingBottom:6, borderBottom:'2px solid '+l.color+'30' }}>
-                    <div style=${{ width:10, height:10, borderRadius:5, background:l.color }}></div>
-                    <span style=${{ fontSize:12, fontWeight:700, color:l.color }}>${l.label}</span>
-                    <span style=${{ fontSize:10, color:'#86868B' }}>${items.length} riesgo${items.length>1?'s':''}</span>
+                <div key=${r.id} style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA',
+                  borderLeft:'4px solid '+color, padding:'12px 14px', marginBottom:8 }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                    <span style=${{ fontSize:12, fontWeight:800, color:color }}>${prefix}${rn}</span>
+                    <span style=${{ fontSize:13, flex:1, fontWeight:600 }}>${r.text}</span>
+                    <select value=${esc.status} onChange=${e=>upd(r.id,{escalation:{...esc,status:e.target.value}})}
+                      style=${{ fontSize:9, padding:'3px 6px', borderRadius:5, border:'1px solid #E5E5EA', outline:'none', color:st.color, background:st.color+'10' }}>
+                      ${STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+                    </select>
+                    <button onClick=${()=>removeEscalation(r.id)} style=${{ border:'none', background:'none', color:'#C7C7CC', fontSize:12, cursor:'pointer' }}>✕</button>
                   </div>
-                  ${items.map(r => {
-                    const esc = r.escalation;
-                    const st = STATUS.find(s=>s.id===esc.status)||STATUS[0];
-                    const rn = risks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
-                    const prefix = (r.type||'riesgo')==='problema'?'P':'R';
-                    return html`
-                      <div style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA',
-                        borderLeft:'4px solid '+l.color, padding:'10px 14px', marginBottom:6 }}>
-                        <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                          <span style=${{ fontSize:12, fontWeight:800, color:l.color }}>${prefix}${rn}</span>
-                          <span style=${{ fontSize:12, flex:1, fontWeight:600 }}>${r.text}</span>
-                          <span style=${{ fontSize:9, fontWeight:700, color:st.color, background:st.color+'15', padding:'2px 8px', borderRadius:10 }}>${st.label}</span>
-                          <button onClick=${()=>removeEscalation(r.id)} style=${{ border:'none', background:'none', color:'#C7C7CC', fontSize:12, cursor:'pointer' }}>✕</button>
+                  <!-- Escalation chain visual -->
+                  <div style=${{ display:'flex', alignItems:'center', gap:4, flexWrap:'wrap', marginBottom:8 }}>
+                    ${chain.map((m,i) => html`
+                      <div key=${m.id} style=${{ display:'flex', alignItems:'center', gap:4 }}>
+                        ${i>0 && html`<span style=${{ color:'#C7C7CC', fontSize:10 }}>→</span>`}
+                        <div style=${{ display:'flex', alignItems:'center', gap:4, padding:'3px 8px 3px 4px', borderRadius:20,
+                          background: m.id===esc.memberId ? color+'18' : '#F9F9FB',
+                          border:'1.5px solid '+(m.id===esc.memberId ? color : '#E5E5EA') }}>
+                          <span style=${{ fontSize:14 }}>${m.avatar||'👤'}</span>
+                          <div>
+                            <div style=${{ fontSize:10, fontWeight:700, color:m.id===esc.memberId?color:'#1D1D1F' }}>${m.name}</div>
+                            ${m.role_label && html`<div style=${{ fontSize:8, color:'#86868B' }}>${m.role_label}</div>`}
+                          </div>
+                          ${m.id===esc.memberId && html`<span style=${{ fontSize:9, background:color, color:'#FFF', borderRadius:4, padding:'1px 4px', fontWeight:700 }}>aquí</span>`}
                         </div>
-                        <div style=${{ display:'flex', gap:12, fontSize:10, color:'#86868B' }}>
-                          ${esc.responsible && html`<span>👤 ${esc.responsible}</span>`}
-                          ${esc.deadline && html`<span>📅 ${esc.deadline}</span>`}
-                          ${esc.note && html`<span>📝 ${esc.note}</span>`}
-                        </div>
-                      </div>`;
-                  })}
+                      </div>`)}
+                  </div>
+                  <div style=${{ display:'flex', gap:8, alignItems:'center', fontSize:10, color:'#86868B' }}>
+                    ${esc.deadline && html`<span>📅 ${esc.deadline}</span>`}
+                    ${esc.note && html`<span>📝 ${esc.note}</span>`}
+                    ${next && html`
+                      <button onClick=${()=>escalateNext(r)}
+                        style=${{ marginLeft:'auto', fontSize:10, fontWeight:700, padding:'4px 10px', borderRadius:7,
+                          border:'1.5px solid '+color+'30', background:color+'10', color:color, cursor:'pointer' }}>
+                        ↑ Escalar a ${next.name}
+                      </button>`}
+                  </div>
                 </div>`;
             })}
         </div>
 
-        <!-- Add escalation form -->
+        <!-- Add escalation form — org-chart based -->
         <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px', position:'sticky', top:0 }}>
-          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>📈 Escalar riesgo</h4>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>📈 Escalar riesgo</h4>
+          <p style=${{ fontSize:10, color:'#86868B', marginBottom:12 }}>La cadena sigue el organigrama del proyecto</p>
           <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-            <select value=${escalForm.riskId} onChange=${e=>setEscalForm({...escalForm,riskId:e.target.value})}
+            <select value=${escalForm.riskId} onChange=${e=>{
+              const r=openRisks.find(x=>x.id===e.target.value);
+              const next = r ? getNextEscalation(r) : null;
+              setEscalForm({...escalForm, riskId:e.target.value, memberId:next?.id||''});
+            }}
               style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
               <option value="">— Selecciona riesgo —</option>
               ${openRisks.map((r,i) => {
@@ -2115,27 +2271,50 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
                 return html`<option key=${r.id} value=${r.id}>${prefix}${n}: ${r.text.slice(0,40)}${r.text.length>40?'…':''}</option>`;
               })}
             </select>
-            <select value=${escalForm.level} onChange=${e=>setEscalForm({...escalForm,level:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
-              ${ESCALATION_LEVELS.map(l=>html`<option key=${l.id} value=${l.id}>${l.label}</option>`)}
-            </select>
+
+            <!-- Show chain for selected risk -->
+            ${escalForm.riskId && (() => {
+              const r = openRisks.find(x=>x.id===escalForm.riskId);
+              if (!r) return null;
+              const chain = getRiskChain(r);
+              if (chain.length<2) return html`<p style=${{ fontSize:11, color:'#FF3B30' }}>⚠️ Este riesgo no tiene manager asignado en el organigrama</p>`;
+              return html`
+                <div>
+                  <p style=${{ fontSize:10, color:'#86868B', marginBottom:6, fontWeight:600 }}>Cadena de escalado:</p>
+                  <div style=${{ display:'flex', flexDirection:'column', gap:4 }}>
+                    ${chain.map((m,i) => html`
+                      <label key=${m.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', borderRadius:9,
+                        background:escalForm.memberId===m.id?'#007AFF10':'#F9F9FB',
+                        border:'1.5px solid '+(escalForm.memberId===m.id?'#007AFF':'#E5E5EA'), cursor: i===0?'default':'pointer' }}
+                        onClick=${()=>i>0&&setEscalForm({...escalForm,memberId:m.id})}>
+                        <span style=${{ fontSize:11, color:'#C7C7CC', minWidth:14 }}>${i===0?'•':'L'+i}</span>
+                        <span style=${{ fontSize:16 }}>${m.avatar||'👤'}</span>
+                        <div style=${{ flex:1 }}>
+                          <span style=${{ fontSize:12, fontWeight:600 }}>${m.name}</span>
+                          ${m.role_label && html`<span style=${{ fontSize:9, color:'#86868B', marginLeft:4 }}>${m.role_label}</span>`}
+                        </div>
+                        ${i===0 && html`<span style=${{ fontSize:9, color:'#86868B' }}>origen</span>`}
+                        ${escalForm.memberId===m.id && i>0 && html`<span style=${{ fontSize:9, color:'#007AFF', fontWeight:700 }}>✓ seleccionado</span>`}
+                      </label>`)}
+                  </div>
+                </div>`;
+            })()}
+
             <select value=${escalForm.status} onChange=${e=>setEscalForm({...escalForm,status:e.target.value})}
               style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }}>
               ${STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
             </select>
-            <input value=${escalForm.responsible} onInput=${e=>setEscalForm({...escalForm,responsible:e.target.value})}
-              placeholder="Responsable de gestión"
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
             <div>
               <label style=${{ fontSize:10, color:'#86868B', display:'block', marginBottom:3 }}>Fecha límite</label>
               <input type="date" value=${escalForm.deadline} onInput=${e=>setEscalForm({...escalForm,deadline:e.target.value})}
                 style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 8px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
             </div>
             <textarea value=${escalForm.note} onInput=${e=>setEscalForm({...escalForm,note:e.target.value})}
-              placeholder="Nota / justificación del escalado…" rows="3"
+              placeholder="Nota / justificación…" rows="2"
               style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none', resize:'vertical' }}></textarea>
-            <button onClick=${saveEscalation} disabled=${!escalForm.riskId}
-              style=${{ padding:'9px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', opacity:escalForm.riskId?1:.4 }}>
+            <button onClick=${saveEscalation} disabled=${!escalForm.riskId||!escalForm.memberId}
+              style=${{ padding:'9px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer',
+                opacity:(escalForm.riskId&&escalForm.memberId)?1:.4 }}>
               📈 Escalar
             </button>
           </div>
@@ -2148,7 +2327,7 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
 
 /* ═══ PRIESGOS — Risk Management Dashboard ═══ */
-function PRiesgos({ risks, sR, notes, retroHistory }) {
+function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   const [subTab,    setSubTab]    = useState('riesgos');
   const [escalForm, setEscalForm] = useState({riskId:'', level:'alto_mando', responsible:'', deadline:'', note:'', status:'pendiente'});
   const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:''});
@@ -2157,6 +2336,41 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
 
   // Merge retro risks (from current session) with portfolio risks
   const allRisks = risks || [];
+
+  // ── Alert helpers ──
+  const today = new Date();
+  const daysSince = (iso) => iso ? Math.floor((today - new Date(iso)) / 86400000) : null;
+
+  // How many retros has this risk appeared in (by id or text similarity)
+  const appearsInRetros = (r) => (retroHistory||[]).filter(rt =>
+    (rt.data?.risks||[]).some(x => x.id === r.id || x.text === r.text)
+  ).length;
+
+  // Does this risk have an overdue action?
+  const hasOverdueAction = (r) => (actions||[]).some(a =>
+    a.riskId === r.id && a.status !== 'done' && a.status !== 'discarded' &&
+    a.date && new Date(a.date) < today
+  );
+
+  // Days since last status update (use createdAt as proxy)
+  const staledays = (r) => daysSince(r.updatedAt || r.createdAt);
+
+  const ALERT_THRESHOLDS = { stale: 5, retros: 2 };
+
+  const getAlerts = (r) => {
+    const alerts = [];
+    const sd = staledays(r);
+    if (sd !== null && sd >= ALERT_THRESHOLDS.stale) alerts.push({ type:'stale', label:`Sin actualizar ${sd}d`, color:'#FF9500' });
+    const rc = appearsInRetros(r);
+    if (rc >= ALERT_THRESHOLDS.retros) alerts.push({ type:'retros', label:`${rc} retros consecutivas`, color:'#FF3B30' });
+    if (hasOverdueAction(r)) alerts.push({ type:'overdue', label:'Accionable vencido', color:'#FF3B30' });
+    return alerts;
+  };
+
+  // Suggested escalations: risks with alerts and not yet escalated
+  const suggestedEscalations = allRisks.filter(r =>
+    r.status !== 'mitigated' && !r.escalation && getAlerts(r).length > 0
+  );
 
   // Also pull risks from retro history snapshots
   const histRisks = (retroHistory||[]).flatMap(r =>
@@ -2246,6 +2460,15 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
                 <p style=${{ fontSize:13, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
                 ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
                 ${r.opportunity && html`<p style=${{ fontSize:11, color:'#34C759', margin:0 }}>🌟 ${r.opportunity}</p>`}
+                ${!fromHist && html`
+                  <div style=${{ display:'flex', gap:4, flexWrap:'wrap', marginTop:6 }}>
+                    ${getAlerts(r).map(a => html`
+                      <span key=${a.type} style=${{ fontSize:9, fontWeight:700, color:'#FFF', background:a.color,
+                        padding:'2px 7px', borderRadius:10,
+                        animation: a.type==='overdue' ? 'pulse 1.5s infinite' : 'none' }}>
+                        ${a.type==='stale'?'⏱':a.type==='retros'?'🔁':'⚠️'} ${a.label}
+                      </span>`)}
+                  </div>`}
               </div>
               ${r.owner && html`<span style=${{ fontSize:11, fontWeight:600, color:'#007AFF', flexShrink:0 }}>${r.owner}</span>`}
             </div>
@@ -2391,7 +2614,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
 
       <!-- Sub-tabs -->
       <div style=${{ display:'flex', gap:0, borderBottom:'2px solid #F2F2F7', marginBottom:16 }}>
-        ${[['riesgos','⚠️ Riesgos'],['problemas','🔴 Problemas'],['oportunidades','🌟 Oportunidades'],['mitigados','✅ Resueltos'],['escalado','📈 Escalado'],['historial','📚 Historial']].map(([tid,tlabel])=>html`
+        ${[['riesgos','⚠️ Riesgos'],['problemas','🔴 Problemas'],['oportunidades','🌟 Oportunidades'],['mitigados','✅ Resueltos'],['escalado','📈 Escalado'],['sugeridos','🔔 Sugeridos'+(suggestedEscalations.length>0?' ('+suggestedEscalations.length+')':'')],['historial','📚 Historial']].map(([tid,tlabel])=>html`
           <button key=${tid} onClick=${()=>setSubTab(tid)}
             style=${{ padding:'9px 16px', fontSize:12, fontWeight:subTab===tid?700:500,
               color:subTab===tid?'#007AFF':'#86868B', background:'transparent',
@@ -2407,6 +2630,8 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
         <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
           ${subTab==='escalado' ? html`
             <${EscaladoPanel} risks=${allRisks} upd=${upd} escalForm=${escalForm} setEscalForm=${setEscalForm} />
+          ` : subTab==='sugeridos' ? html`
+            <${SuggestedEscalations} risks=${suggestedEscalations} allRisks=${allRisks} getAlerts=${getAlerts} upd=${upd} setSubTab=${setSubTab} setEscalForm=${setEscalForm} />
           ` : subTab==='historial' ? html`
             <h4 style=${{ fontSize:13, fontWeight:700, color:'#86868B', marginBottom:4 }}>📚 Riesgos de retros anteriores (solo lectura)</h4>
             ${histOnly.length===0
@@ -2428,7 +2653,7 @@ function PRiesgos({ risks, sR, notes, retroHistory }) {
         </div>
 
         <!-- Add form (right panel) -->
-        ${subTab!=='mitigados' && subTab!=='historial' && subTab!=='escalado' && html`
+        ${subTab!=='mitigados' && subTab!=='historial' && subTab!=='escalado' && subTab!=='sugeridos' && html`
           <div style=${{ background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', padding:'16px', position:'sticky', top:0 }}>
             <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>➕ Nuevo ${subTab==='riesgos'?'riesgo':subTab==='problemas'?'problema':'oportunidad'}</h4>
             <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -2946,7 +3171,7 @@ function RetroBoard({ user, onLogout }) {
       <div style=${{ flex:1, overflowY:'auto', padding:'14px 18px' }}>
         ${mainTab==='retro'      ? content()              : ''}
         ${mainTab==='equipo'  ? html`<${PEquipo} />`  : ''}
-        ${mainTab==='riesgos' ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} retroHistory=${sbRetroHistory} />` : ''}
+        ${mainTab==='riesgos' ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} />` : ''}
       </div>
       ${toast && html`
         <div style=${{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1D1D1F', color:'#FFF', padding:'12px 24px', borderRadius:14, fontSize:14, fontWeight:600, boxShadow:'0 8px 30px rgba(0,0,0,0.15)', zIndex:300, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8 }}>${toast}</div>
@@ -3830,9 +4055,27 @@ function P5Risks({ risks, sR, notes, user }) {
                   const inCell = heatData.filter(r => r.impLvl.id===imp && r.probLvl.id===prob);
                   return html`
                     <div key=${prob+imp} style=${{ background:color+'20', border:'1.5px solid '+color+'30', borderRadius:10, padding:10, minHeight:90, display:'flex', flexWrap:'wrap', gap:5, alignContent:'flex-start' }}>
-                      ${inCell.map((r,i) => html`
-                        <div key=${r.id} style=${{ width:34, height:34, borderRadius:17, background:color, color:'#FFF', fontSize:11, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', border:'2.5px solid #FFF', boxShadow:'0 2px 6px '+color+'40' }} title=${r.text}>R${risks.indexOf(r)+1}</div>
-                      `)}
+                      ${inCell.map((r,i) => {
+                        const rn = risks.indexOf(r)+1;
+                        return html`
+                          <div key=${r.id} style=${{ position:'relative' }}
+                            onMouseEnter=${e=>{ const t=e.currentTarget.querySelector('.rtip'); if(t) t.style.display='block'; }}
+                            onMouseLeave=${e=>{ const t=e.currentTarget.querySelector('.rtip'); if(t) t.style.display='none'; }}>
+                            <div style=${{ width:32, height:32, borderRadius:16, background:color, color:'#FFF', fontSize:10, fontWeight:800,
+                              display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid #FFF',
+                              boxShadow:'0 2px 6px '+color+'40', cursor:'pointer' }}>R${rn}</div>
+                            <div class="rtip" style=${{ display:'none', position:'absolute', bottom:36, left:'50%', transform:'translateX(-50%)',
+                              background:'#1D1D1F', color:'#FFF', borderRadius:10, padding:'8px 10px', fontSize:11,
+                              zIndex:9999, width:180, boxShadow:'0 4px 16px rgba(0,0,0,.25)', pointerEvents:'none', lineHeight:1.4 }}>
+                              <div style=${{ fontWeight:700, marginBottom:3, color:color }}>R${rn}</div>
+                              <div style=${{ marginBottom:4 }}>${r.text}</div>
+                              ${r.owner && html`<div style=${{ fontSize:10, color:'#86868B' }}>👤 ${r.owner}</div>`}
+                              ${r.mitigation && html`<div style=${{ fontSize:10, color:'#86868B' }}>🛡️ ${r.mitigation}</div>`}
+                              <div style=${{ position:'absolute', bottom:-5, left:'50%', transform:'translateX(-50%)',
+                                width:0, height:0, borderLeft:'5px solid transparent', borderRight:'5px solid transparent', borderTop:'5px solid #1D1D1F' }}></div>
+                            </div>
+                          </div>`;
+                      })}
                     </div>`;
                 })
               )}
