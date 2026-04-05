@@ -170,12 +170,12 @@ const PRIS = [
   { id:'low', label:'Baja', icon:'🟢', color:'#34C759' },
 ];
 const PHASES = [
-  { id:'review',     label:'Repaso Inicial',     icon:'📋' },
-  { id:'individual', label:'Análisis Individual', icon:'✍️' },
-  { id:'discuss',    label:'Puesta en Común',     icon:'💬' },
-  { id:'risks',      label:'Riesgos',             icon:'⚠️' },
-  { id:'actions',    label:'Accionables',          icon:'🎯' },
-  { id:'dashboard',  label:'Dashboard',            icon:'📊' },
+  { id:'review',     label:'Repaso',       num:'01' },
+  { id:'individual', label:'Individual',   num:'02' },
+  { id:'discuss',    label:'En común',     num:'03' },
+  { id:'risks',      label:'Riesgos',      num:'04' },
+  { id:'actions',    label:'Accionables',  num:'05' },
+  { id:'session',    label:'Resumen',      num:'06' },
 ];
 const MAIN_TABS = [
   { id:'retro',   label:'Retro',   icon:'📋' },
@@ -701,6 +701,21 @@ function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
 }
 
 
+/* ═══ ESCALATION CONFIG HELPERS ═══ */
+const DEFAULT_ESCALATION_CONFIG = {
+  bajo:   { days: 10, label: 'Bajo' },
+  medio:  { days: 5,  label: 'Medio' },
+  alto:   { days: 2,  label: 'Alto' },
+};
+function getEscalationConfig() {
+  try { return JSON.parse(localStorage.getItem('rf-escalation-config')||'null') || DEFAULT_ESCALATION_CONFIG; }
+  catch { return DEFAULT_ESCALATION_CONFIG; }
+}
+function saveEscalationConfig(cfg) {
+  localStorage.setItem('rf-escalation-config', JSON.stringify(cfg));
+}
+
+
 /* ═══ ADMIN ROLES ═══ */
 function AdminRoles() {
   const [members,  setMembers]  = useState([]);
@@ -740,8 +755,29 @@ function AdminRoles() {
   const RC = {'Scrum Master':'#007AFF','Product Owner':'#5856D6','Desarrollador/a':'#34C759','QA / Tester':'#FF9500','Diseñador/a':'#FF2D55','DevOps':'#00C7BE','Tech Lead':'#FF3B30','Analista':'#AF52DE','Project Manager':'#007AFF','Stakeholder':'#86868B','Otro':'#C7C7CC'};
   const rc = (r) => RC[r]||'#5856D6';
 
+  const [escalCfg, setEscalCfg] = useState(getEscalationConfig);
+  const saveEscalCfgLocal = (cfg) => { setEscalCfg(cfg); saveEscalationConfig(cfg); };
+
   return html`
     <div>
+      <!-- Escalation config box -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px', marginBottom:20 }}>
+        <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>⏱ Tiempo de margen por criticidad de riesgo</h4>
+        <p style=${{ fontSize:11, color:'#86868B', marginBottom:12 }}>Días antes de sugerir escalado automáticamente si el riesgo no se actualiza</p>
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          ${Object.entries(escalCfg).map(([key, val]) => html`
+            <div key=${key} style=${{ padding:'12px', borderRadius:10, background:'#F9F9FB', border:'1px solid #E5E5EA' }}>
+              <p style=${{ fontSize:11, fontWeight:700, color:key==='alto'?'#FF3B30':key==='medio'?'#FF9500':'#34C759', marginBottom:6 }}>${val.label}</p>
+              <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
+                <input type="number" min="1" max="30" value=${val.days}
+                  onInput=${e=>saveEscalCfgLocal({...escalCfg,[key]:{...val,days:parseInt(e.target.value)||1}})}
+                  style=${{ width:52, border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:13, fontWeight:700, textAlign:'center', fontFamily:'inherit', outline:'none' }} />
+                <span style=${{ fontSize:11, color:'#86868B' }}>días</span>
+              </div>
+            </div>`)}
+        </div>
+      </div>
+
       <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <div>
           <h3 style=${{ fontSize:16, fontWeight:700 }}>🏷️ Gestión de roles</h3>
@@ -1902,7 +1938,7 @@ function PEquipo() {
         ${orgSaving && html`<span style=${{ fontSize:11, color:'#007AFF' }}>💾 Guardando…</span>`}
       </div>
       <div style=${{ display:'flex', gap:0, borderBottom:'2px solid #F2F2F7', marginBottom:16 }}>
-        ${[['lista','👤 Lista'],['organigrama','🏢 Organigrama'],['vacaciones','🏖️ Vacaciones']].map(([tid,tl])=>html`
+        ${[['lista','👤 Lista'],['organigrama','🏢 Organigrama'],['vacaciones','🏖️ Vacaciones'],['ftes','📊 FTEs']].map(([tid,tl])=>html`
           <button key=${tid} onClick=${()=>setSubTab(tid)}
             style=${{ padding:'9px 20px', fontSize:12, fontWeight:subTab===tid?700:500,
               color:subTab===tid?'#007AFF':'#86868B', background:'transparent', border:'none',
@@ -1957,6 +1993,7 @@ function PEquipo() {
 
         <!-- ── VACACIONES ── -->
         ${subTab==='vacaciones' && html`<${PVacaciones} embeddedTeam=${team} />`}
+        ${subTab==='ftes' && html`<${PFTEs} team=${team} org=${org} />`}
 
         <!-- ── ORGANIGRAMA ── -->
         ${subTab==='organigrama' && html`
@@ -2349,6 +2386,127 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm }) {
 }
 
 
+/* ═══ PFTEs — dedicación y FTEs del equipo ═══ */
+function PFTEs({ team, org }) {
+  const [orgData, setOrgData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const today = new Date();
+  const [viewYear,  setViewYear]  = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+  const days = Array.from({length:daysInMonth},(_,i)=>i+1);
+  const todayStr = today.toISOString().slice(0,10);
+
+  useEffect(() => { sbLoadOrgChart(SALA).then(rows => { setOrgData(rows); setLoading(false); }); }, []);
+
+  const isWeekend = (d) => { const w=new Date(viewYear,viewMonth,d).getDay(); return w===0||w===6; };
+  const isOnVac = (memberId, d) => {
+    const m=team.find(x=>x.id===memberId); if(!m) return false;
+    const ds=viewYear+'-'+String(viewMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    return (m.vacations||[]).some(v=>v.from<=ds&&(!v.to||v.to>=ds));
+  };
+  const isActive = (row, d) => {
+    const ds=viewYear+'-'+String(viewMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    return ds>=(row.start_date||'2000-01-01') && ds<=(row.end_date||'2099-12-31');
+  };
+  const fteDay = (d) => isWeekend(d) ? 0 : orgData.reduce((s,r)=>{
+    if(!isActive(r,d)||isOnVac(r.member_id,d)) return s;
+    return s+(r.dedication??1);
+  },0);
+  const maxFTE = Math.max(1,...days.map(d=>fteDay(d)));
+  const prevM = () => { if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1); };
+  const nextM = () => { if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1); };
+  const updateOrgField = async (memberId, managerId, field, val) => {
+    await supabase.from('org_chart').upsert({sala:SALA,member_id:memberId,manager_id:managerId||null,[field]:val},{onConflict:'sala,member_id'});
+    setOrgData(prev=>prev.map(r=>r.member_id===memberId?{...r,[field]:val}:r));
+  };
+
+  return html`<div>
+    <div style=${{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+      <button onClick=${prevM} style=${{ width:32,height:32,borderRadius:8,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:16,cursor:'pointer' }}>‹</button>
+      <h3 style=${{ fontSize:16, fontWeight:700, flex:1 }}>${MONTH_NAMES[viewMonth]} ${viewYear}</h3>
+      <button onClick=${nextM} style=${{ width:32,height:32,borderRadius:8,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:16,cursor:'pointer' }}>›</button>
+    </div>
+    ${loading ? html`<div style=${{ textAlign:'center',padding:40,color:'#86868B' }}>⏳</div>` : html`
+      <!-- Bar chart -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px', marginBottom:16 }}>
+        <h4 style=${{ fontSize:11, fontWeight:700, color:'#86868B', marginBottom:10, textTransform:'uppercase', letterSpacing:.5 }}>FTEs totales · ${MONTH_NAMES[viewMonth]}</h4>
+        <div style=${{ display:'flex', alignItems:'flex-end', gap:2, height:72 }}>
+          ${days.map(d => {
+            const wknd=isWeekend(d); const fte=fteDay(d);
+            const isT=todayStr===viewYear+'-'+String(viewMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+            const h=wknd?3:Math.max(3,Math.round((fte/maxFTE)*64));
+            return html`<div key=${d} title=${wknd?'Fin semana':fte.toFixed(2)+' FTEs'}
+              style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, flex:1, minWidth:12 }}>
+              ${!wknd&&fte>0&&html`<span style=${{ fontSize:6,color:'#86868B' }}>${fte.toFixed(1)}</span>`}
+              <div style=${{ width:'80%', height:h+'px', borderRadius:'3px 3px 0 0',
+                background:wknd?'#E5E5EA':isT?'#007AFF':fte>0?'#34C759':'#F2F2F7' }}></div>
+              <span style=${{ fontSize:6, color:isT?'#007AFF':'#C7C7CC' }}>${d}</span>
+            </div>`;
+          })}
+        </div>
+      </div>
+      <!-- Table -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', overflow:'auto' }}>
+        <table style=${{ width:'100%', borderCollapse:'collapse', minWidth:500 }}>
+          <thead><tr style=${{ background:'#F9F9FB', borderBottom:'2px solid #E5E5EA' }}>
+            <th style=${{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:700, color:'#86868B', minWidth:140 }}>Miembro</th>
+            <th style=${{ padding:'10px 10px', textAlign:'center', fontSize:11, fontWeight:700, color:'#86868B' }}>Inicio</th>
+            <th style=${{ padding:'10px 10px', textAlign:'center', fontSize:11, fontWeight:700, color:'#86868B' }}>Fin</th>
+            <th style=${{ padding:'10px 10px', textAlign:'center', fontSize:11, fontWeight:700, color:'#86868B' }}>Dedicación</th>
+            <th style=${{ padding:'10px 10px', textAlign:'center', fontSize:11, fontWeight:700, color:'#86868B' }}>FTE·días</th>
+          </tr></thead>
+          <tbody>
+            ${team.map((m,mi) => {
+              const row=orgData.find(r=>r.member_id===m.id)||{member_id:m.id};
+              const workdays=days.filter(d=>!isWeekend(d)&&isActive(row,d)&&!isOnVac(m.id,d)).length;
+              const mFTE=((workdays)*(row.dedication??1)).toFixed(1);
+              return html`<tr key=${m.id} style=${{ borderBottom:'1px solid #F2F2F7', background:mi%2===0?'#FFF':'#FAFAFA' }}>
+                <td style=${{ padding:'8px 14px' }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style=${{ width:30,height:30,borderRadius:8,background:m.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16 }}>${m.avatar||'👤'}</div>
+                    <div><div style=${{ fontSize:12,fontWeight:600 }}>${m.name}</div>${m.role_label&&html`<div style=${{ fontSize:9,color:'#86868B' }}>${m.role_label}</div>`}</div>
+                  </div>
+                </td>
+                <td style=${{ padding:'6px 10px', textAlign:'center' }}>
+                  <input type="date" value=${row.start_date||''} onInput=${e=>updateOrgField(m.id,row.manager_id,'start_date',e.target.value||null)}
+                    style=${{ border:'1px solid #E5E5EA',borderRadius:6,padding:'3px 5px',fontSize:10,fontFamily:'inherit',outline:'none',width:110 }} />
+                </td>
+                <td style=${{ padding:'6px 10px', textAlign:'center' }}>
+                  <input type="date" value=${row.end_date||''} onInput=${e=>updateOrgField(m.id,row.manager_id,'end_date',e.target.value||null)}
+                    style=${{ border:'1px solid #E5E5EA',borderRadius:6,padding:'3px 5px',fontSize:10,fontFamily:'inherit',outline:'none',width:110 }} />
+                </td>
+                <td style=${{ padding:'6px 10px', textAlign:'center' }}>
+                  <div style=${{ display:'flex',alignItems:'center',gap:4,justifyContent:'center' }}>
+                    <input type="number" min="0.1" max="1" step="0.1" value=${row.dedication??1}
+                      onInput=${e=>updateOrgField(m.id,row.manager_id,'dedication',parseFloat(e.target.value)||1)}
+                      style=${{ width:44,border:'1px solid #E5E5EA',borderRadius:6,padding:'3px 6px',fontSize:12,fontWeight:700,textAlign:'center',fontFamily:'inherit',outline:'none' }} />
+                    <span style=${{ fontSize:10,color:'#86868B' }}>FTE</span>
+                  </div>
+                </td>
+                <td style=${{ padding:'6px 10px', textAlign:'center' }}>
+                  <span style=${{ fontSize:13,fontWeight:700,color:parseFloat(mFTE)>0?'#34C759':'#C7C7CC' }}>${mFTE}</span>
+                  <span style=${{ fontSize:9,color:'#86868B',display:'block' }}>${workdays}d</span>
+                </td>
+              </tr>`;
+            })}
+            <tr style=${{ background:'#F0F7FF', borderTop:'2px solid #007AFF20' }}>
+              <td style=${{ padding:'10px 14px', fontSize:12, fontWeight:700, color:'#007AFF' }}>TOTAL MES</td>
+              <td colspan="3"></td>
+              <td style=${{ padding:'10px 10px', textAlign:'center' }}>
+                <span style=${{ fontSize:16,fontWeight:800,color:'#007AFF' }}>${days.filter(d=>!isWeekend(d)).reduce((s,d)=>s+fteDay(d),0).toFixed(1)}</span>
+                <span style=${{ fontSize:9,color:'#86868B',display:'block' }}>FTE·días</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `}
+  </div>`;
+}
+
+
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
 
 /* ═══ PRIESGOS — Risk Management Dashboard ═══ */
@@ -2359,7 +2517,7 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   }, []);
   const [subTab,    setSubTab]    = useState('riesgos');
   const [escalForm, setEscalForm] = useState({riskId:'', level:'alto_mando', responsible:'', deadline:'', note:'', status:'pendiente'});
-  const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:''});
+  const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:'', deadline:''});
   const [eId,    setEId]    = useState(null);
   const [eF,     setEF]     = useState({});
 
@@ -2384,12 +2542,18 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   // Days since last status update (use createdAt as proxy)
   const staledays = (r) => daysSince(r.updatedAt || r.createdAt);
 
+  const escalCfgRuntime = getEscalationConfig();
   const ALERT_THRESHOLDS = { stale: 5, retros: 2 };
+  const staleForRisk = (r) => {
+    const imp = r.impact || (getRiskLevel ? getRiskLevel(r.impactVotes)?.id : 'medio') || 'medio';
+    return escalCfgRuntime[imp]?.days ?? ALERT_THRESHOLDS.stale;
+  };
 
   const getAlerts = (r) => {
     const alerts = [];
     const sd = staledays(r);
-    if (sd !== null && sd >= ALERT_THRESHOLDS.stale) alerts.push({ type:'stale', label:`Sin actualizar ${sd}d`, color:'#FF9500' });
+    const threshold = staleForRisk(r);
+    if (sd !== null && sd >= threshold) alerts.push({ type:'stale', label:`Sin actualizar ${sd}d (límite ${threshold}d)`, color:'#FF9500' });
     const rc = appearsInRetros(r);
     if (rc >= ALERT_THRESHOLDS.retros) alerts.push({ type:'retros', label:`${rc} retros consecutivas`, color:'#FF3B30' });
     if (hasOverdueAction(r)) alerts.push({ type:'overdue', label:'Accionable vencido', color:'#FF3B30' });
@@ -2430,7 +2594,7 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
       id: uid(), type: form.type, text: form.text.trim(),
       impact: form.impact, prob: form.prob,
       owner: form.owner, mitigation: form.mitigation,
-      opportunity: form.opportunity,
+      opportunity: form.opportunity, deadline: form.deadline||'',
       status: 'open', impactVotes:{}, probVotes:{},
       createdAt: new Date().toISOString()
     }]);
@@ -2546,7 +2710,7 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   };
 
   return html`
-    <div style=${{ maxWidth:1000, margin:'0 auto' }}>
+    <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
 
       <!-- KPI row -->
       <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:18 }}>
@@ -2714,6 +2878,11 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
               <input value=${form.mitigation||''} onInput=${e=>setForm({...form,mitigation:e.target.value})}
                 placeholder=${subTab==='oportunidades'?'¿Cómo aprovecharla?':'Plan de mitigación'}
                 style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 12px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+              <div>
+                <label style=${{ fontSize:10, color:'#86868B', display:'block', marginBottom:3 }}>Fecha resolución prevista</label>
+                <input type="date" value=${form.deadline||''} onInput=${e=>setForm({...form,deadline:e.target.value})}
+                  style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+              </div>
               <button onClick=${addItem}
                 style=${{ padding:'9px', borderRadius:9, border:'none', background:cur.color, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer' }}>
                 ${cur.btn}
@@ -3266,6 +3435,9 @@ function RetroBoard({ user, onLogout }) {
     (state.actions||[]).filter(a=>a.owner===user.name&&a.status!=='done'&&a.date&&a.date<today).forEach(a=>{
       addNotif('🎯 Accionable vencido: '+a.text.slice(0,50), 'overdue');
     });
+    (state.risks||[]).filter(r=>r.owner===user.name&&r.status!=='mitigated'&&r.deadline&&r.deadline<today).forEach(r=>{
+      addNotif('⚠️ Riesgo con fecha vencida: '+r.text.slice(0,50), 'overdue');
+    });
   }, []);
   const [sbRetroHistory, setSbRetroHistory] = useState([]);
   useEffect(() => {
@@ -3437,20 +3609,22 @@ function RetroBoard({ user, onLogout }) {
             <button key=${p.id}
               onClick=${()=>{ if(i<phase) setPhase(i); else if(i===phase+1) setShowPhaseConfirm(i); }}
               title=${i>phase+1?'Completa la fase actual primero':''}
-              style=${{ padding:'6px 12px', borderRadius:8,
+              style=${{ padding:'5px 10px', borderRadius:8,
                 border:phase===i?'none':i<phase?'1.5px solid #34C75940':'1.5px solid #E5E5EA',
                 background:phase===i?'#1D1D1F':i<phase?'#F0FFF4':'#FFF',
                 color:phase===i?'#FFF':i<phase?'#34C759':i>phase+1?'#C7C7CC':'#6E6E73',
                 fontSize:11, fontWeight:600, whiteSpace:'nowrap', display:'flex',
-                alignItems:'center', gap:3, flexShrink:0,
+                alignItems:'center', gap:6, flexShrink:0,
                 cursor:i<=phase+1?'pointer':'not-allowed', opacity:i>phase+1?.5:1 }}>
-              ${i<phase?'✓ ':''}${p.label}
+              <span style=${{ fontSize:9, fontWeight:800, opacity:.6 }}>${p.num}</span>
+              ${i<phase ? html`<span style=${{ fontSize:10 }}>✓</span>` : ''}
+              ${p.label}
             </button>`)}
           ${phase < PHASES.length-1 && html`
             <button onClick=${()=>setShowPhaseConfirm(phase+1)}
               style=${{ padding:'6px 14px', borderRadius:8, border:'none', background:'#007AFF',
                 color:'#FFF', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
-              Siguiente → ${PHASES[phase+1]?.label}
+              ${PHASES[phase+1]?.num} ${PHASES[phase+1]?.label} →
             </button>`}
           <div style=${{ flex:1 }} />
 
@@ -4121,7 +4295,12 @@ function Board({ notes, sN, user, filter, hideOthers }) {
                             <span style=${{ fontSize:10, color:'#86868B' }}>${note.userName}</span>
                           </div>
                           <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
-                            ${REACTIONS.map(emoji => html`<button key=${emoji} onClick=${()=>react(note.id, emoji)} style=${{ border:'none', background:'none', fontSize:10, padding:'1px', cursor:'pointer', opacity:0.4, transition:'opacity .15s' }} onMouseOver=${e=>{e.target.style.opacity=1}} onMouseOut=${e=>{e.target.style.opacity=0.4}}>${emoji}</button>`)}
+                            <div style=${{ position:'relative' }}>
+                              <button onClick=${e=>{ e.stopPropagation(); const d=document.getElementById('rpick-'+note.id); if(d) d.style.display=d.style.display==='flex'?'none':'flex'; }} style=${{ border:'none', background:'none', fontSize:14, cursor:'pointer', opacity:.5, padding:'2px 4px' }}>😊</button>
+                              <div id=${'rpick-'+note.id} style=${{ display:'none', position:'absolute', bottom:26, left:0, zIndex:999, background:'#FFF', border:'1.5px solid #E5E5EA', borderRadius:12, padding:6, gap:3, boxShadow:'0 6px 20px rgba(0,0,0,.14)', flexWrap:'wrap', width:156 }}>
+                                ${REACTIONS.map(emoji => html`<button key=${emoji} onClick=${e=>{ e.stopPropagation(); react(note.id,emoji); document.getElementById('rpick-'+note.id).style.display='none'; }} style=${{ border:'none', background:'none', fontSize:18, cursor:'pointer', padding:'3px', borderRadius:6, lineHeight:1 }} onMouseOver=${e=>{e.currentTarget.style.background='#F2F2F7'}} onMouseOut=${e=>{e.currentTarget.style.background='none'}}>${emoji}</button>`)}
+                              </div>
+                            </div>
                             <button onClick=${()=>vote(note.id)} style=${{ display:'flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:6, border:'none', background:voted?cat.color:cat.color+'12', color:voted?'#FFF':cat.color, fontSize:10, fontWeight:700, marginLeft:3 }}>👍 ${note.voters?.length||0}</button>
                             ${mine && html`
                               <button onClick=${()=>{setEId(note.id);setEVal(note.text)}} style=${{ border:'none', background:'none', fontSize:12, cursor:'pointer', color:'#86868B', padding:'2px' }} title="Editar">✏️</button>
@@ -4395,7 +4574,7 @@ function P5Risks({ risks, sR, notes, user }) {
   const [eF, setEF] = useState({});
   const [riskFilter, setRiskFilter] = useState('all');
 
-  const badStopNotes = notes.filter(n => n.category === 'bad' || n.category === 'stop').sort((a,b) => (b.voters?.length||0) - (a.voters?.length||0));
+  const badStopNotes = notes.filter(n => n.category === 'bad' || n.category === 'stop' || n.category === 'start').sort((a,b) => (b.voters?.length||0) - (a.voters?.length||0));
 
   const addRisk = (fromNote) => {
     const text = fromNote ? fromNote.text : form.text;
@@ -4447,7 +4626,7 @@ function P5Risks({ risks, sR, notes, user }) {
   }));
 
   return html`
-    <div style=${{ maxWidth:1100, margin:'0 auto' }}>
+    <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
       <!-- Heat map full width -->
       <div style=${{ ...cS, padding:'22px', marginBottom:14 }}>
         <h3 style=${{ fontSize:16, fontWeight:700, marginBottom:14 }}>⚠️ Mapa de calor de riesgos</h3>
@@ -4609,7 +4788,7 @@ function P5Risks({ risks, sR, notes, user }) {
         </div>
         <!-- Sidebar: Bad/Stop notes to convert -->
         <div style=${{ ...cS, padding:'18px' }}>
-          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas Bad / Stop</h4>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas Bad / Stop / Start</h4>
           <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para convertir en riesgo</p>
           <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
             ${badStopNotes.length === 0 ? html`<p style=${{ fontSize:11, color:'#C7C7CC' }}>No hay notas Bad/Stop</p>` :
