@@ -3155,15 +3155,24 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
   const [profile,  setProfile]  = useState(null);
   const [saving,   setSaving]   = useState(false);
   const [saved,    setSaved]    = useState(false);
+  const [rolesList, setRolesList] = useState(getAllRoles);
+  useEffect(() => {
+    const onStorage = () => setRolesList(getAllRoles());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     sbLoadTeamMembers().then(members => {
+      const uq = (user.username||user.name||'').toLowerCase();
       const me = members.find(m =>
         m.id === user.id ||
-        (m.email && m.email.toLowerCase() === (user.username||'').toLowerCase()) ||
-        (m.username && m.username.toLowerCase() === (user.username||'').toLowerCase())
+        (m.email    && m.email.toLowerCase()                === uq) ||
+        (m.email    && m.email.split('@')[0].toLowerCase()  === uq) ||
+        (m.username && m.username.toLowerCase()             === uq) ||
+        (m.name     && m.name.toLowerCase()                 === uq)
       );
-      setProfile(me || null);
+      setProfile(me ? {...me} : null);
     });
   }, []);
 
@@ -3256,7 +3265,7 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
                     <select value=${profile.role_label||''} onChange=${e=>setProfile({...profile,role_label:e.target.value})}
                       style=${{ ...iS, fontSize:13 }}>
                       <option value="">— Sin rol —</option>
-                      ${getAllRoles().map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+                      ${rolesList.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
                     </select>
                   </div>
                 </div>
@@ -4180,6 +4189,12 @@ function P1({ tasks, sT, obj, sO, user }) {
 
 /* ═══ BOARD ═══ */
 function Board({ notes, sN, user, filter, hideOthers }) {
+  // Close any open reaction pickers on click outside
+  useEffect(() => {
+    const close = () => document.querySelectorAll('[id^="rpick-"]').forEach(x=>x.style.display='none');
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
   const [act,      setAct]      = useState(null);
   const [txt,      setTxt]      = useState('');
   const [eId,      setEId]      = useState(null);
@@ -4296,9 +4311,23 @@ function Board({ notes, sN, user, filter, hideOthers }) {
                           </div>
                           <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
                             <div style=${{ position:'relative' }}>
-                              <button onClick=${e=>{ e.stopPropagation(); const d=document.getElementById('rpick-'+note.id); if(d) d.style.display=d.style.display==='flex'?'none':'flex'; }} style=${{ border:'none', background:'none', fontSize:14, cursor:'pointer', opacity:.5, padding:'2px 4px' }}>😊</button>
-                              <div id=${'rpick-'+note.id} style=${{ display:'none', position:'absolute', bottom:26, left:0, zIndex:999, background:'#FFF', border:'1.5px solid #E5E5EA', borderRadius:12, padding:6, gap:3, boxShadow:'0 6px 20px rgba(0,0,0,.14)', flexWrap:'wrap', width:156 }}>
-                                ${REACTIONS.map(emoji => html`<button key=${emoji} onClick=${e=>{ e.stopPropagation(); react(note.id,emoji); document.getElementById('rpick-'+note.id).style.display='none'; }} style=${{ border:'none', background:'none', fontSize:18, cursor:'pointer', padding:'3px', borderRadius:6, lineHeight:1 }} onMouseOver=${e=>{e.currentTarget.style.background='#F2F2F7'}} onMouseOut=${e=>{e.currentTarget.style.background='none'}}>${emoji}</button>`)}
+                              <button
+                                onClick=${e=>{ e.stopPropagation(); document.querySelectorAll('[id^="rpick-"]').forEach(x=>{if(x.id!=='rpick-'+note.id)x.style.display='none';}); const d=document.getElementById('rpick-'+note.id); if(d){const r=e.currentTarget.getBoundingClientRect(); d.style.top=(r.top-8)+'px'; d.style.left=r.left+'px'; d.style.display=d.style.display==='flex'?'none':'flex';} }}
+                                style=${{ border:'none', background:'none', fontSize:14, cursor:'pointer', opacity:.55, padding:'2px 4px', borderRadius:6 }}
+                                onMouseOver=${e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background='#F2F2F7'}}
+                                onMouseOut=${e=>{e.currentTarget.style.opacity='.55';e.currentTarget.style.background='none'}}>😊</button>
+                              <div id=${'rpick-'+note.id} style=${{ display:'none', position:'fixed', zIndex:10000, background:'#FFF',
+                                border:'1.5px solid #E5E5EA', borderRadius:12, padding:8, gap:4,
+                                boxShadow:'0 8px 24px rgba(0,0,0,.18)', flexWrap:'wrap', width:164,
+                                transform:'translateY(-100%) translateY(-8px)' }}>
+                                ${REACTIONS.map(emoji => html`
+                                  <button key=${emoji}
+                                    onClick=${e=>{ e.stopPropagation(); react(note.id,emoji); document.getElementById('rpick-'+note.id).style.display='none'; }}
+                                    style=${{ border:'none', background:'none', fontSize:20, cursor:'pointer', padding:'4px', borderRadius:8, lineHeight:1 }}
+                                    onMouseOver=${e=>{e.currentTarget.style.background='#F2F2F7';e.currentTarget.style.transform='scale(1.2)'}}
+                                    onMouseOut=${e=>{e.currentTarget.style.background='none';e.currentTarget.style.transform='scale(1)'}}>
+                                    ${emoji}
+                                  </button>`)}
                               </div>
                             </div>
                             <button onClick=${()=>vote(note.id)} style=${{ display:'flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:6, border:'none', background:voted?cat.color:cat.color+'12', color:voted?'#FFF':cat.color, fontSize:10, fontWeight:700, marginLeft:3 }}>👍 ${note.voters?.length||0}</button>
