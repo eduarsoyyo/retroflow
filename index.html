@@ -301,7 +301,10 @@ function useRealtime(user) {
     });
 
     // Broadcast: cursor positions (fast, no rate limit)
-    ch.on('broadcast', { event:'cursor' }, ({ payload }) => {
+    ch.on('broadcast', { event:'phase' }, ({ payload }) => {
+        if (payload.from !== user.id && window.__phaseRecv) window.__phaseRecv(payload.phase);
+      });
+      ch.on('broadcast', { event:'cursor' }, ({ payload }) => {
       if (payload.id === user.id) return;
       cursRef.current = { ...cursRef.current, [payload.id]: { x:payload.x, y:payload.y, name:payload.name, avatar:payload.avatar, color:payload.color, ts:Date.now() } };
       setCursors({ ...cursRef.current });
@@ -375,7 +378,13 @@ function useRealtime(user) {
     }
   }, [user]);
 
-  return { state, upd, online, cursors, moveCursor, reset, broadcastTimer };
+  const broadcastPhase = useCallback((phaseIdx) => {
+    if (chRef.current && user) {
+      chRef.current.send({ type:'broadcast', event:'phase', payload:{ phase: phaseIdx, from:user.id, name:user.name } });
+    }
+  }, [user]);
+
+  return { state, upd, online, cursors, moveCursor, reset, broadcastTimer, broadcastPhase };
 }
 
 /* ═══ APP ═══ */
@@ -3190,11 +3199,16 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
 
 
 function RetroBoard({ user, onLogout }) {
-  const { state, upd, online, cursors, moveCursor, reset, broadcastTimer } = useRealtime(user);
+  const { state, upd, online, cursors, moveCursor, reset, broadcastTimer, broadcastPhase } = useRealtime(user);
   const [mainTab, setMainTab] = useState('retro');
   const [phase, setPhase] = useState(0);
   const [timer,   setTimer]   = useState(900);
   const [running, setRunning] = useState(false);
+  const [showTimerEnd,     setShowTimerEnd]     = useState(false);
+  const [showPhaseConfirm, setShowPhaseConfirm] = useState(null);
+
+  // Register phase receiver
+  useEffect(() => { window.__phaseRecv = (p) => setPhase(p); }, []);
 
   // Register timer receiver (for broadcast from other users)
   useEffect(() => {
@@ -3275,7 +3289,7 @@ function RetroBoard({ user, onLogout }) {
 
   useEffect(() => {
     if (!running) return;
-    tRef.current = setInterval(() => setTimer(p => { const n=p<=0?0:p-1; timerValRef.current=n; if(n===0){setRunning(false);} return n; }), 1000);
+    tRef.current = setInterval(() => setTimer(p => { const n=p<=0?0:p-1; timerValRef.current=n; if(n===0){setRunning(false);setShowTimerEnd(true);} return n; }), 1000);
     return () => clearInterval(tRef.current);
   }, [running]);
 
@@ -3421,7 +3435,7 @@ function RetroBoard({ user, onLogout }) {
         <div style=${{ padding:'6px 14px', display:'flex', gap:4, flexShrink:0, background:'#FAFAFA', borderBottom:'1px solid #E5E5EA', overflowX:'auto', alignItems:'center' }}>
           ${PHASES.map((p,i)=>html`
             <button key=${p.id}
-              onClick=${()=>{ if(i<=phase+1) setPhase(i); }}
+              onClick=${()=>{ if(i<phase) setPhase(i); else if(i===phase+1) setShowPhaseConfirm(i); }}
               title=${i>phase+1?'Completa la fase actual primero':''}
               style=${{ padding:'6px 12px', borderRadius:8,
                 border:phase===i?'none':i<phase?'1.5px solid #34C75940':'1.5px solid #E5E5EA',
@@ -3433,7 +3447,7 @@ function RetroBoard({ user, onLogout }) {
               ${i<phase?'✓ ':''}${p.label}
             </button>`)}
           ${phase < PHASES.length-1 && html`
-            <button onClick=${()=>setPhase(phase+1)}
+            <button onClick=${()=>setShowPhaseConfirm(phase+1)}
               style=${{ padding:'6px 14px', borderRadius:8, border:'none', background:'#007AFF',
                 color:'#FFF', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
               Siguiente → ${PHASES[phase+1]?.label}
@@ -3486,6 +3500,58 @@ function RetroBoard({ user, onLogout }) {
       `}
 
       ${showHistorial && html`<${HistorialModal} onClose=${()=>setShowHistorial(false)} />`}
+
+      ${showTimerEnd && html`
+        <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9200,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style=${{ background:'#FFF', borderRadius:24, padding:'36px 32px', maxWidth:380, width:'100%',
+            textAlign:'center', boxShadow:'0 24px 80px rgba(0,0,0,.2)' }}>
+            <div style=${{ fontSize:52, marginBottom:12 }}>⏰</div>
+            <h2 style=${{ fontSize:20, fontWeight:700, marginBottom:6 }}>¡Tiempo agotado!</h2>
+            <p style=${{ fontSize:14, color:'#86868B', marginBottom:24 }}>Fase: <strong>${PHASES[phase]?.label}</strong></p>
+            <div style=${{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+              ${[5,10].map(m=>html`
+                <button key=${m} onClick=${()=>{ syncTimer(m*60,true); setShowTimerEnd(false); }}
+                  style=${{ padding:'10px 16px', borderRadius:10, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                  +${m}' Prórroga
+                </button>`)}
+              ${phase < PHASES.length-1 && html`
+                <button onClick=${()=>{ setShowTimerEnd(false); setShowPhaseConfirm(phase+1); }}
+                  style=${{ padding:'10px 16px', borderRadius:10, border:'none', background:'#007AFF', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                  Siguiente fase →
+                </button>`}
+            </div>
+          </div>
+        </div>`}
+
+      ${showPhaseConfirm !== null && html`
+        <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:9200,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style=${{ background:'#FFF', borderRadius:20, padding:'28px', maxWidth:360, width:'100%',
+            textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,.18)' }}>
+            <div style=${{ fontSize:40, marginBottom:12 }}>➡️</div>
+            <h3 style=${{ fontSize:17, fontWeight:700, marginBottom:8 }}>Avanzar de fase</h3>
+            <p style=${{ fontSize:13, color:'#86868B', marginBottom:20 }}>
+              ¿Pasar a <strong>${PHASES[showPhaseConfirm]?.label}</strong>?<br/>
+              <span style=${{ fontSize:11 }}>Se sincronizará para todos los participantes.</span>
+            </p>
+            <div style=${{ display:'flex', gap:8 }}>
+              <button onClick=${()=>setShowPhaseConfirm(null)}
+                style=${{ flex:1, padding:'10px', borderRadius:10, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:13, cursor:'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick=${()=>{
+                const t=showPhaseConfirm;
+                setPhase(t); broadcastPhase(t);
+                setShowPhaseConfirm(null);
+                setRunning(false); syncTimer(900,false);
+              }}
+                style=${{ flex:1, padding:'10px', borderRadius:10, border:'none', background:'#007AFF', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ✓ Confirmar
+              </button>
+            </div>
+          </div>
+        </div>`}
 
       ${showProjectSwitch && html`
         <div style=${{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
@@ -4145,8 +4211,8 @@ function P4({ notes, actions, risks, sA, user }) {
   const priO = {high:3,medium:2,low:1};
 
   return html`
-    <div style=${{ maxWidth:1000, margin:'0 auto' }}>
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14 }}>
+    <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
+      <div style=${{ display:'grid', gridTemplateColumns:viewMode==='kanban'?'1fr':'1fr 320px', gap:14 }}>
         <div style=${{ ...cS, padding:22 }}>
           <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
             <h3 style=${{ fontSize:17, fontWeight:700 }}>🎯 Accionables</h3>
