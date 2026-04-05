@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>revelio</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/comfortaa@5.0.18/latin-400.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-36 -36 72 72'><rect x='-36' y='-36' wiedth='72' height='72' rx='18' fill='%235856D6'/><circle cx='0' cy='0' r='6' fill='white'/><circle cx='0' cy='0' r='15' fill='none' stroke='white' stroke-width='2.5' opacity='0.8'/><circle cx='0' cy='0' r='24' fill='none' stroke='white' stroke-width='2' opacity='0.5'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-36 -36 72 72'><rect x='-36' y='-36' width='72' height='72' rx='18' fill='%235856D6'/><circle cx='0' cy='0' r='6' fill='white'/><circle cx='0' cy='0' r='15' fill='none' stroke='white' stroke-width='2.5' opacity='0.8'/><circle cx='0' cy='0' r='24' fill='none' stroke='white' stroke-width='2' opacity='0.5'/></svg>">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #F5F5F7; color: #1D1D1F; }
@@ -274,9 +274,40 @@ const TASK_TEMPLATES = {
 const TIPO_INFO = TASK_TEMPLATES[TIPO] || TASK_TEMPLATES.agile;
 const DEFAULT_TASKS = TIPO_INFO.tasks.map(t => ({ id: uid(), text: t, done: false }));
 
+/* ═══ RETRO PERSISTENCE ═══ */
+function retroStateKey()  { return 'rf-retro-state-'  + SALA; }
+function retroPhaseKey()  { return 'rf-retro-phase-'  + SALA; }
+function retroTimesKey()  { return 'rf-retro-times-'  + SALA; }
+
+function loadRetroState() {
+  try { const s = localStorage.getItem(retroStateKey()); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveRetroState(state) {
+  try { localStorage.setItem(retroStateKey(), JSON.stringify(state)); } catch {}
+}
+function loadRetroPhase() {
+  try { const p = localStorage.getItem(retroPhaseKey()); return p !== null ? parseInt(p) : 0; } catch { return 0; }
+}
+function saveRetroPhase(phase) {
+  try { localStorage.setItem(retroPhaseKey(), String(phase)); } catch {}
+}
+function loadPhaseTimes() {
+  try { const t = localStorage.getItem(retroTimesKey()); return t ? JSON.parse(t) : {}; } catch { return {}; }
+}
+function savePhaseTimes(times) {
+  try { localStorage.setItem(retroTimesKey(), JSON.stringify(times)); } catch {}
+}
+function clearRetroStorage() {
+  [retroStateKey(), retroPhaseKey(), retroTimesKey()].forEach(k => localStorage.removeItem(k));
+}
+
 /* ═══ REALTIME STATE ═══ */
 function useRealtime(user) {
-  const [state, setState] = useState({ notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks() });
+  const [state, setState] = useState(() => {
+    const saved = loadRetroState();
+    if (saved) return { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks(), ...saved };
+    return { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:[], obj:{text:'',met:null}, risks:loadRisks() };
+  });
   const [online, setOnline] = useState({});
   const [cursors, setCursors] = useState({});
   const chRef = useRef(null);
@@ -313,7 +344,11 @@ function useRealtime(user) {
     // Broadcast: state sync
     ch.on('broadcast', { event:'sync' }, ({ payload }) => {
       if (payload.from === user.id) return;
-      setState(prev => ({ ...prev, [payload.key]: payload.data }));
+      setState(prev => {
+        const next = { ...prev, [payload.key]: payload.data };
+        saveRetroState(next);
+        return next;
+      });
     });
 
     ch.on('broadcast', { event:'timer' }, ({ payload }) => {
@@ -350,7 +385,11 @@ function useRealtime(user) {
   }, [user]);
 
   const upd = useCallback((key, data) => {
-    setState(prev => ({ ...prev, [key]:data }));
+    setState(prev => {
+      const next = { ...prev, [key]:data };
+      saveRetroState(next);
+      return next;
+    });
     if (chRef.current && user) chRef.current.send({ type:'broadcast', event:'sync', payload:{ key, data, from:user.id } });
   }, [user]);
 
@@ -364,6 +403,7 @@ function useRealtime(user) {
     const currentRisks = stRef.current.risks || [];
     const openActions = (stRef.current.actions || []).filter(a => a.status !== 'done' && a.status !== 'discarded');
     const fresh = { notes:[], tasks:DEFAULT_TASKS.map(t=>({...t,id:uid()})), actions:openActions, obj:{text:'',met:null}, risks:currentRisks };
+    clearRetroStorage();
     setState(fresh);
     if (chRef.current && user) {
       Object.keys(fresh).forEach(k => {
@@ -3392,14 +3432,28 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
 function RetroBoard({ user, onLogout }) {
   const { state, upd, online, cursors, moveCursor, reset, broadcastTimer, broadcastPhase } = useRealtime(user);
   const [mainTab, setMainTab] = useState('retro');
-  const [phase, setPhase] = useState(0);
+  const [phase, setPhase] = useState(() => loadRetroPhase());
   const [timer,   setTimer]   = useState(900);
   const [running, setRunning] = useState(false);
   const [showTimerEnd,     setShowTimerEnd]     = useState(false);
   const [showPhaseConfirm, setShowPhaseConfirm] = useState(null);
+  const [phaseTimes, setPhaseTimes] = useState(() => loadPhaseTimes()); // { phaseIdx: totalSeconds }
+  const phaseStartRef = useRef(Date.now()); // when current phase started (wall clock)
 
-  // Register phase receiver
-  useEffect(() => { window.__phaseRecv = (p) => setPhase(p); }, []);
+  // Register phase receiver — also saves phase and records time
+  const advanceToPhase = useCallback((target) => {
+    const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000);
+    setPhaseTimes(prev => {
+      const next = { ...prev, [phase]: (prev[phase]||0) + elapsed };
+      savePhaseTimes(next);
+      return next;
+    });
+    phaseStartRef.current = Date.now();
+    setPhase(target);
+    saveRetroPhase(target);
+  }, [phase]);
+
+  useEffect(() => { window.__phaseRecv = (p) => advanceToPhase(p); }, [advanceToPhase]);
 
   // Register timer receiver (for broadcast from other users)
   useEffect(() => {
@@ -3546,7 +3600,7 @@ function RetroBoard({ user, onLogout }) {
     if (phase===2) return html`<${P3} notes=${state.notes} sN=${sN} user=${user} />`;
     if (phase===3) return html`<${P5Risks} risks=${state.risks} sR=${sR} notes=${state.notes} user=${user} />`;
     if (phase===4) return html`<${P4} notes=${state.notes} actions=${state.actions} risks=${state.risks} sA=${sA} user=${user} />`;
-    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} />`;
+    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} phaseTimes=${phaseTimes} />`;
 
     return null;
   };
@@ -3738,7 +3792,7 @@ function RetroBoard({ user, onLogout }) {
               </button>
               <button onClick=${()=>{
                 const t=showPhaseConfirm;
-                setPhase(t); broadcastPhase(t);
+                advanceToPhase(t); broadcastPhase(t);
                 setShowPhaseConfirm(null);
                 setRunning(false); syncTimer(900,false);
               }}
@@ -3790,7 +3844,7 @@ function RetroBoard({ user, onLogout }) {
       ${showReset && html`<${NewRetroModal}
         user=${user} state=${state}
         onClose=${()=>setShowReset(false)}
-        onConfirm=${()=>{ reset(); setShowReset(false); setPhase(0); setMainTab('retro'); setTimer(900); setRunning(false); }}
+        onConfirm=${()=>{ reset(); setShowReset(false); advanceToPhase(0); setMainTab('retro'); setTimer(900); setRunning(false); setPhaseTimes({}); phaseStartRef.current=Date.now(); }}
       />`}
 
       ${showGuide && html`
@@ -4875,7 +4929,7 @@ function P5Risks({ risks, sR, notes, user }) {
 }
 
 /* ═══ PHASE 6: DASHBOARD + PDF ═══ */
-function P6({ notes, actions, risks, users, user, obj, tasks }) {
+function P6({ notes, actions, risks, users, user, obj, tasks, phaseTimes }) {
   const [activeTab, setActiveTab] = useState('resumen');
 
   // ── derived data ──
@@ -4903,6 +4957,14 @@ function P6({ notes, actions, risks, users, user, obj, tasks }) {
     id, ...d, score: d.tarjetas + d.votosRecibidos
   })).sort((a,b) => b.score - a.score);
   const mx = ranking[0]?.score || 1;
+
+  // Phase time helpers
+  const fmtTime = (secs) => {
+    if (!secs) return '—';
+    const m = Math.floor(secs/60), s = secs%60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+  const totalTime = Object.values(phaseTimes||{}).reduce((a,b)=>a+b,0);
 
   // risk helpers
   const riskScore = r => {
@@ -5025,6 +5087,34 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
                   </div>
                 </div>`)}
             </div>
+
+            <!-- Tiempo real por fase -->
+            ${Object.keys(phaseTimes||{}).length > 0 && html`
+              <div style=${{ padding:'14px 16px', borderRadius:12, background:'#F0F7FF', border:'1.5px solid #007AFF20', marginBottom:0 }}>
+                <h4 style=${{ fontSize:12, fontWeight:700, color:'#007AFF', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+                  <span>⏱</span> Tiempo real por fase
+                </h4>
+                <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
+                  ${PHASES.map((p,i) => {
+                    const secs = (phaseTimes||{})[i] || 0;
+                    const pct = totalTime > 0 ? Math.round((secs/totalTime)*100) : 0;
+                    return html`
+                      <div key=${i} style=${{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style=${{ fontSize:9, fontWeight:800, color:'#86868B', minWidth:16 }}>${p.num}</span>
+                        <span style=${{ fontSize:11, minWidth:90 }}>${p.label}</span>
+                        <div style=${{ flex:1, background:'#E5E5EA', borderRadius:4, height:5, overflow:'hidden' }}>
+                          <div style=${{ width:pct+'%', height:'100%', background:'#007AFF', borderRadius:4, transition:'width .4s' }}></div>
+                        </div>
+                        <span style=${{ fontSize:11, fontWeight:700, color:'#007AFF', minWidth:48, textAlign:'right' }}>${fmtTime(secs)}</span>
+                        <span style=${{ fontSize:9, color:'#86868B', minWidth:26, textAlign:'right' }}>${pct}%</span>
+                      </div>`;
+                  })}
+                  <div style=${{ display:'flex', justifyContent:'space-between', borderTop:'1px solid #007AFF20', paddingTop:6, marginTop:2 }}>
+                    <span style=${{ fontSize:10, color:'#86868B' }}>Total sesión</span>
+                    <span style=${{ fontSize:12, fontWeight:800, color:'#007AFF' }}>${fmtTime(totalTime)}</span>
+                  </div>
+                </div>
+              </div>`}
 
             <!-- Objetivo -->
             ${obj.text && html`
