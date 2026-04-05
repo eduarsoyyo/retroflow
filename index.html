@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>revelio</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/comfortaa@5.0.18/latin-400.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-36 -36 72 72'><rect x='-36' y='-36' width='72' height='72' rx='18' fill='%235856D6'/><circle cx='0' cy='0' r='6' fill='white'/><circle cx='0' cy='0' r='15' fill='none' stroke='white' stroke-width='2.5' opacity='0.8'/><circle cx='0' cy='0' r='24' fill='none' stroke='white' stroke-width='2' opacity='0.5'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-36 -36 72 72'><rect x='-36' y='-36' wiedth='72' height='72' rx='18' fill='%235856D6'/><circle cx='0' cy='0' r='6' fill='white'/><circle cx='0' cy='0' r='15' fill='none' stroke='white' stroke-width='2.5' opacity='0.8'/><circle cx='0' cy='0' r='24' fill='none' stroke='white' stroke-width='2' opacity='0.5'/></svg>">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; background: #F5F5F7; color: #1D1D1F; }
@@ -1298,7 +1298,7 @@ function RoomPicker() {
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Proyectos'},{id:'usuarios',label:'👥 Usuarios'},{id:'roles',label:'🏷️ Roles'},{id:'calendarios',label:'📅 Calendarios'}].map(t => html`
+          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Proyectos'},{id:'usuarios',label:'👥 Usuarios'},{id:'roles',label:'🏷️ Roles · ⏱ Escalado'},{id:'calendarios',label:'📅 Calendarios'}].map(t => html`
             <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
           `)}
         </div>
@@ -1764,8 +1764,13 @@ function Login({ onJoin, isModal }) {
     const storedPw = member.pin || member.password || '';
     if (!storedPw || storedPw !== password) { setLoading(false); setError('❌ Contraseña incorrecta'); return; }
 
-    // Superuser → admin panel directly, no sala needed
+    // Superuser → try Supabase Auth with their stored email (bypasses pin requirement)
     if (member.is_superuser) {
+      if (!storedPw) {
+        // No pin set — try Supabase Auth with member's email
+        const { session: s2 } = await sbSignIn(member.email||username.trim(), password);
+        if (!s2) { setLoading(false); setError('❌ Contraseña incorrecta'); return; }
+      }
       setLoading(false);
       window.location.href = window.location.pathname + '?admin';
       return;
@@ -2513,7 +2518,10 @@ function PFTEs({ team, org }) {
 function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   const [teamMembers, setTeamMembers] = useState([]);
   useEffect(() => {
-    sbLoadTeamMembers().then(data => setTeamMembers(data.filter(m=>(m.rooms||[]).includes(SALA))));
+    sbLoadTeamMembers().then(data => {
+      const filtered = data.filter(m=>(m.rooms||[]).includes(SALA));
+      setTeamMembers(filtered.length > 0 ? filtered : data);
+    });
   }, []);
   const [subTab,    setSubTab]    = useState('riesgos');
   const [escalForm, setEscalForm] = useState({riskId:'', level:'alto_mando', responsible:'', deadline:'', note:'', status:'pendiente'});
@@ -3180,6 +3188,11 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
     if (!profile) return;
     setSaving(true);
     await sbSaveTeamMember(profile);
+    // Reload to confirm sync with user management
+    sbLoadTeamMembers().then(members => {
+      const me = members.find(m => m.id === profile.id);
+      if (me) setProfile({...me});
+    });
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -4206,7 +4219,17 @@ function Board({ notes, sN, user, filter, hideOthers }) {
 
   const addN = c => { if(!txt.trim())return; sN([...notes,{id:uid(),text:txt.trim(),category:c,userId:user.id,userName:user.name,userAvatar:user.avatar,userColor:user.color,voters:[],reactions:{}}]); setTxt(''); setAct(null); };
   const vote = nid => sN(notes.map(n=>{if(n.id!==nid)return n;const v=n.voters||[];return{...n,voters:v.includes(user.id)?v.filter(x=>x!==user.id):[...v,user.id]}}));
-  const react = (nid, emoji) => sN(notes.map(n=>{if(n.id!==nid)return n;const r={...(n.reactions||{})};if(!r[emoji])r[emoji]=[];r[emoji]=r[emoji].includes(user.id)?r[emoji].filter(x=>x!==user.id):[...r[emoji],user.id];if(r[emoji].length===0)delete r[emoji];return{...n,reactions:r}}));
+  const react = (nid, emoji) => sN(notes.map(n=>{
+    if(n.id!==nid) return n;
+    const r = {...(n.reactions||{})};
+    // Remove this user from ALL other emojis first (one reaction per user)
+    Object.keys(r).forEach(e => { if(e!==emoji) r[e]=r[e].filter(x=>x!==user.id); if(r[e]?.length===0) delete r[e]; });
+    // Toggle current emoji
+    if(!r[emoji]) r[emoji]=[];
+    if(r[emoji].includes(user.id)) { r[emoji]=r[emoji].filter(x=>x!==user.id); if(r[emoji].length===0) delete r[emoji]; }
+    else r[emoji]=[...r[emoji],user.id];
+    return {...n,reactions:r};
+  }));
   const delN = nid => sN(notes.filter(n=>n.id!==nid));
   const saveE = () => { if(!eVal.trim())delN(eId); else sN(notes.map(n=>n.id===eId?{...n,text:eVal.trim()}:n)); setEId(null); };
   const drop = (e,c) => { e.preventDefault(); setOverCat(null); if(dragId)sN(notes.map(n=>n.id===dragId?{...n,category:c}:n)); setDragId(null); };
@@ -4368,7 +4391,10 @@ function P3({ notes, sN, user }) {
 function P4({ notes, actions, risks, sA, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
   useEffect(() => {
-    sbLoadTeamMembers().then(data => setTeamMembers(data.filter(m=>(m.rooms||[]).includes(SALA))));
+    sbLoadTeamMembers().then(data => {
+      const filtered = data.filter(m=>(m.rooms||[]).includes(SALA));
+      setTeamMembers(filtered.length > 0 ? filtered : data);
+    });
   }, []);
   const [form, setForm] = useState({text:'',owner:'',date:'',priority:'medium'});
   const [eId, setEId] = useState(null);
@@ -4420,7 +4446,7 @@ function P4({ notes, actions, risks, sA, user }) {
 
   return html`
     <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
-      <div style=${{ display:'grid', gridTemplateColumns:viewMode==='kanban'?'1fr':'1fr 320px', gap:14 }}>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr', gap:14 }}>
         <div style=${{ ...cS, padding:22 }}>
           <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
             <h3 style=${{ fontSize:17, fontWeight:700 }}>🎯 Accionables</h3>
@@ -4511,8 +4537,11 @@ function P4({ notes, actions, risks, sA, user }) {
                               <div style=${{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
                                 <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})}
                                   style=${{ border:'1px solid #007AFF40', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
-                                <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} placeholder="Responsable"
-                                  style=${{ border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+                                <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})}
+                                  style=${{ border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+                                  <option value="">— Responsable —</option>
+                                  ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+                                </select>
                                 <div style=${{ display:'flex', gap:4 }}>
                                   <button onClick=${saveEA} style=${{ flex:1, padding:'4px', borderRadius:6, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:10, fontWeight:600, cursor:'pointer' }}>Guardar</button>
                                   <button onClick=${()=>setEId(null)} style=${{ padding:'4px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, cursor:'pointer' }}>✕</button>
@@ -4536,7 +4565,10 @@ function P4({ notes, actions, risks, sA, user }) {
                   <div key=${a.id} style=${{ padding:'14px 16px', borderRadius:13, background:'#F9F9FB', border:'2px solid #007AFF30' }}>
                     <div style=${{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
                       <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
-                      <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:80, fontSize:13 }} />
+                      <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:100, fontSize:13 }}>
+                        <option value="">— Responsable —</option>
+                        ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+                      </select>
                       <input type="date" value=${eF.date} onInput=${e=>setEF({...eF,date:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:13 }} />
                       <select value=${eF.priority} onChange=${e=>setEF({...eF,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', fontSize:13 }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
                     </div>
@@ -4558,7 +4590,8 @@ function P4({ notes, actions, risks, sA, user }) {
             </div>
           `}
         </div>
-        <div style=${{ ...cS, padding:18, overflowY:'auto', maxHeight:'80vh' }}>
+        <div style=${{ ...cS, padding:18, display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <div>
           <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas más votadas</h4>
           <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para añadir / quitar</p>
           <div style=${{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
@@ -4586,6 +4619,7 @@ function P4({ notes, actions, risks, sA, user }) {
               })}
             </div>
           `}
+          </div>
         </div>
       </div>
     </div>
@@ -4596,7 +4630,10 @@ function P4({ notes, actions, risks, sA, user }) {
 function P5Risks({ risks, sR, notes, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
   useEffect(() => {
-    sbLoadTeamMembers().then(data => setTeamMembers(data.filter(m=>(m.rooms||[]).includes(SALA))));
+    sbLoadTeamMembers().then(data => {
+      const filtered = data.filter(m=>(m.rooms||[]).includes(SALA));
+      setTeamMembers(filtered.length > 0 ? filtered : data);
+    });
   }, []);
   const [form, setForm] = useState({ text:'', mitigation:'', owner:'' });
   const [eId, setEId] = useState(null);
