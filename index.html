@@ -91,6 +91,15 @@ async function sbDeleteTeamMember(id) {
 async function sbLoadOrgChart(sala) {
   try { const {data}=await supabase.from('org_chart').select('*').eq('sala',sala); return data||[]; } catch { return []; }
 }
+async function sbLoadAllRetroRisks() {
+  try {
+    const {data} = await supabase.from('retro_snapshots').select('sala,data').order('created_at',{ascending:false});
+    if (!data) return [];
+    const bySala = {};
+    data.forEach(s => { if (!bySala[s.sala]) bySala[s.sala] = s; });
+    return Object.entries(bySala).map(([sala, snap]) => ({ sala, risks: (snap.data?.risks||[]) }));
+  } catch { return []; }
+}
 async function sbSaveOrgNode(sala, memberId, managerId) {
   try {
     await supabase.from('org_chart').upsert(
@@ -1284,6 +1293,182 @@ function AdminConvenio() {
 }
 
 
+/* ═══ ADMIN ESCALADO GLOBAL ═══ */
+function AdminEscaladoGlobal({ rooms }) {
+  const [members,   setMembers]   = useState([]);
+  const [globalOrg, setGlobalOrg] = useState({});
+  const [allRisks,  setAllRisks]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [orgSaving, setOrgSaving] = useState(false);
+  const [view,      setView]      = useState('riesgos');
+
+  useEffect(() => {
+    Promise.all([sbLoadTeamMembers(), sbLoadOrgChart('__global__'), sbLoadAllRetroRisks()]).then(([mbrs, chart, risks]) => {
+      setMembers(mbrs||[]);
+      const map = {};
+      (chart||[]).forEach(n => { map[n.member_id] = n.manager_id||null; });
+      setGlobalOrg(map);
+      setAllRisks(risks||[]);
+      setLoading(false);
+    });
+  }, []);
+
+  const setGlobalManager = async (memberId, managerId) => {
+    setOrgSaving(true);
+    setGlobalOrg(prev=>({...prev,[memberId]:managerId||null}));
+    await supabase.from('org_chart').upsert({sala:'__global__',member_id:memberId,manager_id:managerId||null},{onConflict:'sala,member_id'});
+    setOrgSaving(false);
+  };
+  const addToOrg = async (memberId) => {
+    if (Object.keys(globalOrg).includes(memberId)) return;
+    setGlobalOrg(prev=>({...prev,[memberId]:null}));
+    await supabase.from('org_chart').upsert({sala:'__global__',member_id:memberId,manager_id:null},{onConflict:'sala,member_id'});
+  };
+
+  const LEVELS = [
+    {id:'equipo',label:'Equipo',          color:'#34C759'},
+    {id:'jp',    label:'Jefe Proyecto',   color:'#FF9500'},
+    {id:'sm',    label:'Service Manager', color:'#FF3B30'},
+    {id:'dt',    label:'Dir. Técnica',    color:'#5856D6'},
+  ];
+  const escalatedRisks = allRisks.flatMap(({sala,risks})=>
+    (risks||[]).filter(r=>r.escalation).map(r=>({...r,_sala:sala,_salaName:rooms.find(x=>x.slug===sala)?.name||sala}))
+  );
+  const byLevel = (lid) => escalatedRisks.filter(r=>r.escalation?.level===lid);
+  const orgMembers = members.filter(m=>Object.keys(globalOrg).includes(m.id));
+  const roots = orgMembers.filter(m=>(globalOrg[m.id]||null)===null);
+
+  const getRoleColor = (role) => {
+    if(!role) return '#86868B';
+    const r2=role.toLowerCase();
+    if(r2.includes('pm2')||r2.includes('technical unit')||r2.includes('dirección')) return '#5856D6';
+    if(r2.includes('senior')) return '#FF2D55';
+    if(r2.includes('service manager')) return '#FF3B30';
+    if(r2.includes('project manager')) return '#007AFF';
+    return '#86868B';
+  };
+
+  function OrgNodeG({m, depth}) {
+    const children = orgMembers.filter(x=>(globalOrg[x.id]||null)===m.id);
+    const c = getRoleColor(m.role_label);
+    return html`
+      <div style=${{display:'flex',flexDirection:'column',alignItems:'center'}}>
+        ${depth>0&&html`<div style=${{width:2,height:20,background:'#E5E5EA'}}></div>`}
+        <div style=${{background:'#FFF',borderRadius:14,border:'2px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),
+          padding:'12px 14px',minWidth:120,textAlign:'center',
+          boxShadow:depth===0?'0 4px 16px rgba(0,0,0,.08)':'0 2px 8px rgba(0,0,0,.04)'}}>
+          <div style=${{width:40,height:40,borderRadius:12,background:m.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,margin:'0 auto 6px'}}>${m.avatar||'👤'}</div>
+          <div style=${{fontSize:12,fontWeight:700,marginBottom:3}}>${m.name}</div>
+          ${m.role_label&&html`<span style=${{fontSize:9,color:'#FFF',background:c,padding:'2px 7px',borderRadius:7,display:'inline-block',fontWeight:700}}>${m.role_label}</span>`}
+        </div>
+        ${children.length>0&&html`
+          <div><div style=${{width:2,height:20,background:'#E5E5EA',margin:'0 auto'}}></div>
+          <div style=${{display:'flex',gap:16,justifyContent:'center'}}>
+            ${children.map(c2=>html`<${OrgNodeG} key=${c2.id} m=${c2} depth=${depth+1} />`)}
+          </div></div>`}
+      </div>`;
+  }
+
+  return html`
+    <div>
+      <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+        <div>
+          <h3 style=${{fontSize:16,fontWeight:700}}>📈 Escalado Global</h3>
+          <p style=${{fontSize:12,color:'#86868B',marginTop:2}}>${escalatedRisks.length} riesgo${escalatedRisks.length!==1?'s':''} en ${rooms.length} proyectos</p>
+        </div>
+        <div style=${{display:'flex',gap:0,borderRadius:10,overflow:'hidden',border:'1.5px solid #E5E5EA'}}>
+          ${[['riesgos','⚠️ Riesgos'],['organigrama','🏢 Organigrama']].map(([vid,vl])=>html`
+            <button key=${vid} onClick=${()=>setView(vid)}
+              style=${{padding:'7px 16px',fontSize:12,fontWeight:view===vid?700:500,
+                background:view===vid?'#1D1D1F':'#FFF',color:view===vid?'#FFF':'#6E6E73',
+                border:'none',cursor:'pointer'}}>${vl}</button>`)}
+        </div>
+      </div>
+
+      ${loading?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>⏳ Cargando…</div>`:html`
+
+        ${view==='riesgos'&&html`<div>
+          <div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:16}}>
+            ${LEVELS.map(l=>html`
+              <div style=${{background:'#FFF',borderRadius:12,border:'1.5px solid #E5E5EA',padding:'12px 10px',textAlign:'center',borderTop:'3px solid '+l.color}}>
+                <div style=${{fontSize:24,fontWeight:800,color:l.color}}>${byLevel(l.id).length||'—'}</div>
+                <div style=${{fontSize:11,fontWeight:700,marginTop:2}}>${l.label}</div>
+              </div>`)}
+          </div>
+          ${escalatedRisks.length===0?html`<div style=${{textAlign:'center',padding:'48px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:16}}><p style=${{fontSize:36,marginBottom:8}}>✅</p><p>Sin riesgos escalados</p></div>`:
+            LEVELS.map(l=>{
+              const items=byLevel(l.id); if(!items.length) return null;
+              return html`
+                <div key=${l.id} style=${{marginBottom:14}}>
+                  <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:8,paddingBottom:6,borderBottom:'2px solid '+l.color+'30'}}>
+                    <div style=${{width:10,height:10,borderRadius:5,background:l.color}}></div>
+                    <span style=${{fontSize:13,fontWeight:700,color:l.color}}>${l.label}</span>
+                    <span style=${{fontSize:11,color:'#86868B'}}>${items.length} riesgo${items.length>1?'s':''}</span>
+                  </div>
+                  <div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:8}}>
+                    ${items.map(r=>{
+                      const st=r.escalation?.status||'pendiente';
+                      const stC=st==='resuelto'?'#34C759':st==='en_curso'?'#007AFF':st==='bloqueado'?'#FF3B30':'#FF9500';
+                      return html`
+                        <div style=${{background:'#FFF',borderRadius:12,border:'1.5px solid #E5E5EA',borderLeft:'4px solid '+l.color,padding:'12px 14px'}}>
+                          <p style=${{fontSize:12,fontWeight:600,lineHeight:1.3,marginBottom:4}}>${r.text}</p>
+                          <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:3}}>
+                            <span style=${{fontSize:9,background:'#F2F2F7',color:'#86868B',padding:'2px 7px',borderRadius:6}}>📂 ${r._salaName}</span>
+                            ${r.owner&&html`<span style=${{fontSize:9,color:'#007AFF'}}>👤 ${r.owner}</span>`}
+                            <span style=${{fontSize:9,fontWeight:700,color:stC,background:stC+'15',padding:'2px 7px',borderRadius:6}}>${st}</span>
+                          </div>
+                          ${r.escalation?.deadline&&html`<div style=${{fontSize:9,color:'#86868B'}}>📅 ${r.escalation.deadline}</div>`}
+                        </div>`;
+                    })}
+                  </div>
+                </div>`;
+            })}
+        </div>`}
+
+        ${view==='organigrama'&&html`<div>
+          <div style=${{background:'#FFF',borderRadius:14,border:'1.5px solid #E5E5EA',padding:'16px',marginBottom:16}}>
+            <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+              <div>
+                <h4 style=${{fontSize:13,fontWeight:700}}>Jerarquía global de gestión</h4>
+                <p style=${{fontSize:11,color:'#86868B',marginTop:2}}>SM → SM Senior → PM2 / Technical Unit Manager</p>
+              </div>
+              ${orgSaving&&html`<span style=${{fontSize:11,color:'#007AFF'}}>💾 Guardando…</span>`}
+            </div>
+            <div style=${{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
+              ${orgMembers.map(m=>html`
+                <div key=${m.id} style=${{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:10,background:'#F9F9FB'}}>
+                  <div style=${{width:30,height:30,borderRadius:8,background:m.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>${m.avatar||'👤'}</div>
+                  <div style=${{flex:1}}><span style=${{fontSize:12,fontWeight:600}}>${m.name}</span>${m.role_label&&html`<span style=${{fontSize:9,color:'#86868B',marginLeft:6}}>${m.role_label}</span>`}</div>
+                  <span style=${{fontSize:11,color:'#86868B'}}>Reporta a:</span>
+                  <select value=${globalOrg[m.id]||''} onChange=${e=>setGlobalManager(m.id,e.target.value||null)}
+                    style=${{border:'1.5px solid #E5E5EA',borderRadius:8,padding:'5px 8px',fontSize:11,fontFamily:'inherit',outline:'none',background:'#FFF',maxWidth:200}}>
+                    <option value="">— Nadie (raíz) —</option>
+                    ${members.filter(x=>x.id!==m.id).map(x=>html`<option key=${x.id} value=${x.id}>${x.name}${x.role_label?' ('+x.role_label+')':''}</option>`)}
+                  </select>
+                </div>`)}
+            </div>
+            <div>
+              <p style=${{fontSize:10,color:'#86868B',marginBottom:6,fontWeight:600}}>Añadir al organigrama:</p>
+              <div style=${{display:'flex',flexWrap:'wrap',gap:4}}>
+                ${members.filter(m=>!Object.keys(globalOrg).includes(m.id)).map(m=>html`
+                  <button key=${m.id} onClick=${()=>addToOrg(m.id)}
+                    style=${{display:'flex',alignItems:'center',gap:4,padding:'3px 8px 3px 4px',borderRadius:20,border:'1.5px solid #E5E5EA',background:'#FFF',cursor:'pointer',fontSize:11}}>
+                    <span style=${{fontSize:14}}>${m.avatar||'👤'}</span><span>${m.name}</span>
+                  </button>`)}
+              </div>
+            </div>
+          </div>
+          ${roots.length===0?html`<div style=${{textAlign:'center',padding:32,color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:14}}><p style=${{fontSize:28,marginBottom:8}}>🏢</p><p>Añade personas arriba</p></div>`:
+            html`<div style=${{background:'#FFF',borderRadius:14,border:'1.5px solid #E5E5EA',padding:'24px',overflowX:'auto'}}>
+              <div style=${{display:'flex',gap:32,justifyContent:'center',minWidth:'max-content'}}>
+                ${roots.map(m=>html`<${OrgNodeG} key=${m.id} m=${m} depth=${0} />`)}
+              </div>
+            </div>`}
+        </div>`}
+      `}
+    </div>`;
+}
+
 /* ═══ ADMIN CALENDARIOS ═══ */
 function AdminCalendarios() {
   const [cals,    setCals]    = useState([]);
@@ -1676,12 +1861,12 @@ function RoomPicker() {
         </div>
 
         <div style=${{ display:'flex', gap:4, marginBottom:20, justifyContent:'center' }}>
-          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Proyectos'},{id:'usuarios',label:'👥 Usuarios'},{id:'roles',label:'🏷️ Roles · ⏱ Escalado'},{id:'calendarios',label:'📅 Calendarios'},{id:'convenio',label:'📋 Convenio'}].map(t => html`
+          ${[{id:'dashboard',label:'📊 Dashboard'},{id:'salas',label:'📂 Proyectos'},{id:'usuarios',label:'👥 Usuarios'},{id:'roles',label:'🏷️ Roles'},{id:'calendarios',label:'📅 Calendarios'},{id:'convenio',label:'📋 Convenio'},{id:'escalado_global',label:'📈 Escalado'}].map(t => html`
             <button key=${t.id} onClick=${()=>setTab(t.id)} style=${{ padding:'9px 20px', borderRadius:10, border:tab===t.id?'none':'1.5px solid #E5E5EA', background:tab===t.id?'#1D1D1F':'#FFF', color:tab===t.id?'#FFF':'#6E6E73', fontSize:13, fontWeight:600 }}>${t.label}</button>
           `)}
         </div>
 
-        ${tab === 'convenio' ? html`<${AdminConvenio} />` : tab === 'roles' ? html`<${AdminRoles} />` : tab === 'calendarios' ? html`<${AdminCalendarios} />` : tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
+        ${tab === 'escalado_global' ? html`<${AdminEscaladoGlobal} rooms=${rooms} />` : tab === 'convenio' ? html`<${AdminConvenio} />` : tab === 'roles' ? html`<${AdminRoles} />` : tab === 'calendarios' ? html`<${AdminCalendarios} />` : tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
           <!-- Project filter -->
           <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
             <span style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>Filtrar:</span>
