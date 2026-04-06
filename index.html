@@ -164,9 +164,6 @@ async function sbSaveCalendar(cal) {
 async function sbDeleteCalendar(id) {
   try { await supabase.from('calendars').delete().eq('id',id); } catch {}
 }
-async function sbSaveMemberVacs(memberId, vacations) {
-  try { await supabase.from('team_members').update({ vacations }).eq('id', memberId); } catch {}
-}
 async function sbLoadAllVacsForSala(sala) {
   // Load vacations from all team_members assigned to this sala
   try {
