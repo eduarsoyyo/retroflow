@@ -2944,15 +2944,17 @@ function Login({ onJoin, isModal }) {
   useEffect(() => { sbLoadTeamMembers().then(m => setMembers(m||[])); }, []);
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) { setError('Introduce usuario y contraseña'); return; }
+    if (!username.trim()) { setError('Introduce tu usuario o email'); return; }
     setLoading(true); setError('');
 
-    // Admin path — Supabase Auth
-    const { session } = await sbSignIn(username.trim(), password);
-    if (session) {
-      setLoading(false);
-      window.location.href = window.location.pathname + '?admin';
-      return;
+    // Admin path — Supabase Auth (only if password provided)
+    if (password.trim()) {
+      const { session } = await sbSignIn(username.trim(), password);
+      if (session) {
+        setLoading(false);
+        window.location.href = window.location.pathname + '?admin';
+        return;
+      }
     }
 
     // Team member login
@@ -2963,23 +2965,36 @@ function Login({ onJoin, isModal }) {
       (m.email    && m.email.split('@')[0].toLowerCase() === uq) ||
       (m.name     && m.name.toLowerCase()     === uq)
     );
-    if (!member) { setLoading(false); setError('❌ Usuario no encontrado'); return; }
+    if (!member) { setLoading(false); setError('❌ Usuario "' + username + '" no encontrado'); return; }
+
+    // Check password only if the member has one set
     const storedPw = member.pin || member.password || '';
-    if (!storedPw || storedPw !== password) { setLoading(false); setError('❌ Contraseña incorrecta'); return; }
+    if (storedPw && storedPw !== password) {
+      setLoading(false); setError('❌ Contraseña incorrecta'); return;
+    }
+    // If no password set → allow entry (open access)
 
     if (member.is_superuser) {
+      // Superuser login — go to admin panel
+      const superSession = { id:member.id, name:member.name, email:member.email||username,
+        avatar:member.avatar||'🧙', color:member.color||'#5856D6',
+        role:member.role_label||'Admin', username:member.username||member.name, isSuperuser:true };
+      try {
+        localStorage.setItem('rf-admin-session', JSON.stringify(superSession));
+        localStorage.setItem('rf-session', JSON.stringify(superSession));
+      } catch {}
       setLoading(false);
       window.location.href = window.location.pathname + '?admin';
       return;
     }
 
-    // No sala needed — go to homepage, user picks project there
+    // Regular user — go to homepage
     setLoading(false);
     onJoin({
       id: member.id, name: member.name,
       avatar: member.avatar||'👤', color: member.color||'#007AFF',
       role: member.role_label||'', calendarId: member.calendar_id||null,
-      username: member.username,
+      username: member.username, isSuperuser: false,
     });
   };
 
