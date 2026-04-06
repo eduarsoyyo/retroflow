@@ -741,7 +741,7 @@ function HomeVacaciones({ profile, user }) {
           return html`<div key=${mo}>
             <div style=${{fontSize:10,fontWeight:700,color:'#86868B',marginBottom:4,textTransform:'uppercase',letterSpacing:.6}}>${mName}</div>
             <div style=${{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:1}}>
-              ${['L','M','X','J','V','S','D'].map(d=>html`<div style=${{fontSize:7,color:'#C7C7CC',textAlign:'center',marginBottom:2}}>${d}</div>`)}
+              ${['L','M','X','J','V','S','D'].map((d,i)=>html`<div style=${{fontSize:8,color:i>=5?'#C0C0C0':'#A0A0A0',textAlign:'center',marginBottom:2,fontWeight:600}}>${d}</div>`)}
               ${Array.from({length:firstDow},(_,i)=>html`<div key=${'e'+i}></div>`)}
               ${Array.from({length:dim},(_,i)=>i+1).map(d=>{
                 const e=getEntry(viewYear,mo,d), info=infoFor(e);
@@ -920,7 +920,6 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
     {id:'perfil',    label:'Mi perfil',  icon:'UserCircle'},
     {id:'vacaciones',label:'Vacaciones', icon:'Palmtree'},
     {id:'actividad', label:'Actividad',  icon:'Activity'},
-    {id:'contacto',  label:'Contacto',   icon:'Phone'},
   ];
 
   return html`
@@ -1093,7 +1092,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                       ['Usuario',       'username',     editProfile?.username||''],
                       ['Email',         'email',        editProfile?.email||''],
                       ['Empresa',       'company',      editProfile?.company||''],
-                      ['Rol',           'role_label',   editProfile?.role_label||''],
+
                       ['Microsoft Teams','teams_handle', editProfile?.teams_handle||''],
                       ['Teléfono',      'phone',        editProfile?.phone||''],
                       ['Slack handle',  'slack_handle', editProfile?.slack_handle||''],
@@ -1104,6 +1103,15 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                           style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}
                           onFocus=${e=>e.target.style.borderColor='#007AFF'} onBlur=${e=>e.target.style.borderColor='#E5E5EA'} />
                       </div>`)}
+                    <!-- Rol select -->
+                    <div>
+                      <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3,fontWeight:700,textTransform:'uppercase',letterSpacing:.4}}>Rol</label>
+                      <select value=${editProfile?.role_label||''} onChange=${e=>setEditProfile({...editProfile,role_label:e.target.value})}
+                        style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}>
+                        <option value="">Sin rol</option>
+                        ${getAllRoles(editProfile?.role_label?[editProfile.role_label]:[]).map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+                      </select>
+                    </div>
                   </div>
                   <button onClick=${async()=>{ setSavingProfile(true); await sbSaveTeamMember(editProfile); setProfile(editProfile); setSavingProfile(false); }}
                     style=${{padding:'11px',borderRadius:11,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
