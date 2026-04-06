@@ -269,9 +269,6 @@ function getAllRoles(extraRoles) {
   })();
   const base = cache || [...ROLES];
   return extraRoles ? [...new Set([...base, ...extraRoles])] : [...base];
-}extraRoles) {
-  const base = _rolesCache || ROLES;
-  return extraRoles ? [...new Set([...base, ...extraRoles])] : [...base];
 }
 
 const ABSENCE_TYPES = [
