@@ -965,9 +965,10 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             </div>`}
           </div>`}
 
-          ${section==='perfil'&&html`<div style=${{maxWidth:520}}>
+          ${section==='perfil'&&html`<div style=${{maxWidth:700}}>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mi perfil</h1>
-            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Información personal</p>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Información personal y vacaciones</p>
+            <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
             ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:
             !editProfile?html`<div style=${{textAlign:'center',padding:40,color:'#C7C7CC'}}>Sin perfil configurado</div>`:html`
               <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'24px',display:'flex',flexDirection:'column',gap:14}}>
@@ -990,7 +991,13 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                   ${savingProfile?'Guardando…':'Guardar cambios'}
                 </button>
               </div>`}
+            <!-- Vacaciones column -->
+            <div>
+              <${HomeVacaciones} profile=${profile||{id:user.id,name:user.name,annual_vac_days:22,prev_year_pending:0,vacations:[]}} user=${user} />
+            </div>
+            </div>
           </div>`}
+
 
           ${section==='vacaciones'&&html`<div>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Vacaciones y ausencias</h1>
@@ -2156,6 +2163,7 @@ function RoomPicker() {
     sbLoadRetros().then(data => { setSbRetros(data); setLoadingSb(false); });
     sbLoadCalendars().then(cals => { window.__calendars = cals; });
     sbLoadTeamMembers().then(members => { window.__allMembers = members||[]; });
+    supabase.from('org_chart').select('sala,member_id,end_date,start_date').then(({data}) => { window.__orgData = data||[]; });
   }, []);
 
   const go = (slug, t) => { window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(slug) + '&tipo=' + (t || 'agile'); };
@@ -3556,12 +3564,24 @@ function PFTEs({ team, org, orgData: orgDataProp }) {
 /* ═══ PACCIONABLES — Gestión entre retros ═══ */
 function PAccionables({ actions, sA, risks, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [tagAssignments, setTagAssignments] = useState([]);
+  const [activeTagFilter, setActiveTagFilter] = useState(null);
   useEffect(() => {
     sbLoadTeamMembers().then(data => {
       const f = data.filter(m=>(m.rooms||[]).includes(SALA));
       setTeamMembers(f.length > 0 ? f : data);
     });
+    sbLoadTags(SALA).then(t => setTags(t||[]));
+    sbLoadTagAssignments(SALA).then(a => setTagAssignments(a||[]));
   }, []);
+  const hasTagA = (tagId, entityId) => tagAssignments.some(a=>a.tag_id===tagId&&a.entity_type==='action'&&a.entity_id===entityId);
+  const actionTagList = (id) => tags.filter(t=>hasTagA(t.id,id));
+  const quickToggleActionTag = async (tagId, actionId) => {
+    const added = await sbToggleTagAssignment(tagId, 'action', actionId, SALA);
+    if (added) setTagAssignments(prev=>[...prev,{tag_id:tagId,entity_type:'action',entity_id:actionId,sala:SALA}]);
+    else setTagAssignments(prev=>prev.filter(a=>!(a.tag_id===tagId&&a.entity_type==='action'&&a.entity_id===actionId)));
+  };
 
   const [form,       setForm]      = useState({text:'',owner:'',date:'',priority:'medium'});
   const [eId,        setEId]       = useState(null);
@@ -3576,6 +3596,9 @@ function PAccionables({ actions, sA, risks, user }) {
   const upSt = (id,st) => sA(actions.map(a=>a.id===id?{...a,status:st}:a));
   const delA  = id => sA(actions.filter(a=>a.id!==id));
   const saveEA = () => { sA(actions.map(a=>a.id===eId?{...a,...eF}:a)); setEId(null); };
+  const tagFilteredActions = activeTagFilter
+    ? actions.filter(a=>tagAssignments.some(ta=>ta.tag_id===activeTagFilter&&ta.entity_type==='action'&&ta.entity_id===a.id))
+    : actions;
   const addA  = () => {
     if (!form.text.trim()) return;
     sA([...actions,{id:uid(),text:form.text.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:form.priority,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:null}]);
@@ -3628,6 +3651,19 @@ function PAccionables({ actions, sA, risks, user }) {
         <button onClick=${()=>setViewMode('kanban')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='kanban'?'none':'1px solid #E5E5EA', background:viewMode==='kanban'?'#1D1D1F':'#FFF', color:viewMode==='kanban'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>⬜ Kanban</button>
         <button onClick=${()=>setViewMode('list')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='list'?'none':'1px solid #E5E5EA', background:viewMode==='list'?'#1D1D1F':'#FFF', color:viewMode==='list'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>☰ Lista</button>
       </div>
+      ${tags.length>0 && html`
+        <div style=${{display:'flex',gap:4,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
+          <span style=${{fontSize:10,color:'#86868B',fontWeight:600}}>🏷️</span>
+          <button onClick=${()=>setActiveTagFilter(null)}
+            style=${{padding:'3px 10px',borderRadius:20,border:'1.5px solid '+(activeTagFilter===null?'#1D1D1F':'#E5E5EA'),
+              background:activeTagFilter===null?'#1D1D1F':'#FFF',color:activeTagFilter===null?'#FFF':'#6E6E73',
+              fontSize:10,fontWeight:600,cursor:'pointer'}}>Todos</button>
+          ${tags.map(t=>html`
+            <button key=${t.id} onClick=${()=>setActiveTagFilter(activeTagFilter===t.id?null:t.id)}
+              style=${{padding:'3px 10px',borderRadius:20,border:'1.5px solid '+(activeTagFilter===t.id?t.color:'#E5E5EA'),
+                background:activeTagFilter===t.id?t.color:'#FFF',color:activeTagFilter===t.id?'#FFF':t.color,
+                fontSize:10,fontWeight:700,cursor:'pointer'}}>${t.name}</button>`)}
+        </div>`}
 
       <!-- Add form -->
       <div style=${{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap', padding:'12px 14px', borderRadius:12, background:'#FFF', border:'1.5px solid #E5E5EA' }}>
@@ -3661,7 +3697,7 @@ function PAccionables({ actions, sA, risks, user }) {
               ${touchPos&&html`<div style=${{ position:'fixed', left:touchPos.x-60, top:touchPos.y-30, pointerEvents:'none', zIndex:9999, background:'#007AFF', color:'#FFF', borderRadius:10, padding:'6px 14px', fontSize:11, fontWeight:600, boxShadow:'0 6px 20px rgba(0,122,255,.35)', transform:'rotate(-2deg) scale(1.05)' }}>✋ Moviendo…</div>`}
               <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, minHeight:200 }}>
                 ${KAN_COLS.map(col => {
-                  const colActs = [...actions].filter(a=>{
+                  const colActs = tagFilteredActions.filter(a=>{
                     if(actFilter==='mine') return (a.createdBy===user.id||a.owner===user.name)&&a.status===col.id;
                     if(actFilter==='done') return a.status==='done';
                     return a.status===col.id;
@@ -3714,6 +3750,15 @@ function PAccionables({ actions, sA, risks, user }) {
                                   </div>` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>Sin asignar</span>`}
                                 ${a.date&&html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${a.date}</span>`}
                               </div>
+                              <!-- Tag badges -->
+                              ${actionTagList(a.id).length>0&&html`
+                                <div style=${{display:'flex',gap:3,flexWrap:'wrap',marginTop:4}}>
+                                  ${actionTagList(a.id).map(t=>html`
+                                    <span key=${t.id} onClick=${e=>{e.stopPropagation();quickToggleActionTag(t.id,a.id);}}
+                                      style=${{fontSize:8,fontWeight:700,padding:'1px 6px',borderRadius:8,background:t.color,color:'#FFF',cursor:'pointer'}}>
+                                      ${t.name}
+                                    </span>`)}
+                                </div>`}
                               ${eId===a.id && html`
                                 <div style=${{ marginTop:8, display:'flex', flexDirection:'column', gap:5, borderTop:'1px solid #F2F2F7', paddingTop:8 }}>
                                   <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})}
@@ -3745,7 +3790,7 @@ function PAccionables({ actions, sA, risks, user }) {
           <!-- ── LISTA ── -->
           ${viewMode==='list' && html`
             <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-              ${[...actions].filter(a=>{
+              ${tagFilteredActions.filter(a=>{
                 if(actFilter==='mine') return a.createdBy===user.id||a.owner===user.name;
                 if(actFilter==='done') return a.status==='done';
                 return true;
@@ -3796,8 +3841,6 @@ function PAccionables({ actions, sA, risks, user }) {
               })}
             </div>`}
         </div>
-
-        <!-- Sidebar: risks with association -->
         <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px', position:'sticky', top:0 }}>
           <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
             <h4 style=${{ fontSize:12, fontWeight:700 }}>⚠️ Riesgos activos</h4>
@@ -3967,12 +4010,24 @@ function PTags({ teamMembers, risks, actions }) {
 /* ═══ PRIESGOS — Risk Management Dashboard ═══ */
 function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   const [teamMembers, setTeamMembers] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [tagAssignments, setTagAssignments] = useState([]);
+  const [activeTagFilter, setActiveTagFilter] = useState(null);
   useEffect(() => {
     sbLoadTeamMembers().then(data => {
       const filtered = data.filter(m=>(m.rooms||[]).includes(SALA));
       setTeamMembers(filtered.length > 0 ? filtered : data);
     });
+    sbLoadTags(SALA).then(t => setTags(t||[]));
+    sbLoadTagAssignments(SALA).then(a => setTagAssignments(a||[]));
   }, []);
+  const hasTag = (tagId, type, entityId) => tagAssignments.some(a=>a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId);
+  const entityTagList = (type, id) => tags.filter(t=>hasTag(t.id,type,id));
+  const quickToggleTag = async (tagId, type, entityId) => {
+    const added = await sbToggleTagAssignment(tagId, type, entityId, SALA);
+    if (added) setTagAssignments(prev=>[...prev,{tag_id:tagId,entity_type:type,entity_id:entityId,sala:SALA}]);
+    else setTagAssignments(prev=>prev.filter(a=>!(a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId)));
+  };
   const [subTab,    setSubTab]    = useState('resumen');
   const [escalForm, setEscalForm] = useState({riskId:'', level:'alto_mando', responsible:'', deadline:'', note:'', status:'pendiente'});
   const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:'', deadline:''});
@@ -4068,7 +4123,10 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
     oportunidad: { label:'Oportunidades', icon:'🌟', color:'#34C759', bg:'#F0FFF4', desc:'Mejoras potenciales',  btn:'+ Oportunidad' },
   };
   const cur = TYPE_CONFIG[subTab] || TYPE_CONFIG.riesgo;
-  const curItems = subTab==='riesgos'?riesgos:subTab==='problemas'?problemas:subTab==='oportunidades'?oportunidades:mitigados;
+  const curItemsRaw = subTab==='riesgos'?riesgos:subTab==='problemas'?problemas:subTab==='oportunidades'?oportunidades:mitigados;
+  const curItemsFiltered = activeTagFilter
+    ? curItemsRaw.filter(r=>tagAssignments.some(a=>a.tag_id===activeTagFilter&&a.entity_type==='risk'&&a.entity_id===r.id))
+    : curItemsRaw;
 
   // rNum: sequential number for display (R1, R2…)
   // Sequential numbers per type
@@ -4192,6 +4250,23 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
             ${label}${badge}
           </button>`)}
       </div>
+
+      <!-- Tag filter bar -->
+      ${tags.length>0 && html`
+        <div style=${{display:'flex',gap:4,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
+          <span style=${{fontSize:10,color:'#86868B',fontWeight:600}}>🏷️</span>
+          <button onClick=${()=>setActiveTagFilter(null)}
+            style=${{padding:'3px 10px',borderRadius:20,border:'1.5px solid '+(activeTagFilter===null?'#1D1D1F':'#E5E5EA'),
+              background:activeTagFilter===null?'#1D1D1F':'#FFF',color:activeTagFilter===null?'#FFF':'#6E6E73',
+              fontSize:10,fontWeight:600,cursor:'pointer'}}>Todos</button>
+          ${tags.map(t=>html`
+            <button key=${t.id} onClick=${()=>setActiveTagFilter(activeTagFilter===t.id?null:t.id)}
+              style=${{padding:'3px 10px',borderRadius:20,border:'1.5px solid '+(activeTagFilter===t.id?t.color:'#E5E5EA'),
+                background:activeTagFilter===t.id?t.color:'#FFF',color:activeTagFilter===t.id?'#FFF':t.color,
+                fontSize:10,fontWeight:700,cursor:'pointer'}}>
+              ${t.name}
+            </button>`)}
+        </div>`}
 
       <!-- RESUMEN tab: KPIs + heat map -->
       ${(subTab==='resumen'||!subTab) && html`
@@ -4319,7 +4394,7 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
                 <p style=${{ fontSize:14 }}>Sin ${cur.label.toLowerCase()} activos</p>
                 <p style=${{ fontSize:12, marginTop:4 }}>${cur.desc}</p>
               </div>`}
-            ${curItems.map(r => html`<${RiskCard} key=${r.id} r=${r} fromHist=${false} />`)}
+            ${curItemsFiltered.map(r => html`<${RiskCard} key=${r.id} r=${r} fromHist=${false} />`)}
           `}
         </div>
 
@@ -6422,7 +6497,21 @@ function P5Risks({ risks, sR, notes, user }) {
                       ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
                     </select>
                   </div>
-                  <!-- Voting -->
+                  <!-- Tag badges on risk card -->
+                  ${!fromHist && tags.length>0 && html`
+                    <div style=${{display:'flex',gap:3,flexWrap:'wrap',marginTop:6}}>
+                      ${entityTagList('risk',r.id).map(t=>html`
+                        <span key=${t.id} onClick=${()=>!fromHist&&quickToggleTag(t.id,'risk',r.id)}
+                          style=${{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:10,background:t.color,color:'#FFF',cursor:'pointer'}}>
+                          ${t.name} ✕
+                        </span>`)}
+                      ${tags.filter(t=>!hasTag(t.id,'risk',r.id)).map(t=>html`
+                        <span key=${t.id} onClick=${()=>quickToggleTag(t.id,'risk',r.id)}
+                          style=${{fontSize:9,padding:'1px 6px',borderRadius:10,border:'1px dashed '+t.color+'70',color:t.color,cursor:'pointer'}}>
+                          + ${t.name}
+                        </span>`)}
+                    </div>`}
+                  <!-- Voting -->  <!-- Voting -->
                   <div style=${{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
                     <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
                       <span style=${{ fontSize:10, color:'#86868B', fontWeight:600, minWidth:50 }}>Impacto:</span>
