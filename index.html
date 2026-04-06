@@ -125,6 +125,20 @@ async function sbToggleTagAssignment(tagId, entityType, entityId, sala) {
   } catch { return false; }
 }
 
+/* ─── Roles (Supabase table: custom_roles) ─── */
+async function sbLoadRoles() {
+  try {
+    const { data } = await supabase.from('custom_roles').select('name').order('name');
+    return (data||[]).map(r=>r.name);
+  } catch { return []; }
+}
+async function sbSaveRole(name) {
+  try { await supabase.from('custom_roles').upsert({name}, {onConflict:'name'}); } catch {}
+}
+async function sbDeleteRole(name) {
+  try { await supabase.from('custom_roles').delete().eq('name', name); } catch {}
+}
+
 async function sbSaveMemberVacs(memberId, vacs) {
   try {
     await supabase.from('team_members').update({ vacations: vacs }).eq('id', memberId);
@@ -244,13 +258,29 @@ const MAIN_TABS = [
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
 const ROLES = ['Scrum Master','Product Owner','Desarrollador/a','QA / Tester','Diseñador/a','DevOps','Tech Lead','Analista','Project Manager','Stakeholder','Otro'];
-// Merged roles: built-in + any custom ones saved in AdminRoles
+const ROLES = ['Scrum Master','Product Owner','Desarrollador/a','QA / Tester','Diseñador/a','DevOps','Tech Lead','Analista','Project Manager','Stakeholder','Otro'];
+
+// In-memory cache for custom roles (loaded async from Supabase)
+let _rolesCache = null;
+
+// Seed cache from localStorage immediately (sync)
+try {
+  const ls = localStorage.getItem('rf-admin-roles');
+  if (ls) _rolesCache = [...new Set([...ROLES, ...JSON.parse(ls)])];
+} catch {}
+
+// Then hydrate from Supabase async (updates cache for everyone)
+sbLoadRoles().then(custom => {
+  _rolesCache = [...new Set([...ROLES, ...custom])];
+  try { localStorage.setItem('rf-admin-roles', JSON.stringify(custom)); } catch {}
+  window.dispatchEvent(new Event('storage'));
+}).catch(() => {});
+
 function getAllRoles(extraRoles) {
-  try {
-    const custom = JSON.parse(localStorage.getItem('rf-admin-roles') || 'null') || [];
-    return [...new Set([...ROLES, ...custom, ...(extraRoles||[])])];
-  } catch { return [...ROLES, ...(extraRoles||[])]; }
+  const base = _rolesCache || ROLES;
+  return extraRoles ? [...new Set([...base, ...extraRoles])] : [...base];
 }
+
 const ABSENCE_TYPES = [
   { id:'vacaciones',          label:'🏖️ Vacaciones',                initial:'V',  color:'#FF9500', group:'vacaciones' },
   { id:'baja_medica',         label:'🏥 Baja médica (IT)',           initial:'BM', color:'#FF3B30', group:'baja',  reasons:['Enfermedad común','Accidente no laboral','Accidente laboral','Enfermedad profesional'] },
@@ -857,9 +887,9 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
   useEffect(() => {
     sbLoadRooms().then(r => { setRooms(r||[]); setRoomsLoaded(true); }).catch(()=>setRoomsLoaded(true));
   }, []);
-  // Reload roles when storage changes (e.g. admin creates a new role)
+  // Load roles from Supabase + stay in sync with storage changes
   useEffect(() => {
-    setRolesList(getAllRoles());
+    sbLoadRoles().then(r => setRolesList(r));
     const onStorage = () => setRolesList(getAllRoles());
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -1368,6 +1398,7 @@ function getHeatColor(impLvl, probLvl) {
 function MemberForm({ m, setM, rooms, saving, onSave, onCancel }) {
   const [allRoles, setAllRoles] = useState(getAllRoles);
   useEffect(() => {
+    sbLoadRoles().then(r => setAllRoles(r));
     const onStorage = () => setAllRoles(getAllRoles());
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -1474,21 +1505,35 @@ function saveEscalationConfig(cfg) {
 function AdminRoles() {
   const [members,  setMembers]  = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [roles,    setRoles]    = useState(() => { try { return JSON.parse(localStorage.getItem('rf-admin-roles')||'null')||[...ROLES]; } catch { return [...ROLES]; } });
+  const [roles,    setRoles]    = useState(getAllRoles);
   const [newRole,  setNewRole]  = useState('');
   const [expanded, setExpanded] = useState(null);
   const [saving,   setSaving]   = useState(null);
 
-  useEffect(() => { sbLoadTeamMembers().then(data => { setMembers(data||[]); setLoading(false); }); }, []);
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => { setMembers(data||[]); setLoading(false); });
+    // Load roles from Supabase on mount
+    sbLoadRoles().then(r => { setRoles(r); window.dispatchEvent(new Event('storage')); });
+  }, []);
 
-  const saveRoles = (r) => {
+  const saveRoles = async (r) => {
     setRoles(r);
-    localStorage.setItem('rf-admin-roles', JSON.stringify(r));
-    // Notify MemberForm in other tabs/components
+    try { localStorage.setItem('rf-admin-roles', JSON.stringify(r.filter(x=>!ROLES.includes(x)))); } catch {}
     window.dispatchEvent(new Event('storage'));
   };
-  const addRole = () => { const t=newRole.trim(); if(!t||roles.includes(t)) return; saveRoles([...roles,t]); setNewRole(''); };
-  const delRole = (role) => { if (ROLES.includes(role)) return; saveRoles(roles.filter(r=>r!==role)); };
+  const addRole = async () => {
+    const t = newRole.trim();
+    if (!t || roles.includes(t)) return;
+    await sbSaveRole(t);
+    const updated = [...roles, t];
+    saveRoles(updated);
+    setNewRole('');
+  };
+  const delRole = async (role) => {
+    if (ROLES.includes(role)) return;
+    await sbDeleteRole(role);
+    saveRoles(roles.filter(r=>r!==role));
+  };
 
   const assignRole = async (memberId, role) => {
     setSaving(memberId);
@@ -1647,7 +1692,14 @@ function AdminConvenio() {
   const [saving,  setSaving]  = useState(null);
   const [globalDays, setGlobalDays] = useState(22);
 
-  useEffect(() => { sbLoadTeamMembers().then(data => { setMembers(data||[]); setLoading(false); }); }, []);
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => { setMembers(data||[]); setLoading(false); });
+    sbLoadRoles().then(custom => {
+      if (custom.length > 0) {
+        setRoles(prev => [...new Set([...ROLES, ...custom, ...prev.filter(r=>!ROLES.includes(r))])]);
+      }
+    });
+  }, []);
 
   const updateMember = async (m) => {
     setSaving(m.id);
