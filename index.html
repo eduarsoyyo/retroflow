@@ -37,6 +37,7 @@
   }
 }
 </script>
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -562,6 +563,23 @@ function App() {
   return html`<${RetroBoard} user=${user} onLogout=${handleLogout} />`;
 }
 
+/* ╣═══ LUCIDE ICON HELPER ╣═══ */
+function Icon({ name, size=18, color='currentColor', strokeWidth=1.75 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current || !window.lucide) return;
+    ref.current.innerHTML = '';
+    const iconFn = window.lucide[name] || window.lucide.HelpCircle;
+    if (!iconFn) return;
+    const svg = window.lucide.createElement(iconFn);
+    svg.setAttribute('width', size); svg.setAttribute('height', size);
+    svg.setAttribute('stroke', color); svg.setAttribute('stroke-width', strokeWidth);
+    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    ref.current.appendChild(svg);
+  }, [name, size, color, strokeWidth]);
+  return html`<span ref=${ref} style=${{display:'inline-flex',alignItems:'center',justifyContent:'center',flexShrink:0}}></span>`;
+}
+
 /* ═══ HOME VACACIONES ═══ */
 function HomeVacaciones({ profile, user }) {
   const [vacs,   setVacs]   = useState(() => profile?.vacations || []);
@@ -724,206 +742,265 @@ function HomeVacaciones({ profile, user }) {
 }
 
 
-/* ═══ USER HOMEPAGE ═══ */
+/* ╣═══ USER HOMEPAGE ╣═══ */
 function UserHomePage({ user, onLogout, onSelectProject }) {
+  const [section, setSection] = useState('dashboard');
   const [rooms,   setRooms]   = useState([]);
   const [profile, setProfile] = useState(null);
   const [allData, setAllData] = useState({});
   const [roomsLoaded,   setRoomsLoaded]   = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [editProfile, setEditProfile] = useState(null);
+  const [savingProfile, setSavingProfile] = useState(false);
   const today = new Date().toISOString().slice(0,10);
   const thisYear = new Date().getFullYear();
 
-  // Load rooms
   useEffect(() => {
-    sbLoadRooms().then(allRooms => {
-      setRooms(allRooms||[]);
-      setRoomsLoaded(true);
-    }).catch(() => setRoomsLoaded(true));
+    sbLoadRooms().then(r => { setRooms(r||[]); setRoomsLoaded(true); }).catch(()=>setRoomsLoaded(true));
   }, []);
-
-  // Load profile + retro data from localStorage
   useEffect(() => {
     sbLoadTeamMembers().then(members => {
-      const uq = (user.username||user.name||'').toLowerCase().trim();
-      const me = (members||[]).find(m =>
-        (user.id && m.id === user.id) ||
-        (m.username && m.username.toLowerCase().trim() === uq) ||
-        (m.email    && m.email.toLowerCase().trim()    === uq) ||
-        (m.email    && m.email.split('@')[0].toLowerCase().trim() === uq) ||
-        (m.name     && m.name.toLowerCase().trim()     === uq)
-      );
-      setProfile(me||null);
-      setProfileLoaded(true);
-    }).catch(() => setProfileLoaded(true));
+      const uq=(user.username||user.name||'').toLowerCase().trim(), uid=user.id||'';
+      const me=(members||[]).find(m=>(uid&&m.id===uid)||(m.username&&m.username.toLowerCase().trim()===uq)||(m.email&&m.email.toLowerCase().trim()===uq)||(m.email&&m.email.split('@')[0].toLowerCase().trim()===uq)||(m.name&&m.name.toLowerCase().trim()===uq));
+      setProfile(me||null); setEditProfile(me?{...me}:null); setProfileLoaded(true);
+    }).catch(()=>setProfileLoaded(true));
   }, []);
-
-  // Once rooms are loaded, pull retro state from localStorage
   useEffect(() => {
     if (!roomsLoaded) return;
-    const data = {};
-    rooms.forEach(r => {
-      try {
-        const s = localStorage.getItem('rf-retro-state-'+r.slug);
-        if (s) data[r.slug] = JSON.parse(s);
-      } catch {}
-    });
+    const data={};
+    rooms.forEach(r=>{ try{ const s=localStorage.getItem('rf-retro-state-'+r.slug); if(s) data[r.slug]=JSON.parse(s); }catch{} });
     setAllData(data);
   }, [roomsLoaded, rooms.length]);
 
-  const myRooms = rooms.filter(r => profile ? (profile.rooms||[]).includes(r.slug) : false);
-
+  const myRooms   = rooms.filter(r=>profile?(profile.rooms||[]).includes(r.slug):false);
   const myActions = Object.values(allData).flatMap(d=>(d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id));
   const myRisks   = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id)));
-  const overdueActions = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
-  const pendingActions = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
+  const overdueAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
+  const pendingAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
 
-  const annualDays = profile?.annual_vac_days ?? 22;
-  const prevPend   = profile?.prev_year_pending ?? 0;
-  const myVacs     = profile?.vacations || [];
-  const HOLS = ['01-01','01-06','05-01','08-15','10-12','11-01','12-06','12-08','12-25'];
-  const vacUsed = myVacs.filter(v=>v.type==='vacaciones'||!v.type).reduce((sum,v)=>{
-    if(!v.from) return sum;
-    let d=new Date(v.from), to=new Date(v.to||v.from), cnt=0;
-    while(d<=to){const yr=d.getFullYear(),dow=d.getDay(),mm=String(d.getMonth()+1).padStart(2,'0'),dd2=String(d.getDate()).padStart(2,'0');if(yr===thisYear&&dow!==0&&dow!==6&&!HOLS.includes(mm+'-'+dd2))cnt++;d.setDate(d.getDate()+1);}
-    return sum+cnt;
-  },0);
-  const totalVac  = annualDays + prevPend;
-  const remainVac = Math.max(0, totalVac - vacUsed);
-  const vacPct    = totalVac>0?Math.min(100,Math.round((vacUsed/totalVac)*100)):0;
-  const onVacToday = myVacs.some(v=>v.from<=today&&(!v.to||v.to>=today));
+  const goToProject = (sala,tipo) => { (onSelectProject||((s,t)=>{window.location.href='/?sala='+encodeURIComponent(s)+'&tipo='+(t||'agile')}))(sala,tipo); };
+  const logout = () => { clearUser(); window.location.href='/'; };
 
-  const goToProject = (sala, tipo) => {
-    if (onSelectProject) onSelectProject(sala, tipo);
-    else window.location.href = '/?sala='+encodeURIComponent(sala)+'&tipo='+(tipo||'agile');
-  };
+  const NAV = [
+    {id:'dashboard', label:'Dashboard',  icon:'LayoutDashboard'},
+    {id:'proyectos', label:'Proyectos',  icon:'FolderOpen'},
+    {id:'perfil',    label:'Mi perfil',  icon:'UserCircle'},
+    {id:'vacaciones',label:'Vacaciones', icon:'Palmtree'},
+    {id:'actividad', label:'Actividad',  icon:'Activity'},
+    {id:'contacto',  label:'Contacto',   icon:'Phone'},
+  ];
 
   return html`
-    <div style=${{ minHeight:'100vh', background:'#F5F5F7' }}>
-      <!-- Header -->
-      <div style=${{ background:'#FFF', borderBottom:'1px solid #E5E5EA', padding:'12px 24px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:22, fontWeight:400, letterSpacing:2, background:'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>revelio</span>
-        <div style=${{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style=${{ width:34,height:34,borderRadius:10,background:user.color||'#007AFF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18 }}>${user.avatar||'👤'}</div>
-          <div>
-            <div style=${{ fontSize:13, fontWeight:700 }}>${user.name}</div>
-            <div style=${{ fontSize:11, color:'#86868B' }}>${user.role||profile?.role_label||''}</div>
+    <div style=${{minHeight:'100vh',background:'#F5F5F7',display:'flex',flexDirection:'column'}}>
+      <!-- Top bar -->
+      <div style=${{background:'rgba(255,255,255,.9)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',borderBottom:'1px solid rgba(0,0,0,.06)',padding:'0 24px',display:'flex',alignItems:'center',justifyContent:'space-between',height:56,position:'sticky',top:0,zIndex:50}}>
+        <span style=${{fontFamily:"'Comfortaa',sans-serif",fontSize:20,fontWeight:400,letterSpacing:2,background:'linear-gradient(90deg,#007AFF,#5856D6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>revelio</span>
+        <div style=${{display:'flex',alignItems:'center',gap:12}}>
+          <div style=${{width:32,height:32,borderRadius:10,background:user.color||'#007AFF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:17}}>${user.avatar||'👤'}</div>
+          <div style=${{lineHeight:1.2}}>
+            <div style=${{fontSize:13,fontWeight:700}}>${user.name}</div>
+            <div style=${{fontSize:10,color:'#86868B'}}>${profile?.role_label||user.role||''}</div>
           </div>
-          <button onClick=${onLogout}
-            style=${{ padding:'5px 12px', borderRadius:8, border:'1.5px solid #FF3B3020', background:'#FFF', color:'#FF3B30', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+          <button onClick=${logout}
+            style=${{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:10,border:'1.5px solid #FF3B3025',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+            <${Icon} name="LogOut" size=${14} />
             Salir
           </button>
         </div>
       </div>
 
-      <div style=${{ maxWidth:900, margin:'0 auto', padding:'24px 16px' }}>
+      <div style=${{display:'flex',flex:1}}>
+        <!-- Sidebar -->
+        <aside style=${{width:210,background:'#FFF',borderRight:'1px solid rgba(0,0,0,.06)',padding:'16px 10px',display:'flex',flexDirection:'column',gap:2,flexShrink:0,position:'sticky',top:56,height:'calc(100vh - 56px)'}}>
+          ${NAV.map(n=>html`
+            <button key=${n.id} onClick=${()=>setSection(n.id)}
+              style=${{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:11,border:'none',
+                background:section===n.id?'linear-gradient(135deg,#007AFF,#5856D6)':'transparent',
+                color:section===n.id?'#FFF':'#6E6E73',
+                fontSize:13,fontWeight:section===n.id?600:500,cursor:'pointer',textAlign:'left',transition:'all .2s'}}>
+              <${Icon} name=${n.icon} size=${16} color=${section===n.id?'#FFF':'#86868B'} />
+              ${n.label}
+            </button>`)}
+        </aside>
 
-        <!-- Greeting -->
-        <div style=${{ marginBottom:20 }}>
-          <h1 style=${{ fontSize:24, fontWeight:700 }}>
-            ${onVacToday?'🏖️ De vacaciones':new Date().getHours()<12?'Buenos días':'Buenas tardes'}, ${user.name.split(' ')[0]}
-          </h1>
-          <p style=${{ fontSize:13, color:'#86868B', marginTop:3 }}>
-            ${profileLoaded&&roomsLoaded ? html`
-              ${myRooms.length} proyecto${myRooms.length!==1?'s':''}
-              · ${pendingActions.length} accionable${pendingActions.length!==1?'s':''} pendiente${pendingActions.length!==1?'s':''}
-              ${overdueActions.length>0?html` · <span style=${{ color:'#FF3B30', fontWeight:700 }}>${overdueActions.length} vencido${overdueActions.length>1?'s':''}</span>`:''}
-            ` : html`<span style=${{ color:'#C7C7CC' }}>Cargando datos…</span>`}
-          </p>
-        </div>
+        <!-- Content -->
+        <main style=${{flex:1,padding:'28px 24px',overflowY:'auto'}}>
 
-        <!-- KPI row — always visible, shows — while loading -->
-        <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
-          ${[
-            [profileLoaded&&roomsLoaded?pendingActions.length:'—', 'Accionables', '#007AFF', '🎯'],
-            [profileLoaded&&roomsLoaded?overdueActions.length:'—', 'Vencidos', overdueActions.length>0?'#FF3B30':'#34C759', '⚠️'],
-            [profileLoaded&&roomsLoaded?myRisks.length:'—', 'Escalados a mí', myRisks.length>0?'#5856D6':'#86868B', '📈'],
-            [profileLoaded?remainVac:'—', 'Días vac. restantes', remainVac<=5?'#FF3B30':remainVac<=10?'#FF9500':'#34C759', '🏖️'],
-          ].map(([v,l,c,ic])=>html`
-            <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px 16px', textAlign:'center' }}>
-              <div style=${{ fontSize:20, marginBottom:4 }}>${ic}</div>
-              <div style=${{ fontSize:26, fontWeight:800, color:c }}>${v}</div>
-              <div style=${{ fontSize:10, color:'#86868B', marginTop:3 }}>${l}</div>
-            </div>`)}
-        </div>
-
-        <div style=${{ display:'grid', gridTemplateColumns:'1fr', gap:16 }}>
-          <div>
-            <!-- Projects -->
-            <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>📂 Mis proyectos</h2>
-            ${!roomsLoaded||!profileLoaded ? html`
-              <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
-                ${[1,2,3].map(i=>html`<div key=${i} style=${{ height:64, borderRadius:14, background:'#E5E5EA', animation:'pulse 1.5s infinite' }}></div>`)}
-              </div>` :
-              myRooms.length===0 ? html`
-                <div style=${{ textAlign:'center', padding:'40px 20px', color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:14 }}>
-                  <p style=${{ fontSize:28, marginBottom:8 }}>📂</p>
-                  <p style=${{ fontSize:13 }}>Sin proyectos asignados</p>
-                  <p style=${{ fontSize:11, marginTop:4 }}>Pide a tu administrador que te asigne a un proyecto</p>
-                </div>` :
-              html`<div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
-                ${myRooms.map(r=>{
-                  const d=allData[r.slug]||{};
-                  const rA=(d.actions||[]).filter(a=>(a.owner===user.name||a.createdBy===user.id)&&a.status!=='done'&&a.status!=='discarded');
-                  const rR=(d.risks||[]).filter(x=>x.status!=='mitigated');
-                  return html`
-                    <div onClick=${()=>goToProject(r.slug, r.tipo)}
-                      style=${{ cursor:'pointer', padding:'14px 16px', borderRadius:14, background:'#FFF',
-                        border:'1.5px solid #E5E5EA', transition:'all .15s' }}
-                      onMouseOver=${e=>{e.currentTarget.style.borderColor='#007AFF';e.currentTarget.style.transform='translateY(-1px)';}}
-                      onMouseOut=${e=>{e.currentTarget.style.borderColor='#E5E5EA';e.currentTarget.style.transform='none';}}>
-                      <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                        <div>
-                          <div style=${{ fontSize:14, fontWeight:700, color:'#1D1D1F' }}>${r.name}</div>
-                          <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${r.tipo||'Agile'}</div>
-                        </div>
-                        <div style=${{ display:'flex', gap:8, alignItems:'center' }}>
-                          ${rA.length>0&&html`<span style=${{ fontSize:10, background:'#007AFF10', color:'#007AFF', padding:'3px 8px', borderRadius:8, fontWeight:600 }}>🎯 ${rA.length}</span>`}
-                          ${rR.length>0&&html`<span style=${{ fontSize:10, background:'#FF950010', color:'#FF9500', padding:'3px 8px', borderRadius:8, fontWeight:600 }}>⚠️ ${rR.length}</span>`}
-                          <span style=${{ fontSize:18, color:'#C7C7CC' }}>›</span>
-                        </div>
-                      </div>
-                    </div>`;
+          ${section==='dashboard'&&html`<div>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>
+              ${new Date().getHours()<12?'Buenos días':'Buenas tardes'}, ${user.name.split(' ')[0]} 👋
+            </h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Tu resumen del día</p>
+            <div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+              ${[
+                {v:roomsLoaded&&profileLoaded?myRooms.length:'—',    l:'Proyectos',    i:'FolderOpen',   c:'#007AFF'},
+                {v:profileLoaded?pendingAct.length:'—',               l:'Accionables',  i:'CheckSquare',  c:'#34C759'},
+                {v:profileLoaded?overdueAct.length:'—',               l:'Vencidos',     i:'AlertCircle',  c:overdueAct.length?'#FF3B30':'#86868B'},
+                {v:profileLoaded?myRisks.length:'—',                  l:'Escalados',    i:'TrendingUp',   c:myRisks.length?'#5856D6':'#86868B'},
+              ].map((k,i)=>html`
+                <div key=${i} style=${{background:'#FFF',borderRadius:18,border:'1.5px solid #E5E5EA',padding:'18px',display:'flex',flexDirection:'column',gap:10}}>
+                  <div style=${{width:36,height:36,borderRadius:11,background:k.c+'18',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <${Icon} name=${k.i} size=${18} color=${k.c} />
+                  </div>
+                  <div>
+                    <div style=${{fontSize:26,fontWeight:800,color:k.c,lineHeight:1}}>${k.v}</div>
+                    <div style=${{fontSize:11,color:'#86868B',marginTop:3}}>${k.l}</div>
+                  </div>
+                </div>`)}
+            </div>
+            ${pendingAct.length>0&&html`
+              <div style=${{background:'#FFF',borderRadius:18,border:'1.5px solid #E5E5EA',padding:'18px',marginBottom:14}}>
+                <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                  <h3 style=${{fontSize:14,fontWeight:700}}>Accionables pendientes</h3>
+                  <button onClick=${()=>setSection('actividad')} style=${{border:'none',background:'none',color:'#007AFF',fontSize:12,cursor:'pointer'}}>Ver todos →</button>
+                </div>
+                ${[...pendingAct].sort((a,b)=>a.date>b.date?1:-1).slice(0,4).map(a=>{
+                  const ov=a.date&&a.date<today;
+                  return html`<div style=${{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:11,background:'#F9F9FB',marginBottom:6,borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
+                    <${Icon} name=${ov?'AlertCircle':'Clock'} size=${14} color=${ov?'#FF3B30':'#86868B'} />
+                    <span style=${{flex:1,fontSize:12,fontWeight:600}}>${a.text}</span>
+                    ${a.date&&html`<span style=${{fontSize:10,color:ov?'#FF3B30':'#86868B'}}>${a.date}</span>`}
+                  </div>`;
                 })}
               </div>`}
-
-            <!-- Pending actions -->
-            ${pendingActions.length>0&&html`
-              <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>🎯 Mis accionables</h2>
-              <div style=${{ display:'flex', flexDirection:'column', gap:6, marginBottom:20 }}>
-                ${[...pendingActions].sort((a,b)=>a.date>b.date?1:-1).slice(0,6).map(a=>{
-                  const overdue=a.date&&a.date<today;
-                  const pc={high:'#FF3B30',medium:'#FF9500',low:'#34C759'};
-                  return html`
-                    <div style=${{ padding:'9px 14px', borderRadius:12, background:'#FFF',
-                      border:'1.5px solid '+(overdue?'#FF3B3015':'#E5E5EA'),
-                      borderLeft:'3px solid '+(pc[a.priority]||'#86868B') }}>
-                      <div style=${{ fontSize:12, fontWeight:600 }}>${a.text}</div>
-                      ${a.date&&html`<div style=${{ fontSize:10, color:overdue?'#FF3B30':'#86868B', marginTop:2 }}>📅 ${a.date}${overdue?' · VENCIDO':''}</div>`}
-                    </div>`;
-                })}
-                ${pendingActions.length>6&&html`<p style=${{ fontSize:11, color:'#86868B', textAlign:'center' }}>+${pendingActions.length-6} más en los proyectos</p>`}
-              </div>`}
-
             ${myRisks.length>0&&html`
-              <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10, color:'#5856D6' }}>📈 Escalados a mí</h2>
-              <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-                ${myRisks.map(r=>html`
-                  <div style=${{ padding:'9px 14px', borderRadius:12, background:'#F8F5FF', border:'1.5px solid #5856D620', borderLeft:'3px solid #5856D6' }}>
-                    <div style=${{ fontSize:12, fontWeight:600 }}>${r.text}</div>
-                    <div style=${{ fontSize:10, color:'#5856D6', marginTop:2 }}>Nivel: ${r.escalation.levelLabel||r.escalation.level||'—'}</div>
+              <div style=${{background:'#F8F5FF',borderRadius:18,border:'1.5px solid #5856D620',padding:'18px'}}>
+                <h3 style=${{fontSize:14,fontWeight:700,marginBottom:10,color:'#5856D6'}}>Escalados a mí</h3>
+                ${myRisks.map(r=>html`<div style=${{display:'flex',gap:10,padding:'9px 12px',borderRadius:11,background:'#FFF',marginBottom:6,borderLeft:'3px solid #5856D6'}}>
+                  <${Icon} name="TrendingUp" size=${14} color="#5856D6" />
+                  <div style=${{flex:1}}>
+                    <div style=${{fontSize:12,fontWeight:600}}>${r.text}</div>
+                    <div style=${{fontSize:10,color:'#5856D6',marginTop:2}}>${r.escalation?.levelLabel||'—'}</div>
+                  </div>
+                </div>`)}
+              </div>`}
+          </div>`}
+
+          ${section==='proyectos'&&html`<div>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mis proyectos</h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>${myRooms.length} proyecto${myRooms.length!==1?'s':''}</p>
+            ${!roomsLoaded||!profileLoaded?html`<div style=${{display:'flex',flexDirection:'column',gap:10}}>
+              ${[1,2,3].map(i=>html`<div key=${i} style=${{height:90,borderRadius:18,background:'linear-gradient(90deg,#F2F2F7,#E5E5EA,#F2F2F7)',backgroundSize:'200% 100%'}}></div>`)}
+            </div>`:
+            myRooms.length===0?html`<div style=${{textAlign:'center',padding:'60px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:20}}>
+              <${Icon} name="FolderOpen" size=${44} color="#E5E5EA" />
+              <p style=${{marginTop:12,fontSize:13}}>Sin proyectos asignados</p>
+            </div>`:
+            html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
+              ${myRooms.map(r=>{
+                const d=allData[r.slug]||{};
+                const rA=(d.actions||[]).filter(a=>(a.owner===user.name||a.createdBy===user.id)&&a.status!=='done'&&a.status!=='discarded').length;
+                const rR=(d.risks||[]).filter(x=>x.status!=='mitigated').length;
+                const TIPO=TASK_TEMPLATES?.[r.tipo]||{icon:'📋',label:'Proyecto',color:'#007AFF'};
+                return html`
+                  <div onClick=${()=>goToProject(r.slug,r.tipo)}
+                    style=${{cursor:'pointer',background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'20px',transition:'all .2s'}}
+                    onMouseOver=${e=>{e.currentTarget.style.borderColor='#007AFF';e.currentTarget.style.boxShadow='0 8px 28px rgba(0,122,255,.12)';e.currentTarget.style.transform='translateY(-2px)';}}
+                    onMouseOut=${e=>{e.currentTarget.style.borderColor='#E5E5EA';e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
+                    <div style=${{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:12}}>
+                      <div style=${{width:40,height:40,borderRadius:12,background:'#F2F2F7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>${TIPO.icon}</div>
+                      <${Icon} name="ChevronRight" size=${18} color="#C7C7CC" />
+                    </div>
+                    <div style=${{fontSize:15,fontWeight:700,marginBottom:3}}>${r.name}</div>
+                    <div style=${{fontSize:11,color:'#86868B',marginBottom:12}}>${TIPO.label}</div>
+                    <div style=${{display:'flex',gap:7}}>
+                      ${rA>0&&html`<span style=${{fontSize:10,background:'#EEF5FF',color:'#007AFF',padding:'3px 9px',borderRadius:20,fontWeight:600}}>🎯 ${rA}</span>`}
+                      ${rR>0&&html`<span style=${{fontSize:10,background:'#FFF9E6',color:'#FF9500',padding:'3px 9px',borderRadius:20,fontWeight:600}}>⚠️ ${rR}</span>`}
+                    </div>
+                  </div>`;
+              })}
+            </div>`}
+          </div>`}
+
+          ${section==='perfil'&&html`<div style=${{maxWidth:520}}>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mi perfil</h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Información personal</p>
+            ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:
+            !editProfile?html`<div style=${{textAlign:'center',padding:40,color:'#C7C7CC'}}>Sin perfil configurado</div>`:html`
+              <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'24px',display:'flex',flexDirection:'column',gap:14}}>
+                <div style=${{display:'flex',alignItems:'center',gap:14,paddingBottom:16,borderBottom:'1px solid #F2F2F7'}}>
+                  <div style=${{width:60,height:60,borderRadius:16,background:editProfile.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>${editProfile.avatar||'👤'}</div>
+                  <div>
+                    <div style=${{fontSize:17,fontWeight:700}}>${editProfile.name}</div>
+                    <div style=${{fontSize:12,color:'#86868B',marginTop:2}}>${editProfile.role_label||'Sin rol'}${editProfile.company?' · '+editProfile.company:''}</div>
+                  </div>
+                </div>
+                ${[['Nombre','name',editProfile.name],['Empresa','company',editProfile.company||''],['Teams Handle','teams_handle',editProfile.teams_handle||''],['Teléfono','phone',editProfile.phone||'']].map(([label,field,val])=>html`
+                  <div key=${field}>
+                    <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:4,fontWeight:700,textTransform:'uppercase',letterSpacing:.5}}>${label}</label>
+                    <input value=${val} onInput=${e=>setEditProfile({...editProfile,[field]:e.target.value})}
+                      style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'9px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB'}}
+                      onFocus=${e=>e.target.style.borderColor='#007AFF'} onBlur=${e=>e.target.style.borderColor='#E5E5EA'} />
+                  </div>`)}
+                <button onClick=${async()=>{ setSavingProfile(true); await sbSaveTeamMember(editProfile); setProfile(editProfile); setSavingProfile(false); }}
+                  style=${{padding:'11px',borderRadius:11,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                  ${savingProfile?'Guardando…':'Guardar cambios'}
+                </button>
+              </div>`}
+          </div>`}
+
+          ${section==='vacaciones'&&html`<div>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Vacaciones y ausencias</h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Registro y calendario de ausencias</p>
+            ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:html`
+              <${HomeVacaciones} profile=${profile} user=${user} />`}
+          </div>`}
+
+          ${section==='actividad'&&html`<div>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mi actividad</h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Todos tus accionables</p>
+            ${myActions.length===0?html`
+              <div style=${{textAlign:'center',padding:'60px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:20}}>
+                <${Icon} name="CheckCircle" size=${44} color="#34C759" />
+                <p style=${{fontSize:14,marginTop:12,color:'#34C759',fontWeight:600}}>¡Todo al día!</p>
+              </div>`:
+            html`<div style=${{display:'flex',flexDirection:'column',gap:7}}>
+              ${[...myActions].sort((a,b)=>{
+                if(a.status==='done'&&b.status!=='done') return 1;
+                if(a.status!=='done'&&b.status==='done') return -1;
+                return (a.date||'')>(b.date||'')?1:-1;
+              }).map(a=>{
+                const ov=a.date&&a.date<today&&a.status!=='done';
+                const STS={pending:{c:'#FF9500',bg:'#FFF9E6',l:'Pendiente'},inprogress:{c:'#007AFF',bg:'#EEF5FF',l:'En progreso'},done:{c:'#34C759',bg:'#F0FFF4',l:'Completado'},discarded:{c:'#C7C7CC',bg:'#F9F9F9',l:'Descartado'}};
+                const st=STS[a.status]||STS.pending;
+                return html`<div style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:14,background:'#FFF',border:'1.5px solid '+(ov?'#FF3B3020':'#E5E5EA'),borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
+                  <${Icon} name=${a.status==='done'?'CheckCircle2':ov?'AlertCircle':'Clock'} size=${16} color=${a.status==='done'?'#34C759':ov?'#FF3B30':'#86868B'} />
+                  <div style=${{flex:1}}>
+                    <div style=${{fontSize:13,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:a.status==='done'?'#86868B':'#1D1D1F'}}>${a.text}</div>
+                    ${a.date&&html`<div style=${{fontSize:10,color:ov?'#FF3B30':'#86868B',marginTop:2}}>📅 ${a.date}</div>`}
+                  </div>
+                  <span style=${{fontSize:10,fontWeight:600,padding:'3px 9px',borderRadius:20,background:st.bg,color:st.c,flexShrink:0}}>${st.l}</span>
+                </div>`;
+              })}
+            </div>`}
+          </div>`}
+
+          ${section==='contacto'&&html`<div style=${{maxWidth:480}}>
+            <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Contacto</h1>
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Tus datos de contacto</p>
+            ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:
+            !profile?html`<div style=${{textAlign:'center',padding:40,color:'#C7C7CC'}}>Sin perfil</div>`:html`
+              <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'24px',display:'flex',flexDirection:'column',gap:0}}>
+                ${[
+                  {icon:'Mail',    label:'Email',     val:profile.email||'—'},
+                  {icon:'Phone',   label:'Teléfono',  val:profile.phone||'—'},
+                  {icon:'Building2',label:'Empresa',  val:profile.company||'—'},
+                  {icon:'MessageSquare',label:'Teams', val:profile.teams_handle||'—'},
+                  {icon:'Briefcase',label:'Rol',      val:profile.role_label||'—'},
+                ].map((row,i)=>html`
+                  <div key=${row.label} style=${{display:'flex',alignItems:'center',gap:14,padding:'14px 0',borderBottom:i<4?'1px solid #F2F2F7':'none'}}>
+                    <div style=${{width:38,height:38,borderRadius:11,background:'#F2F2F7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                      <${Icon} name=${row.icon} size=${17} color="#86868B" />
+                    </div>
+                    <div>
+                      <div style=${{fontSize:10,color:'#86868B',fontWeight:700,textTransform:'uppercase',letterSpacing:.5}}>${row.label}</div>
+                      <div style=${{fontSize:13,fontWeight:600,marginTop:2}}>${row.val}</div>
+                    </div>
                   </div>`)}
               </div>`}
-          </div>
+          </div>`}
 
-          <!-- Vacations sidebar -->
-          <div>
-            <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>🏖️ Mis vacaciones</h2>
-            ${!profileLoaded ? html`<div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:20, textAlign:'center', color:'#C7C7CC' }}>Cargando…</div>` : html`
-              <${HomeVacaciones} profile=${profile} user=${user} />
-            `}
-          </div>
-        </div>
+        </main>
       </div>
     </div>`;
 }
