@@ -796,9 +796,19 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
   }, []);
   useEffect(() => {
     if (!roomsLoaded) return;
+    // First load from localStorage (fast)
     const data={};
     rooms.forEach(r=>{ try{ const s=localStorage.getItem('rf-retro-state-'+r.slug); if(s) data[r.slug]=JSON.parse(s); }catch{} });
-    setAllData(data);
+    setAllData({...data});
+    // Then enrich from Supabase snapshots
+    sbLoadRetros().then(snaps => {
+      if (!snaps) return;
+      const bySala={};
+      snaps.forEach(s=>{ if(!bySala[s.sala]||s.created_at>bySala[s.sala].created_at) bySala[s.sala]=s; });
+      const merged={...data};
+      Object.entries(bySala).forEach(([sala,snap])=>{ if(snap.data) merged[sala]=snap.data; });
+      setAllData(merged);
+    }).catch(()=>{});
   }, [roomsLoaded, rooms.length]);
 
   const myRooms   = rooms.filter(r=>profile?(profile.rooms||[]).includes(r.slug):false);
@@ -806,7 +816,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
     const roomName = rooms.find(r=>r.slug===slug)?.name||slug;
     return (d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id).map(a=>({...a,_room:roomName}));
   });
-  const myRisks   = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id)));
+  const myRisks   = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id||r.owner===user.name)));
   const overdueAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
   const pendingAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
 
@@ -984,23 +994,28 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
               <div style=${{textAlign:'center',padding:'60px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:20}}>
                 <${Icon} name="CheckCircle" size=${44} color="#34C759" />
                 <p style=${{fontSize:14,marginTop:12,color:'#34C759',fontWeight:600}}>¡Todo al día!</p>
+                <p style=${{fontSize:12,marginTop:4}}>Tus accionables aparecerán aquí al visitar los proyectos</p>
               </div>`:
             html`<div style=${{display:'flex',flexDirection:'column',gap:7}}>
-              ${[...myActions].sort((a,b)=>{
+              ${myActions.slice().sort((a,b)=>{
                 if(a.status==='done'&&b.status!=='done') return 1;
                 if(a.status!=='done'&&b.status==='done') return -1;
-                return (a.date||'')>(b.date||'')?1:-1;
+                if(a.date&&b.date) return a.date>b.date?1:-1;
+                return 0;
               }).map(a=>{
-                const ov=a.date&&a.date<today&&a.status!=='done';
-                const STS={pending:{c:'#FF9500',bg:'#FFF9E6',l:'Pendiente'},inprogress:{c:'#007AFF',bg:'#EEF5FF',l:'En progreso'},done:{c:'#34C759',bg:'#F0FFF4',l:'Completado'},discarded:{c:'#C7C7CC',bg:'#F9F9F9',l:'Descartado'}};
-                const st=STS[a.status]||STS.pending;
-                return html`<div style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:14,background:'#FFF',border:'1.5px solid '+(ov?'#FF3B3020':'#E5E5EA'),borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
+                const ov=a.date&&a.date<today&&a.status!=='done'&&a.status!=='discarded';
+                const STS={pending:{c:'#FF9500',bg:'#FFF9E6',l:'Pendiente'},inprogress:{c:'#007AFF',bg:'#EEF5FF',l:'En progreso'},done:{c:'#34C759',bg:'#F0FFF4',l:'Completado'},discarded:{c:'#C7C7CC',bg:'#F9F9F9',l:'Desc.'}};
+                const st=STS[a.status||'pending']||STS.pending;
+                return html`<div key=${a.id||Math.random()} style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:14,background:'#FFF',border:'1.5px solid '+(ov?'#FF3B3020':'#E5E5EA'),borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
                   <${Icon} name=${a.status==='done'?'CheckCircle2':ov?'AlertCircle':'Clock'} size=${16} color=${a.status==='done'?'#34C759':ov?'#FF3B30':'#86868B'} />
                   <div style=${{flex:1}}>
                     <div style=${{fontSize:13,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:a.status==='done'?'#86868B':'#1D1D1F'}}>${a.text}</div>
-                    ${a.date&&html`<div style=${{fontSize:10,color:ov?'#FF3B30':'#86868B',marginTop:2}}>📅 ${a.date}</div>`}
+                    <div style=${{display:'flex',gap:8,marginTop:2,fontSize:10,color:'#86868B'}}>
+                      ${a.date&&html`<span style=${{color:ov?'#FF3B30':'inherit'}}>📅 ${a.date}</span>`}
+                      ${a._room&&html`<span>📂 ${a._room}</span>`}
+                    </div>
                   </div>
-                  <span style=${{fontSize:10,fontWeight:600,padding:'3px 9px',borderRadius:20,background:st.bg,color:st.c,flexShrink:0}}>${st.l}</span>
+                  <span style=${{fontSize:10,fontWeight:600,padding:'3px 9px',borderRadius:20,background:st.bg,color:st.c,flexShrink:0,whiteSpace:'nowrap'}}>${st.l}</span>
                 </div>`;
               })}
             </div>`}
@@ -4900,6 +4915,13 @@ function RetroBoard({ user, onLogout }) {
   const [profileTab,        setProfileTab]        = useState('perfil');
   const [notifications,     setNotifications]     = useState([]);
   const [showNotifs,        setShowNotifs]        = useState(false);
+  // Close notifs on outside click
+  useEffect(() => {
+    if (!showNotifs) return;
+    const close = (e) => { if (!e.target.closest('[data-notif-panel]')) setShowNotifs(false); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showNotifs]);
   const notifSeenRef = useRef(new Set()); // track which items already notified
   const addNotif = useCallback((key, msg, type='info') => {
     if (notifSeenRef.current.has(key)) return; // deduplicate
@@ -5038,7 +5060,7 @@ function RetroBoard({ user, onLogout }) {
           ${uList.slice(0,8).map(([id,u],i)=>html`<div key=${id} title=${u.name} style=${{ width:52, height:52, borderRadius:26, background:u.color, border:'3px solid #FFF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, marginLeft:i>0?-12:0, zIndex:10-i, boxShadow:'0 2px 10px rgba(0,0,0,.18)' }}>${u.avatar}</div>`)}
           ${uList.length>0 && html`<span style=${{ fontSize:11, color:'#86868B', marginLeft:4 }}>${uList.length} online</span>`}
           <!-- Notification bell -->
-          <div style=${{ position:'relative' }}>
+          <div data-notif-panel style=${{ position:'relative' }}>
             <button onClick=${()=>setShowNotifs(v=>!v)}
               style=${{ width:36, height:36, borderRadius:10, border:'1px solid #E5E5EA', background:'#FFF', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:16, position:'relative' }}>
               🔔
@@ -5088,73 +5110,69 @@ function RetroBoard({ user, onLogout }) {
               ${t.label}
             </button>`)}
 
-          <!-- Retro phase sub-nav -->
-          ${mainTab==='retro' && html`
-            <div style=${{ marginTop:8, paddingTop:8, borderTop:'1px solid #F2F2F7', display:'flex', flexDirection:'column', gap:1 }}>
-              ${PHASES.map((p,i)=>html`
-                <button key=${p.id}
-                  onClick=${()=>{ if(i<phase) setPhase(i); else if(i===phase+1) setShowPhaseConfirm(i); }}
-                  style=${{ display:'flex', alignItems:'center', gap:7, width:'100%', padding:'7px 11px', borderRadius:9,
-                    border:'none', textAlign:'left', cursor:i<=phase+1?'pointer':'not-allowed',
-                    background:phase===i?'#1D1D1F08':i<phase?'#34C75908':'transparent',
-                    color:phase===i?'#1D1D1F':i<phase?'#34C759':i>phase+1?'#C7C7CC':'#86868B',
-                    fontSize:11, fontWeight:phase===i?700:500, opacity:i>phase+1?.4:1 }}>
-                  ${i<phase
-                    ? html`<${Icon} name="CheckCircle2" size=${12} color="#34C759" />`
-                    : html`<span style=${{ fontSize:9, fontWeight:800, minWidth:16, textAlign:'center', color:'inherit' }}>${p.num}</span>`}
-                  ${p.label}
-                </button>`)}
-              ${phase < PHASES.length-1 && html`
-                <button onClick=${()=>setShowPhaseConfirm(phase+1)}
-                  style=${{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, padding:'7px 11px', borderRadius:9,
-                    border:'none', background:'#007AFF', color:'#FFF', fontSize:11, fontWeight:700, cursor:'pointer', marginTop:4 }}>
-                  <${Icon} name="ArrowRight" size=${12} color="#FFF" />
-                  ${PHASES[phase+1]?.label}
-                </button>`}
-            </div>`}
 
-          <!-- Retro actions + timer at sidebar bottom -->
-          ${mainTab==='retro' && html`
-            <div style=${{ marginTop:8, padding:'10px', borderRadius:12, background:'#F9F9FB', border:'1px solid #E5E5EA' }}>
-              <!-- Timer presets -->
-              <div style=${{ display:'flex', gap:2, justifyContent:'center', marginBottom:8 }}>
-                ${[5,10,15,20].map(m => html`
-                  <button key=${m} onClick=${()=>syncTimer(m*60,false)}
-                    style=${{ padding:'3px 7px', borderRadius:6, border:'none',
-                      background:timer===m*60?'#007AFF':'#FFF',
-                      color:timer===m*60?'#FFF':'#86868B',
-                      fontSize:10, fontWeight:600, cursor:'pointer' }}>${m}'</button>`)}
-              </div>
-              <!-- Timer display + controls -->
-              <div style=${{ display:'flex', alignItems:'center', gap:6, justifyContent:'center' }}>
-                <span style=${{ fontSize:20, fontWeight:700, fontVariantNumeric:'tabular-nums', color:running?'#007AFF':'#1D1D1F', minWidth:52, textAlign:'center' }}>${fmt(timer)}</span>
-                <button onClick=${()=>syncTimer(timer,!running)}
-                  style=${{ width:28, height:28, borderRadius:14, border:'none', background:running?'#FF3B30':'#34C759', color:'#FFF', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
-                  <${Icon} name=${running?'Pause':'Play'} size=${13} color="#FFF" />
-                </button>
-                <button onClick=${()=>syncTimer(900,false)}
-                  style=${{ width:24, height:24, borderRadius:12, border:'none', background:'#E5E5EA', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
-                  <${Icon} name="RotateCcw" size=${11} color="#86868B" />
-                </button>
-              </div>
-            </div>
-            <button onClick=${()=>setShowReset(true)}
-              style=${{ display:'flex', alignItems:'center', gap:6, padding:'7px 11px', borderRadius:9, border:'1.5px solid #FF3B3020', background:'#FFF5F5', color:'#FF3B30', fontSize:11, fontWeight:600, cursor:'pointer' }}>
-              <${Icon} name="Plus" size=${13} color="#FF3B30" /> Nueva retro
-            </button>
-            <button onClick=${()=>setShowHistorial(true)}
-              style=${{ display:'flex', alignItems:'center', gap:6, padding:'7px 11px', borderRadius:9, border:'1.5px solid #FF950020', background:'#FFF9E6', color:'#FF9500', fontSize:11, fontWeight:600, cursor:'pointer' }}>
-              <${Icon} name="BookOpen" size=${13} color="#FF9500" /> Historial
-            </button>
-            <button onClick=${()=>setShowGuide(true)}
-              style=${{ display:'flex', alignItems:'center', gap:6, padding:'7px 11px', borderRadius:9, border:'1.5px solid #5856D620', background:'#F8F5FF', color:'#5856D6', fontSize:11, fontWeight:600, cursor:'pointer' }}>
-              <${Icon} name="HelpCircle" size=${13} color="#5856D6" /> Guía
-            </button>`}
         </aside>
 
         <!-- Main content -->
         <div style=${{ flex:1, overflowY:'auto', padding:'18px 20px' }}>
-          ${mainTab==='retro'      ? content()              : ''}
+          ${mainTab==='retro' ? html`<div style=${{display:'flex',flexDirection:'column',height:'100%'}}>
+            <!-- Phase bar + timer row -->
+            <div style=${{background:'#FFF',borderBottom:'1px solid #F2F2F7',padding:'8px 14px',display:'flex',alignItems:'center',gap:8,flexShrink:0,flexWrap:'wrap'}}>
+              <div style=${{display:'flex',gap:3,flex:1,flexWrap:'wrap'}}>
+                ${PHASES.map((p,i)=>html`
+                  <button key=${p.id}
+                    onClick=${()=>{ if(i<phase) setPhase(i); else if(i===phase+1) setShowPhaseConfirm(i); }}
+                    style=${{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:8,
+                      border:phase===i?'none':i<phase?'1.5px solid #34C75940':'1.5px solid #E5E5EA',
+                      background:phase===i?'#1D1D1F':i<phase?'#F0FFF4':'#FFF',
+                      color:phase===i?'#FFF':i<phase?'#34C759':i>phase+1?'#C7C7CC':'#6E6E73',
+                      fontSize:11,fontWeight:600,cursor:i<=phase+1?'pointer':'not-allowed',opacity:i>phase+1?.4:1,flexShrink:0 }}>
+                    ${i<phase
+                      ? html`<${Icon} name="Check" size=${10} color="#34C759" />`
+                      : html`<span style=${{fontSize:9,fontWeight:800,opacity:.7}}>${p.num}</span>`}
+                    ${p.label}
+                  </button>`)}
+                ${phase < PHASES.length-1 && html`
+                  <button onClick=${()=>setShowPhaseConfirm(phase+1)}
+                    style=${{display:'flex',alignItems:'center',gap:4,padding:'5px 11px',borderRadius:8,border:'none',background:'#007AFF',color:'#FFF',fontSize:11,fontWeight:700,cursor:'pointer',flexShrink:0}}>
+                    <${Icon} name="ArrowRight" size=${11} color="#FFF" /> ${PHASES[phase+1]?.label}
+                  </button>`}
+              </div>
+              <!-- Timer + actions -->
+              <div style=${{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <div style=${{display:'flex',gap:2}}>
+                  ${[5,10,15,20].map(m=>html`
+                    <button key=${m} onClick=${()=>syncTimer(m*60,false)}
+                      style=${{padding:'3px 6px',borderRadius:5,border:'none',background:timer===m*60?'#007AFF':'#F2F2F7',color:timer===m*60?'#FFF':'#86868B',fontSize:10,fontWeight:600,cursor:'pointer'}}>${m}'</button>`)}
+                </div>
+                <div style=${{display:'flex',alignItems:'center',gap:4,background:running?'#1D1D1F':'#F2F2F7',borderRadius:9,padding:'4px 8px'}}>
+                  <span style=${{fontSize:15,fontWeight:700,fontVariantNumeric:'tabular-nums',minWidth:42,textAlign:'center',color:running?'#FFF':'#1D1D1F'}}>${fmt(timer)}</span>
+                  <button onClick=${()=>syncTimer(timer,!running)}
+                    style=${{width:22,height:22,borderRadius:11,border:'none',background:running?'#FF3B30':'#34C759',color:'#FFF',fontSize:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+                    <${Icon} name=${running?'Pause':'Play'} size=${11} color="#FFF" />
+                  </button>
+                  <button onClick=${()=>syncTimer(900,false)}
+                    style=${{width:20,height:20,borderRadius:10,border:'none',background:'rgba(128,128,128,.2)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+                    <${Icon} name="RotateCcw" size=${10} color=${running?'#FFF':'#86868B'} />
+                  </button>
+                </div>
+                <button onClick=${()=>setShowReset(true)} style=${{padding:'5px 9px',borderRadius:7,border:'1.5px solid #FF3B3025',background:'#FFF5F5',color:'#FF3B30',fontSize:10,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                  <${Icon} name="Plus" size=${11} color="#FF3B30" /> Nueva retro
+                </button>
+                <button onClick=${()=>setShowHistorial(true)} style=${{padding:'5px 9px',borderRadius:7,border:'1.5px solid #FF950025',background:'#FFF9E6',color:'#FF9500',fontSize:10,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                  <${Icon} name="BookOpen" size=${11} color="#FF9500" /> Historial
+                </button>
+                <button onClick=${()=>setShowGuide(true)} style=${{padding:'5px 9px',borderRadius:7,border:'1.5px solid #5856D620',background:'#F8F5FF',color:'#5856D6',fontSize:10,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                  <${Icon} name="HelpCircle" size=${11} color="#5856D6" /> Guía
+                </button>
+              </div>
+            </div>
+            <!-- Retro content -->
+            <div style=${{flex:1,overflowY:'auto',padding:'14px 16px'}}>
+              ${content()}
+            </div>
+          </div>` : ''}
+          ${mainTab==='retro' ? '' : ''}
           ${mainTab==='equipo'     ? html`<${PEquipo} />`  : ''}
           ${mainTab==='accionables' ? html`<${PAccionables} actions=${state.actions} sA=${sA} risks=${state.risks} user=${user} />` : ''}
           ${mainTab==='riesgos'    ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} />` : ''}
@@ -6267,7 +6285,10 @@ function P5Risks({ risks, sR, notes, user }) {
                   <div style=${{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 }}>
                     <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:12 }} />
                     <input value=${eF.mitigation} onInput=${e=>setEF({...eF,mitigation:e.target.value})} placeholder="Mitigación" style=${{ ...iS, flex:1, minWidth:100, fontSize:12 }} />
-                    <input value=${eF.owner} onInput=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, width:80, flex:'none', fontSize:12 }} />
+                    <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:12 }}>
+                      <option value="">— Owner —</option>
+                      ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+                    </select>
                   </div>
                   <div style=${{ display:'flex', gap:5 }}><button onClick=${saveEdit} style=${{ ...bP, padding:'6px 14px', fontSize:11 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'6px 12px', fontSize:11 }}>Cancelar</button></div>
                 </div>`;
@@ -6280,7 +6301,11 @@ function P5Risks({ risks, sR, notes, user }) {
                       <p style=${{ fontSize:12, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
                       ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
                     </div>
-                    <span style=${{ fontSize:11, fontWeight:600, color:'#007AFF' }}>${r.owner}</span>
+                    <select value=${r.owner||''} onChange=${e=>sR(risks.map(x=>x.id===r.id?{...x,owner:e.target.value}:x))}
+                      style=${{ border:'1px solid #E5E5EA', borderRadius:7, padding:'3px 7px', fontSize:11, fontWeight:600, color:'#007AFF', background:'transparent', fontFamily:'inherit', outline:'none', cursor:'pointer', maxWidth:110 }}>
+                      <option value="">— Owner —</option>
+                      ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+                    </select>
                   </div>
                   <!-- Voting -->
                   <div style=${{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
