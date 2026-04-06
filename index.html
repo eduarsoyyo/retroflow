@@ -89,6 +89,34 @@ async function sbSaveTeamMember(m) {
 async function sbDeleteTeamMember(id) {
   try { await supabase.from('team_members').delete().eq('id',id); } catch {}
 }
+async function sbLoadTags(sala) {
+  try { const {data}=await supabase.from('tags').select('*').eq('sala',sala).order('name'); return data||[]; } catch { return []; }
+}
+async function sbSaveTag(tag) {
+  try {
+    if (tag.id) {
+      const {data}=await supabase.from('tags').update({name:tag.name,color:tag.color}).eq('id',tag.id).select().single();
+      return data;
+    } else {
+      const {data}=await supabase.from('tags').insert({sala:tag.sala,name:tag.name,color:tag.color||'#007AFF'}).select().single();
+      return data;
+    }
+  } catch { return null; }
+}
+async function sbDeleteTag(id) {
+  try { await supabase.from('tag_assignments').delete().eq('tag_id',id); await supabase.from('tags').delete().eq('id',id); } catch {}
+}
+async function sbLoadTagAssignments(sala) {
+  try { const {data}=await supabase.from('tag_assignments').select('*').eq('sala',sala); return data||[]; } catch { return []; }
+}
+async function sbToggleTagAssignment(tagId, entityType, entityId, sala) {
+  try {
+    const {data:ex}=await supabase.from('tag_assignments').select('id').eq('tag_id',tagId).eq('entity_type',entityType).eq('entity_id',entityId).single();
+    if (ex?.id) { await supabase.from('tag_assignments').delete().eq('id',ex.id); return false; }
+    else { await supabase.from('tag_assignments').insert({tag_id:tagId,entity_type:entityType,entity_id:entityId,sala}); return true; }
+  } catch { return false; }
+}
+
 async function sbLoadOrgChart(sala) {
   try { const {data}=await supabase.from('org_chart').select('*').eq('sala',sala); return data||[]; } catch { return []; }
 }
@@ -192,10 +220,11 @@ const PHASES = [
   { id:'session',    label:'Resumen',      num:'06' },
 ];
 const MAIN_TABS = [
-  { id:'equipo',      label:'Equipo',      icon:'👥' },
-  { id:'retro',       label:'Retro',       icon:'📋' },
-  { id:'accionables', label:'Accionables', icon:'🎯' },
-  { id:'riesgos',     label:'Riesgos',     icon:'⚠️' },
+  { id:'equipo',      label:'Equipo',      icon:'👥', lucide:'Users' },
+  { id:'retro',       label:'Retro',       icon:'📋', lucide:'RotateCcw' },
+  { id:'accionables', label:'Accionables', icon:'🎯', lucide:'CheckSquare' },
+  { id:'riesgos',     label:'Riesgos',     icon:'⚠️', lucide:'AlertTriangle' },
+  { id:'tags',        label:'Etiquetas',   icon:'🏷️', lucide:'Tag' },
 ];
 const AVATARS = ['🦊','🐻','🐼','🐨','🦁','🐯','🐸','🐙','🦄','🐳','🦋','🐝'];
 const ROLES = ['Scrum Master','Product Owner','Desarrollador/a','QA / Tester','Diseñador/a','DevOps','Tech Lead','Analista','Project Manager','Stakeholder','Otro'];
@@ -773,7 +802,10 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
   }, [roomsLoaded, rooms.length]);
 
   const myRooms   = rooms.filter(r=>profile?(profile.rooms||[]).includes(r.slug):false);
-  const myActions = Object.values(allData).flatMap(d=>(d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id));
+  const myActions = Object.entries(allData).flatMap(([slug,d])=>{
+    const roomName = rooms.find(r=>r.slug===slug)?.name||slug;
+    return (d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id).map(a=>({...a,_room:roomName}));
+  });
   const myRisks   = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id)));
   const overdueAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
   const pendingAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
@@ -942,8 +974,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
           ${section==='vacaciones'&&html`<div>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Vacaciones y ausencias</h1>
             <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Registro y calendario de ausencias</p>
-            ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:html`
-              <${HomeVacaciones} profile=${profile} user=${user} />`}
+            <${HomeVacaciones} profile=${profile||{id:user.id,name:user.name,annual_vac_days:22,prev_year_pending:0,vacations:[]}} user=${user} />
           </div>`}
 
           ${section==='actividad'&&html`<div>
@@ -3665,6 +3696,125 @@ function PAccionables({ actions, sA, risks, user }) {
     </div>`;
 }
 
+/* ═══ PTAGS — Tag management per project ═══ */
+function PTags({ teamMembers, risks, actions }) {
+  const [tags,        setTags]        = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [newTag,      setNewTag]      = useState({name:'', color:'#007AFF'});
+  const [activeTag,   setActiveTag]   = useState(null);
+  const TAG_COLORS = ['#007AFF','#34C759','#FF9500','#FF3B30','#5856D6','#AF52DE','#FF2D55','#00C7BE','#1D1D1F','#86868B'];
+
+  useEffect(() => {
+    Promise.all([sbLoadTags(SALA), sbLoadTagAssignments(SALA)]).then(([t,a])=>{ setTags(t); setAssignments(a); setLoading(false); });
+  }, []);
+
+  const addTag = async () => {
+    if (!newTag.name.trim()) return;
+    const saved = await sbSaveTag({sala:SALA, name:newTag.name.trim(), color:newTag.color});
+    if (saved) { setTags(prev=>[...prev,saved]); setNewTag({name:'',color:'#007AFF'}); }
+  };
+  const deleteTag = async (id) => {
+    await sbDeleteTag(id);
+    setTags(prev=>prev.filter(t=>t.id!==id));
+    setAssignments(prev=>prev.filter(a=>a.tag_id!==id));
+    if (activeTag===id) setActiveTag(null);
+  };
+  const toggleAssign = async (tagId, type, entityId) => {
+    const added = await sbToggleTagAssignment(tagId, type, entityId, SALA);
+    if (added) setAssignments(prev=>[...prev,{tag_id:tagId,entity_type:type,entity_id:entityId,sala:SALA}]);
+    else setAssignments(prev=>prev.filter(a=>!(a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId)));
+  };
+  const hasTag = (tagId, type, entityId) => assignments.some(a=>a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId);
+  const entityTags = (type, entityId) => tags.filter(t=>hasTag(t.id,type,entityId));
+
+  return html`
+    <div style=${{maxWidth:900}}>
+      <div style=${{marginBottom:16}}>
+        <h2 style=${{fontSize:18,fontWeight:700}}>🏷️ Etiquetas del proyecto</h2>
+        <p style=${{fontSize:12,color:'#86868B',marginTop:2}}>Etiqueta personas, riesgos y accionables para filtrar y agrupar</p>
+      </div>
+
+      ${loading ? html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>⏳ Cargando…</div>` : html`
+
+        <div style=${{background:'#FFF',borderRadius:14,border:'1.5px solid #E5E5EA',padding:'14px 16px',marginBottom:14}}>
+          <div style=${{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:tags.length>0?10:0}}>
+            <button onClick=${()=>setActiveTag(null)}
+              style=${{padding:'5px 12px',borderRadius:20,border:'1.5px solid '+(activeTag===null?'#1D1D1F':'#E5E5EA'),
+                background:activeTag===null?'#1D1D1F':'#FFF',color:activeTag===null?'#FFF':'#6E6E73',fontSize:12,fontWeight:600,cursor:'pointer'}}>Todos</button>
+            ${tags.map(t=>html`
+              <div key=${t.id} style=${{display:'flex',alignItems:'center'}}>
+                <button onClick=${()=>setActiveTag(activeTag===t.id?null:t.id)}
+                  style=${{padding:'5px 12px',borderRadius:'20px 0 0 20px',border:'1.5px solid '+(activeTag===t.id?t.color:'#E5E5EA'),
+                    background:activeTag===t.id?t.color:'#FFF',color:activeTag===t.id?'#FFF':t.color,
+                    fontSize:12,fontWeight:700,cursor:'pointer',borderRight:'none'}}>
+                  ${t.name}
+                </button>
+                <button onClick=${()=>deleteTag(t.id)}
+                  style=${{padding:'5px 6px',borderRadius:'0 20px 20px 0',border:'1.5px solid '+(activeTag===t.id?t.color:'#E5E5EA'),
+                    background:activeTag===t.id?t.color+'CC':'#FFF',color:activeTag===t.id?'#FFF':'#C7C7CC',
+                    fontSize:10,cursor:'pointer',borderLeft:'none'}}>✕</button>
+              </div>`)}
+          </div>
+          <div style=${{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+            <div style=${{display:'flex',gap:3}}>
+              ${TAG_COLORS.map(c=>html`
+                <div key=${c} onClick=${()=>setNewTag({...newTag,color:c})}
+                  style=${{width:20,height:20,borderRadius:10,background:c,cursor:'pointer',
+                    outline:newTag.color===c?'2px solid #1D1D1F':'none',outlineOffset:2}}></div>`)}
+            </div>
+            <input value=${newTag.name} onInput=${e=>setNewTag({...newTag,name:e.target.value})}
+              onKeyDown=${e=>e.key==='Enter'&&addTag()} placeholder="Nueva etiqueta…"
+              style=${{border:'1.5px solid #E5E5EA',borderRadius:20,padding:'5px 12px',fontSize:12,fontFamily:'inherit',outline:'none',flex:1,minWidth:120}} />
+            <button onClick=${addTag}
+              style=${{padding:'5px 14px',borderRadius:20,border:'none',background:newTag.color,color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>+ Crear</button>
+          </div>
+        </div>
+
+        ${activeTag&&html`
+          <div style=${{borderRadius:10,padding:'8px 14px',marginBottom:14,fontSize:12,color:tags.find(t=>t.id===activeTag)?.color,fontWeight:600,background:tags.find(t=>t.id===activeTag)?.color+'15',border:'1px solid '+tags.find(t=>t.id===activeTag)?.color+'30'}}>
+            🏷️ Filtrando: ${tags.find(t=>t.id===activeTag)?.name}
+          </div>`}
+
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+          ${[
+            {title:'👥 Equipo',items:teamMembers,type:'member',getLabel:m=>m.name,getIcon:m=>m.avatar||'👤'},
+            {title:'⚠️ Riesgos',items:(risks||[]).filter(r=>r.status!=='mitigated'),type:'risk',getLabel:r=>r.text.slice(0,50)+(r.text.length>50?'…':''),getIcon:()=>'⚠️'},
+            {title:'🎯 Accionables',items:(actions||[]).filter(a=>a.status!=='done'&&a.status!=='discarded'),type:'action',getLabel:a=>a.text.slice(0,50)+(a.text.length>50?'…':''),getIcon:()=>'🎯'},
+          ].map(col=>html`
+            <div key=${col.type} style=${{background:'#FFF',borderRadius:14,border:'1.5px solid #E5E5EA',padding:'14px'}}>
+              <h4 style=${{fontSize:13,fontWeight:700,marginBottom:10}}>${col.title} <span style=${{fontSize:10,color:'#86868B',fontWeight:400}}>${col.items.length}</span></h4>
+              ${col.items.length===0?html`<p style=${{fontSize:11,color:'#C7C7CC',textAlign:'center',padding:'12px 0'}}>Sin elementos</p>`:
+              col.items
+                .filter(item=>activeTag?hasTag(activeTag,col.type,item.id):true)
+                .map(item=>{
+                  const itTags=entityTags(col.type,item.id);
+                  return html`
+                    <div key=${item.id} style=${{marginBottom:8,padding:'8px 9px',borderRadius:10,background:'#F9F9FB'}}>
+                      <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:itTags.length>0||tags.length>0?5:0}}>
+                        <span style=${{fontSize:16}}>${col.getIcon(item)}</span>
+                        <span style=${{fontSize:11,fontWeight:600,flex:1,lineHeight:1.3}}>${col.getLabel(item)}</span>
+                      </div>
+                      <div style=${{display:'flex',flexWrap:'wrap',gap:3}}>
+                        ${itTags.map(t=>html`
+                          <span key=${t.id} onClick=${()=>toggleAssign(t.id,col.type,item.id)}
+                            style=${{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:10,background:t.color,color:'#FFF',cursor:'pointer'}}>
+                            ${t.name} ✕
+                          </span>`)}
+                        ${tags.filter(t=>!hasTag(t.id,col.type,item.id)).map(t=>html`
+                          <span key=${t.id} onClick=${()=>toggleAssign(t.id,col.type,item.id)}
+                            style=${{fontSize:9,padding:'2px 8px',borderRadius:10,border:'1px dashed '+t.color+'80',color:t.color,cursor:'pointer'}}>
+                            + ${t.name}
+                          </span>`)}
+                      </div>
+                    </div>`;
+                })}
+            </div>`)}
+        </div>
+      `}
+    </div>`;
+}
+
 /* ═══ PRIESGOS — Risk Management Dashboard ═══ */
 function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
   const [teamMembers, setTeamMembers] = useState([]);
@@ -4958,6 +5108,7 @@ function RetroBoard({ user, onLogout }) {
         ${mainTab==='equipo'  ? html`<${PEquipo} />`  : ''}
         ${mainTab==='accionables' ? html`<${PAccionables} actions=${state.actions} sA=${sA} risks=${state.risks} user=${user} />` : ''}
         ${mainTab==='riesgos' ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} />` : ''}
+        ${mainTab==='tags' ? html`<${PTags} teamMembers=${window.__teamLocal||[]} risks=${state.risks} actions=${state.actions} />` : ''}
       </div>
       ${toast && html`
         <div style=${{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1D1D1F', color:'#FFF', padding:'12px 24px', borderRadius:14, fontSize:14, fontWeight:600, boxShadow:'0 8px 30px rgba(0,0,0,0.15)', zIndex:300, animation:'fadeIn .3s', display:'flex', alignItems:'center', gap:8 }}>${toast}</div>
