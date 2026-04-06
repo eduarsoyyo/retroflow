@@ -1223,9 +1223,17 @@ function saveMetricEntry(sala, entry) {
 // ── User identity: persist per sala so you don't duplicate ──
 function loadUser() {
   try {
-    // Try sala-specific first, then global session
-    const s = localStorage.getItem('rf-user-' + SALA) || localStorage.getItem('rf-session');
-    return s ? JSON.parse(s) : null;
+    // Try sala-specific first, then global session, then admin session
+    const s = localStorage.getItem('rf-user-' + SALA) 
+           || localStorage.getItem('rf-session')
+           || localStorage.getItem('rf-admin-session');
+    if (!s) return null;
+    const u = JSON.parse(s);
+    // If loaded from admin session, mark as admin user so UI adapts
+    if (u?.isSuperuser && !localStorage.getItem('rf-session')) {
+      return { ...u, _isAdmin: false, role: u.role || 'Admin' };
+    }
+    return u;
   } catch { return null; }
 }
 function saveUser(user) {
@@ -1239,8 +1247,8 @@ function saveUser(user) {
 function clearUser() {
   try {
     localStorage.removeItem('rf-session');
+    localStorage.removeItem('rf-admin-session');
     localStorage.removeItem('rf-user-' + SALA);
-    // Clear all sala-specific sessions too
     Object.keys(localStorage).filter(k=>k.startsWith('rf-user-')).forEach(k=>localStorage.removeItem(k));
   } catch {}
 }
@@ -2170,7 +2178,18 @@ function RoomPicker() {
       setAuthState('signed-out');
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_ev, session) => {
-      if (session) { setAuthUser(session.user); setAuthState('signed-in'); }
+      if (session) {
+        setAuthUser(session.user); setAuthState('signed-in');
+        // Also sync rf-session so project navigation works without re-login
+        sbLoadTeamMembers().then(members => {
+          const m = members.find(x => x.email && x.email.toLowerCase() === (session.user.email||'').toLowerCase());
+          if (m) {
+            const u = { id:m.id, name:m.name, avatar:m.avatar||'🧙', color:m.color||'#5856D6',
+              role:m.role_label||'Admin', username:m.username||m.name, isSuperuser:true };
+            try { localStorage.setItem('rf-session', JSON.stringify(u)); } catch {}
+          }
+        }).catch(()=>{});
+      }
       else {
         // Only sign out if no superuser session
         try {
@@ -2185,7 +2204,12 @@ function RoomPicker() {
 
   const handleSignOut = async () => {
     await sbSignOut();
-    try { localStorage.removeItem('rf-admin-session'); } catch {}
+    try {
+      localStorage.removeItem('rf-admin-session');
+      localStorage.removeItem('rf-session');
+      // Clear all sala sessions too
+      Object.keys(localStorage).filter(k=>k.startsWith('rf-user-')).forEach(k=>localStorage.removeItem(k));
+    } catch {}
     setAuthState('signed-out'); setAuthUser(null);
   };
 
@@ -2233,9 +2257,16 @@ function RoomPicker() {
       setAdminLogging(false); return;
     }
 
-    // Grant access
-    const superSession = { id:candidate.id, name:candidate.name, email:candidate.email||adminEmail, isSuperuser:true };
-    try { localStorage.setItem('rf-admin-session', JSON.stringify(superSession)); } catch {}
+    // Grant access — save BOTH admin session and regular user session
+    const superSession = { id:candidate.id, name:candidate.name, email:candidate.email||adminEmail,
+      avatar:candidate.avatar||'🧙', color:candidate.color||'#5856D6',
+      role:candidate.role_label||'Admin', username:candidate.username||candidate.name,
+      isSuperuser:true };
+    try {
+      localStorage.setItem('rf-admin-session', JSON.stringify(superSession));
+      // Also save as regular session so projects work without re-login
+      localStorage.setItem('rf-session', JSON.stringify(superSession));
+    } catch {}
     setAuthUser({ email: candidate.email||adminEmail, _member: candidate });
     setAuthState('signed-in');
     setAdminLogging(false);
