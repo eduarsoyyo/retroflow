@@ -747,13 +747,16 @@ function HomeVacaciones({ profile, user }) {
                 const e=getEntry(viewYear,mo,d), info=infoFor(e);
                 const ds=viewYear+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
                 const wk=isWknd(viewYear,mo,d), hl=isHol(mo,d), isT=ds===today;
-                const bg=isT?'#007AFF':info?info.color:wk?'transparent':hl?'#E8E7F8':'transparent';
-                const fc=isT?'#FFF':info?'#FFF':wk?'#DADADA':hl?'#5856D6':'#1D1D1F';
+                const bg=isT?'#007AFF':info?info.color:wk?'#EFEFEF':hl?'#E8E7F8':'transparent';
+                const fc=isT?'#FFF':info?'#FFF':wk?'#BBBBBB':hl?'#5856D6':'#333';
                 const lbl = e?.label || (info?.initial) || '';
-                return html`<div title=${e?((e.label||info?.label||'')+(e.from?' '+e.from:'')+(e.to&&e.to!==e.from?' → '+e.to:'')):wk?'Fin de semana':hl?'Festivo':d}
-                  style=${{height:20,borderRadius:3,background:bg,display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:6,fontWeight:info||isT?800:400,color:fc}}>
-                  ${info?lbl||info.initial:wk?'':hl?'F':d}
+                const tip = e
+                  ? (e.label||info?.label||'Ausencia')+(e.from?' | '+e.from:'')+(e.to&&e.to!==e.from?' → '+e.to:'')+(e.reason?' | '+e.reason:'')
+                  : wk?'Fin de semana':hl?'Festivo':String(d);
+                return html`<div title=${tip}
+                  style=${{height:26,borderRadius:4,background:bg,display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:9,fontWeight:info||isT?800:500,color:fc}}>
+                  ${info?(lbl||info.initial):d}
                 </div>`;
               })}
             </div>
@@ -848,12 +851,20 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
   const [savingProfile,setSavingProfile]= useState(false);
   const [showNotifs,   setShowNotifs]   = useState(false);
   const [homeNotifs,   setHomeNotifs]   = useState([]);
-  const today = new Date().toISOString().slice(0,10);
+  const [rolesList,    setRolesList]    = useState(getAllRoles);
   const thisYear = new Date().getFullYear();
 
   useEffect(() => {
     sbLoadRooms().then(r => { setRooms(r||[]); setRoomsLoaded(true); }).catch(()=>setRoomsLoaded(true));
   }, []);
+  // Reload roles when storage changes (e.g. admin creates a new role)
+  useEffect(() => {
+    setRolesList(getAllRoles());
+    const onStorage = () => setRolesList(getAllRoles());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   useEffect(() => {
     sbLoadTeamMembers().then(members => {
       const uq=(user.username||user.name||'').toLowerCase().trim(), uid=user.id||'';
@@ -1109,7 +1120,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                       <select value=${editProfile?.role_label||''} onChange=${e=>setEditProfile({...editProfile,role_label:e.target.value})}
                         style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}>
                         <option value="">Sin rol</option>
-                        ${getAllRoles(editProfile?.role_label?[editProfile.role_label]:[]).map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+                        ${rolesList.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
                       </select>
                     </div>
                   </div>
