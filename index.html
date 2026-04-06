@@ -549,9 +549,177 @@ function App() {
       </div>
     </div>`;
 
-  if (!user) return html`<${Login} onJoin=${handleJoin} />`;
+  if (!user) {
+    // Last chance: check global session (user may have logged in from homepage)
+    const sess = (() => { try { const s=localStorage.getItem('rf-session'); return s?JSON.parse(s):null; } catch { return null; }})();
+    if (sess && !sess._isAdmin) {
+      // Auto-accept: save for this sala and proceed
+      try { localStorage.setItem('rf-user-'+SALA, JSON.stringify(sess)); } catch {}
+      return html`<${RetroBoard} user=${sess} onLogout=${handleLogout} />`;
+    }
+    return html`<${Login} onJoin=${handleJoin} />`;
+  }
   return html`<${RetroBoard} user=${user} onLogout=${handleLogout} />`;
 }
+
+/* ═══ HOME VACACIONES ═══ */
+function HomeVacaciones({ profile, user }) {
+  const [vacs,   setVacs]   = useState(() => profile?.vacations || []);
+  const [newVac, setNewVac] = useState({from:'', to:'', type:'vacaciones', reason:'', note:''});
+  const [saving, setSaving] = useState(false);
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+  const today = new Date().toISOString().slice(0,10);
+  const thisYear = new Date().getFullYear();
+  const HOLS = ['01-01','01-06','05-01','08-15','10-12','11-01','12-06','12-08','12-25'];
+  const annualDays = profile?.annual_vac_days ?? 22;
+  const prevPend   = profile?.prev_year_pending ?? 0;
+  const totalVac   = annualDays + prevPend;
+  const vacUsed = vacs.filter(v=>v.type==='vacaciones'||!v.type).reduce((sum,v)=>{
+    if(!v.from) return sum;
+    let d=new Date(v.from),to=new Date(v.to||v.from),cnt=0;
+    while(d<=to){const yr=d.getFullYear(),dow=d.getDay(),mm=String(d.getMonth()+1).padStart(2,'0'),dd2=String(d.getDate()).padStart(2,'0');if(yr===thisYear&&dow!==0&&dow!==6&&!HOLS.includes(mm+'-'+dd2))cnt++;d.setDate(d.getDate()+1);}
+    return sum+cnt;
+  },0);
+  const remainVac = Math.max(0, totalVac - vacUsed);
+  const vacPct    = totalVac>0?Math.min(100,Math.round((vacUsed/totalVac)*100)):0;
+
+  const addVac = async () => {
+    if (!newVac.from) return;
+    setSaving(true);
+    const entry = {id:uid(), memberId:profile?.id||user.id, name:user.name,
+      from:newVac.from, to:newVac.to||newVac.from,
+      type:newVac.type, reason:newVac.reason||'', note:newVac.note||''};
+    const updated = [...vacs, entry];
+    setVacs(updated);
+    setNewVac({from:'', to:'', type:'vacaciones', reason:'', note:''});
+    if (profile?.id) await sbSaveMemberVacs(profile.id, updated);
+    setSaving(false);
+  };
+  const delVac = async (id) => {
+    const updated = vacs.filter(v=>v.id!==id);
+    setVacs(updated);
+    if (profile?.id) await sbSaveMemberVacs(profile.id, updated);
+  };
+
+  // Annual calendar — 12 months compact
+  const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const getEntry = (yr,mo,d) => {
+    const ds=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    return vacs.find(v=>v.from<=ds&&(!v.to||v.to>=ds));
+  };
+  const isWknd = (yr,mo,d) => { const dow=new Date(yr,mo,d).getDay(); return dow===0||dow===6; };
+  const isHol  = (mo,d) => HOLS.includes(String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'));
+
+  return html`
+    <div style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+      <!-- Counters -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px' }}>
+        <div style=${{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#86868B', marginBottom:5 }}>
+          <span>${vacUsed}d consumidos de ${totalVac}d</span>
+          <span style=${{ fontWeight:700, color:vacPct>80?'#FF3B30':vacPct>60?'#FF9500':'#34C759' }}>${vacPct}%</span>
+        </div>
+        <div style=${{ background:'#F2F2F7', borderRadius:5, height:6, overflow:'hidden', marginBottom:10 }}>
+          <div style=${{ width:vacPct+'%', height:'100%', background:vacPct>80?'#FF3B30':vacPct>60?'#FF9500':'#34C759', borderRadius:5 }}></div>
+        </div>
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
+          ${[[annualDays,'Días/año','#1D1D1F'],[prevPend,'Año ant.','#5856D6'],[totalVac,'Total','#007AFF'],[remainVac,'Rest.',remainVac<=5?'#FF3B30':remainVac<=10?'#FF9500':'#34C759']].map(([v,l,c])=>html`
+            <div style=${{ textAlign:'center', padding:'6px 2px', borderRadius:8, background:c+'0D', border:'1px solid '+c+'20' }}>
+              <div style=${{ fontSize:16, fontWeight:800, color:c }}>${v}</div>
+              <div style=${{ fontSize:8, color:'#86868B' }}>${l}</div>
+            </div>`)}
+        </div>
+      </div>
+
+      <!-- Compact annual calendar (12 months) -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'12px' }}>
+        <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <button onClick=${()=>setViewYear(y=>y-1)} style=${{ border:'none',background:'none',fontSize:14,cursor:'pointer',color:'#86868B' }}>‹</button>
+          <span style=${{ fontSize:12, fontWeight:700 }}>${viewYear}</span>
+          <button onClick=${()=>setViewYear(y=>y+1)} style=${{ border:'none',background:'none',fontSize:14,cursor:'pointer',color:'#86868B' }}>›</button>
+        </div>
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+          ${MONTHS.map((mName,mo)=>{
+            const daysInMo = new Date(viewYear,mo+1,0).getDate();
+            return html`
+              <div key=${mo}>
+                <div style=${{ fontSize:9, fontWeight:700, color:'#86868B', marginBottom:4, textAlign:'center' }}>${mName}</div>
+                <div style=${{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:1 }}>
+                  ${Array.from({length:daysInMo},(_,i)=>i+1).map(d=>{
+                    const entry = getEntry(viewYear,mo,d);
+                    const info  = entry ? (ABSENCE_TYPES.find(t=>t.id===entry.type)||ABSENCE_TYPES[0]) : null;
+                    const wknd  = isWknd(viewYear,mo,d);
+                    const hol   = isHol(mo,d);
+                    const isT   = viewYear+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0')===today;
+                    const bg    = info?(info.color||'#FF9500'):wknd?'#F2F2F7':hol?'#EEEEFF':'#F9FFF9';
+                    const fc    = info?'#FFF':wknd?'#C7C7CC':hol?'#5856D6':'#86868B';
+                    return html`
+                      <div key=${d} title=${entry?(info?.label||'Ausencia'):wknd?'Finde':hol?'Festivo':String(d)}
+                        style=${{ width:'100%', aspectRatio:'1', borderRadius:2, background:isT?'#007AFF':bg,
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:6, fontWeight:info?800:400, color:isT?'#FFF':fc }}>
+                        ${info?(info.initial||'V'):wknd?'':hol?'F':d}
+                      </div>`;
+                  })}
+                </div>
+              </div>`;
+          })}
+        </div>
+        <!-- Legend -->
+        <div style=${{ display:'flex', gap:8, flexWrap:'wrap', marginTop:8, fontSize:8, color:'#86868B' }}>
+          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#FF9500' }}></div>V: Vac.</span>
+          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#FF3B30' }}></div>BM: Baja</span>
+          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#5856D6' }}></div>AP/F: Perm/Fest</span>
+        </div>
+      </div>
+
+      <!-- Register absence -->
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'12px' }}>
+        <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:8 }}>➕ Registrar ausencia</h4>
+        <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
+          <select value=${newVac.type} onChange=${e=>setNewVac({...newVac,type:e.target.value,reason:''})}
+            style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+            ${ABSENCE_TYPES.map(t=>html`<option key=${t.id} value=${t.id}>${t.label}</option>`)}
+          </select>
+          ${(ABSENCE_TYPES.find(t=>t.id===newVac.type)?.reasons||[]).length>0&&html`
+            <select value=${newVac.reason||''} onChange=${e=>setNewVac({...newVac,reason:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+              <option value="">— Motivo —</option>
+              ${(ABSENCE_TYPES.find(t=>t.id===newVac.type)?.reasons||[]).map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+            </select>`}
+          <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+            <div>
+              <label style=${{ fontSize:8, color:'#86868B', display:'block', marginBottom:2, fontWeight:700, textTransform:'uppercase' }}>Desde</label>
+              <input type="date" value=${newVac.from} onInput=${e=>setNewVac({...newVac,from:e.target.value})}
+                style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'5px 6px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+            </div>
+            <div>
+              <label style=${{ fontSize:8, color:'#86868B', display:'block', marginBottom:2, fontWeight:700, textTransform:'uppercase' }}>Hasta</label>
+              <input type="date" value=${newVac.to} onInput=${e=>setNewVac({...newVac,to:e.target.value})}
+                style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:8, padding:'5px 6px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
+            </div>
+          </div>
+          <button onClick=${addVac} disabled=${!newVac.from||saving}
+            style=${{ padding:'7px', borderRadius:8, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', opacity:!newVac.from?.5:1 }}>
+            ${saving?'Guardando…':'✅ Registrar'}
+          </button>
+        </div>
+        <!-- List this year -->
+        ${vacs.filter(v=>new Date(v.from||'').getFullYear()===new Date().getFullYear()).slice(0,5).map((v,i)=>{
+          const info=ABSENCE_TYPES.find(t=>t.id===v.type)||ABSENCE_TYPES[0];
+          return html`
+            <div key=${v.id||i} style=${{ display:'flex', alignItems:'center', gap:6, padding:'4px 0', borderTop:'1px solid #F2F2F7', marginTop:4 }}>
+              <div style=${{ width:16,height:16,borderRadius:3,background:info.color||'#FF9500',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#FFF',flexShrink:0 }}>${info.initial||'V'}</div>
+              <div style=${{ flex:1, fontSize:10 }}>
+                <span style=${{ fontWeight:600 }}>${info.label.split(' ').slice(1).join(' ')||info.label}</span>
+                <span style=${{ color:'#86868B', marginLeft:4 }}>${v.from}${v.to&&v.to!==v.from?' → '+v.to:''}</span>
+              </div>
+              <button onClick=${()=>delVac(v.id)} style=${{ border:'none',background:'none',fontSize:11,color:'#C7C7CC',cursor:'pointer' }}>✕</button>
+            </div>`;
+        })}
+      </div>
+    </div>`;
+}
+
 
 /* ═══ USER HOMEPAGE ═══ */
 function UserHomePage({ user, onLogout, onSelectProject }) {
@@ -748,37 +916,9 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
           <!-- Vacations sidebar -->
           <div>
             <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>🏖️ Mis vacaciones</h2>
-            <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'16px' }}>
-              ${!profileLoaded ? html`<div style=${{ textAlign:'center', padding:20, color:'#C7C7CC', fontSize:12 }}>Cargando…</div>` : html`
-                <div style=${{ marginBottom:12 }}>
-                  <div style=${{ display:'flex', justifyContent:'space-between', fontSize:11, color:'#86868B', marginBottom:5 }}>
-                    <span>${vacUsed}d consumidos de ${totalVac}d</span>
-                    <span style=${{ fontWeight:700, color:vacPct>80?'#FF3B30':vacPct>60?'#FF9500':'#34C759' }}>${vacPct}%</span>
-                  </div>
-                  <div style=${{ background:'#F2F2F7', borderRadius:6, height:8, overflow:'hidden', marginBottom:8 }}>
-                    <div style=${{ width:vacPct+'%', height:'100%', background:vacPct>80?'#FF3B30':vacPct>60?'#FF9500':'#34C759', borderRadius:6 }}></div>
-                  </div>
-                </div>
-                <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
-                  ${[[annualDays,'Días/año','#1D1D1F'],[prevPend,'Año ant.','#5856D6'],[totalVac,'Total','#007AFF'],[remainVac,'Restantes',remainVac<=5?'#FF3B30':remainVac<=10?'#FF9500':'#34C759']].map(([v,l,c])=>html`
-                    <div style=${{ textAlign:'center', padding:'8px 4px', borderRadius:10, background:c+'0D', border:'1px solid '+c+'25' }}>
-                      <div style=${{ fontSize:20, fontWeight:800, color:c }}>${v}</div>
-                      <div style=${{ fontSize:8, color:'#86868B', marginTop:2 }}>${l}</div>
-                    </div>`)}
-                </div>
-                ${myVacs.filter(v=>new Date(v.from||'').getFullYear()===thisYear).slice(0,3).map((v,i)=>{
-                  const info=ABSENCE_TYPES.find(t=>t.id===v.type)||ABSENCE_TYPES[0];
-                  return html`
-                    <div key=${v.id||i} style=${{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', borderBottom:'1px solid #F2F2F7', fontSize:11 }}>
-                      <div style=${{ width:18,height:18,borderRadius:4,background:info.color||'#FF9500',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#FFF',flexShrink:0 }}>${info.initial||'V'}</div>
-                      <div style=${{ flex:1 }}>
-                        <div style=${{ fontSize:10, fontWeight:600 }}>${info.label.split(' ').slice(1).join(' ')||info.label}</div>
-                        <div style=${{ fontSize:9, color:'#86868B' }}>${v.from}${v.to&&v.to!==v.from?' → '+v.to:''}</div>
-                      </div>
-                    </div>`;
-                })}
-              `}
-            </div>
+            ${!profileLoaded ? html`<div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:20, textAlign:'center', color:'#C7C7CC' }}>Cargando…</div>` : html`
+              <${HomeVacaciones} profile=${profile} user=${user} />
+            `}
           </div>
         </div>
       </div>
@@ -855,13 +995,27 @@ function saveMetricEntry(sala, entry) {
 
 // ── User identity: persist per sala so you don't duplicate ──
 function loadUser() {
-  try { const s = localStorage.getItem('rf-user-' + SALA); return s ? JSON.parse(s) : null; } catch { return null; }
+  try {
+    // Try sala-specific first, then global session
+    const s = localStorage.getItem('rf-user-' + SALA) || localStorage.getItem('rf-session');
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
 }
 function saveUser(user) {
-  try { localStorage.setItem('rf-user-' + SALA, JSON.stringify(user)); } catch {}
+  try {
+    // Save globally AND sala-specific so both paths work
+    const serialized = JSON.stringify(user);
+    localStorage.setItem('rf-session', serialized);
+    localStorage.setItem('rf-user-' + SALA, serialized);
+  } catch {}
 }
 function clearUser() {
-  try { localStorage.removeItem('rf-user-' + SALA); } catch {}
+  try {
+    localStorage.removeItem('rf-session');
+    localStorage.removeItem('rf-user-' + SALA);
+    // Clear all sala-specific sessions too
+    Object.keys(localStorage).filter(k=>k.startsWith('rf-user-')).forEach(k=>localStorage.removeItem(k));
+  } catch {}
 }
 
 // ── User registry per sala (for admin visibility + duplicate prevention) ──
@@ -4406,6 +4560,12 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
 
 
 function RetroBoard({ user, onLogout }) {
+  // Ensure session is persisted for this sala (in case user came from homepage)
+  useEffect(() => {
+    if (user) {
+      try { localStorage.setItem('rf-user-' + SALA, JSON.stringify(user)); } catch {}
+    }
+  }, []);
   const { state, upd, online, cursors, moveCursor, reset, broadcastTimer, broadcastPhase } = useRealtime(user);
   const [mainTab, setMainTab] = useState('equipo');
   const [phase, setPhase] = useState(() => loadRetroPhase());
