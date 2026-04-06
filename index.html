@@ -823,27 +823,32 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
   }, []);
   useEffect(() => {
     if (!roomsLoaded) return;
-    // First load from localStorage (fast)
+    // Load from localStorage first (fast path)
     const data={};
     rooms.forEach(r=>{ try{ const s=localStorage.getItem('rf-retro-state-'+r.slug); if(s) data[r.slug]=JSON.parse(s); }catch{} });
-    setAllData({...data});
-    // Then enrich from Supabase snapshots
+    // Always enrich from Supabase retro_snapshots (covers admins with no localStorage)
     sbLoadRetros().then(snaps => {
-      if (!snaps) return;
       const bySala={};
-      snaps.forEach(s=>{ if(!bySala[s.sala]||s.created_at>bySala[s.sala].created_at) bySala[s.sala]=s; });
+      (snaps||[]).forEach(s=>{ if(!bySala[s.sala]||s.created_at>bySala[s.sala].created_at) bySala[s.sala]=s; });
       const merged={...data};
       Object.entries(bySala).forEach(([sala,snap])=>{ if(snap.data) merged[sala]=snap.data; });
       setAllData(merged);
-    }).catch(()=>{});
+    }).catch(()=>{ setAllData(data); });
   }, [roomsLoaded, rooms.length]);
 
-  const myRooms   = rooms.filter(r=>profile?(profile.rooms||[]).includes(r.slug):false);
+  // Superusers see all rooms; regular users only their assigned rooms
+  const isSuperUser = user?.isSuperuser || user?._isAdmin;
+  const myRooms = isSuperUser
+    ? rooms
+    : rooms.filter(r=>profile?(profile.rooms||[]).includes(r.slug):false);
   const myActions = Object.entries(allData).flatMap(([slug,d])=>{
     const roomName = rooms.find(r=>r.slug===slug)?.name||slug;
     return (d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id).map(a=>({...a,_room:roomName}));
   });
-  const myRisks   = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id||r.owner===user.name)));
+  const myRisks = isSuperUser
+    // Superusers see ALL escalated risks
+    ? Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation))
+    : Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id||r.owner===user.name)));
   const overdueAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
   const pendingAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
 
@@ -5486,9 +5491,9 @@ function RetroBoard({ user, onLogout }) {
                     </div>`}
               </div>`}
           </div>
-          ${user._isAdmin && html`
-            <a href=${window.location.pathname+'?admin'} style=${{ padding:'4px 10px', borderRadius:7, border:'1px solid #5856D620', background:'#5856D608', fontSize:11, color:'#5856D6', cursor:'pointer', display:'flex', alignItems:'center', gap:4, textDecoration:'none', fontWeight:600 }}>
-              ⚙️ Admin
+          ${(user._isAdmin || user.isSuperuser) && html`
+            <a href=${window.location.pathname+'?admin'} style=${{ padding:'5px 12px', borderRadius:8, border:'1.5px solid #5856D630', background:'#5856D608', fontSize:12, color:'#5856D6', cursor:'pointer', display:'flex', alignItems:'center', gap:5, textDecoration:'none', fontWeight:700 }}>
+              ← Admin
             </a>`}
           <button onClick=${()=>setShowProjectSwitch(true)}
             style=${{ padding:'4px 10px', borderRadius:7, border:'1px solid #E5E5EA', background:'#FFF', fontSize:11, color:'#86868B', cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
