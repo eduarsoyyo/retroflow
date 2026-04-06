@@ -631,32 +631,33 @@ function HomeVacaciones({ profile, user }) {
       </div>
 
       <!-- Compact annual calendar (12 months) -->
-      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'12px' }}>
+      <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px' }}>
         <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-          <button onClick=${()=>setViewYear(y=>y-1)} style=${{ border:'none',background:'none',fontSize:14,cursor:'pointer',color:'#86868B' }}>‹</button>
-          <span style=${{ fontSize:12, fontWeight:700 }}>${viewYear}</span>
-          <button onClick=${()=>setViewYear(y=>y+1)} style=${{ border:'none',background:'none',fontSize:14,cursor:'pointer',color:'#86868B' }}>›</button>
+          <button onClick=${()=>setViewYear(y=>y-1)} style=${{ border:'none',background:'#F2F2F7',borderRadius:7,width:28,height:28,fontSize:14,cursor:'pointer',color:'#86868B' }}>‹</button>
+          <span style=${{ fontSize:13, fontWeight:700 }}>${viewYear}</span>
+          <button onClick=${()=>setViewYear(y=>y+1)} style=${{ border:'none',background:'#F2F2F7',borderRadius:7,width:28,height:28,fontSize:14,cursor:'pointer',color:'#86868B' }}>›</button>
         </div>
-        <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12 }}>
           ${MONTHS.map((mName,mo)=>{
             const daysInMo = new Date(viewYear,mo+1,0).getDate();
             return html`
               <div key=${mo}>
-                <div style=${{ fontSize:9, fontWeight:700, color:'#86868B', marginBottom:4, textAlign:'center' }}>${mName}</div>
-                <div style=${{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:1 }}>
+                <div style=${{ fontSize:10, fontWeight:700, color:'#86868B', marginBottom:5, textAlign:'center', textTransform:'uppercase', letterSpacing:.5 }}>${mName}</div>
+                <div style=${{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
                   ${Array.from({length:daysInMo},(_,i)=>i+1).map(d=>{
                     const entry = getEntry(viewYear,mo,d);
                     const info  = entry ? (ABSENCE_TYPES.find(t=>t.id===entry.type)||ABSENCE_TYPES[0]) : null;
                     const wknd  = isWknd(viewYear,mo,d);
                     const hol   = isHol(mo,d);
                     const isT   = viewYear+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0')===today;
-                    const bg    = info?(info.color||'#FF9500'):wknd?'#F2F2F7':hol?'#EEEEFF':'#F9FFF9';
-                    const fc    = info?'#FFF':wknd?'#C7C7CC':hol?'#5856D6':'#86868B';
+                    const bg    = info?(info.color||'#FF9500'):wknd?'#EBEBEB':hol?'#E8E8F8':'#F0FFF4';
+                    const fc    = info?'#FFF':wknd?'#C7C7CC':hol?'#5856D6':'#4CAF50';
                     return html`
-                      <div key=${d} title=${entry?(info?.label||'Ausencia'):wknd?'Finde':hol?'Festivo':String(d)}
-                        style=${{ width:'100%', aspectRatio:'1', borderRadius:2, background:isT?'#007AFF':bg,
+                      <div key=${d} title=${entry?(info?.label+': '+v.from):wknd?'Finde':hol?'Festivo':String(d)}
+                        style=${{ height:20, borderRadius:3, background:isT?'#007AFF':bg,
                           display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:6, fontWeight:info?800:400, color:isT?'#FFF':fc }}>
+                          fontSize:8, fontWeight:info||isT?800:400, color:isT?'#FFF':fc,
+                          outline:isT?'2px solid #007AFF':'none', outlineOffset:1 }}>
                         ${info?(info.initial||'V'):wknd?'':hol?'F':d}
                       </div>`;
                   })}
@@ -665,10 +666,12 @@ function HomeVacaciones({ profile, user }) {
           })}
         </div>
         <!-- Legend -->
-        <div style=${{ display:'flex', gap:8, flexWrap:'wrap', marginTop:8, fontSize:8, color:'#86868B' }}>
-          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#FF9500' }}></div>V: Vac.</span>
-          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#FF3B30' }}></div>BM: Baja</span>
-          <span style=${{ display:'flex', alignItems:'center', gap:2 }}><div style=${{ width:8,height:8,borderRadius:1,background:'#5856D6' }}></div>AP/F: Perm/Fest</span>
+        <div style=${{ display:'flex', gap:10, flexWrap:'wrap', marginTop:10, padding:'8px', background:'#F9F9FB', borderRadius:8 }}>
+          ${ABSENCE_TYPES.slice(0,4).map(t=>html`
+            <span key=${t.id} style=${{ display:'flex', alignItems:'center', gap:4, fontSize:9, color:'#86868B' }}>
+              <div style=${{ width:12,height:12,borderRadius:2,background:t.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,fontWeight:800,color:'#FFF' }}>${t.initial}</div>
+              ${t.label.split(' ').slice(1).join(' ')||t.label}
+            </span>`)}
         </div>
       </div>
 
@@ -844,7 +847,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             </div>`)}
         </div>
 
-        <div style=${{ display:'grid', gridTemplateColumns:'1fr 280px', gap:16 }}>
+        <div style=${{ display:'grid', gridTemplateColumns:'1fr', gap:16 }}>
           <div>
             <!-- Projects -->
             <h2 style=${{ fontSize:15, fontWeight:700, marginBottom:10 }}>📂 Mis proyectos</h2>
@@ -4758,7 +4761,7 @@ function RetroBoard({ user, onLogout }) {
         <div style=${{ display:'flex', alignItems:'center', gap:10 }}>
           
           <div>
-            <h2 style=${{ fontSize:16, fontWeight:700 }}><span class="wm" style=${{ fontSize:18 }}>revelio</span> <span style=${{ fontSize:12, fontWeight:500, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:6, marginLeft:4 }}>${SALA_DISPLAY}</span> <span style=${{ fontSize:10, fontWeight:500, color:TIPO_INFO.color, background:TIPO_INFO.color+'10', padding:'2px 6px', borderRadius:5, marginLeft:2 }}>${TIPO_INFO.icon} ${TIPO_INFO.label}</span></h2>
+            <h2 style=${{ fontSize:16, fontWeight:700 }}><span class="wm" style=${{ fontSize:18, cursor:'pointer' }} onClick=${()=>window.location.href='/'} title="Volver al inicio">revelio</span> <span style=${{ fontSize:12, fontWeight:500, color:'#007AFF', background:'#007AFF10', padding:'2px 8px', borderRadius:6, marginLeft:4 }}>${SALA_DISPLAY}</span> <span style=${{ fontSize:10, fontWeight:500, color:TIPO_INFO.color, background:TIPO_INFO.color+'10', padding:'2px 6px', borderRadius:5, marginLeft:2 }}>${TIPO_INFO.icon} ${TIPO_INFO.label}</span></h2>
             <span style=${{ fontSize:11, color:'#86868B' }}>${fd(new Date().toISOString())}</span>
           </div>
 
