@@ -102,10 +102,14 @@ async function sbLoadAllRetroRisks() {
 }
 async function sbSaveOrgNode(sala, memberId, managerId) {
   try {
-    await supabase.from('org_chart').upsert(
-      { sala, member_id: memberId, manager_id: managerId || null },
-      { onConflict: 'sala,member_id' }
-    );
+    // Try update first, then insert (works with or without UNIQUE constraint)
+    const { data: existing } = await supabase.from('org_chart')
+      .select('id').eq('sala',sala).eq('member_id',memberId).single();
+    if (existing?.id) {
+      await supabase.from('org_chart').update({ manager_id: managerId||null }).eq('id', existing.id);
+    } else {
+      await supabase.from('org_chart').insert({ sala, member_id: memberId, manager_id: managerId||null });
+    }
   } catch {}
 }
 async function sbLoadCalendars() {
@@ -462,18 +466,24 @@ function App() {
   const handleJoin = (u) => {
     saveUser(u); registerUser(u); setUser(u);
     setShowLogin(false);
-    if (u.sala && !params.has('sala')) {
+    // If already on a sala page, stay; otherwise show homepage (no redirect)
+    if (u.sala && params.has('sala') && params.get('sala') !== u.sala) {
       window.location.href = window.location.pathname + '?sala=' + encodeURIComponent(u.sala);
     }
+    // If no sala in URL, show homepage — user picks project from there
   };
   const handleLogout = () => { clearUser(); setUser(null); };
 
-  // No sala param → admin or landing
+  // No sala param → admin, homepage, or landing
   if (!params.has('sala')) {
     if (IS_ADMIN) return html`<${RoomPicker} />`;
-    // If user already logged in (non-admin) → show their homepage
-    const savedUser = loadUser();
-    if (savedUser && !savedUser._isAdmin) return html`<${UserHomePage} user=${savedUser} onLogout=${()=>{ clearUser(); window.location.reload(); }} />`;
+    // Logged-in user (state or localStorage) → homepage
+    const activeUser = user || loadUser();
+    if (activeUser && !activeUser._isAdmin) {
+      return html`<${UserHomePage} user=${activeUser}
+        onLogout=${()=>{ clearUser(); setUser(null); window.location.reload(); }}
+        onSelectProject=${(sala,tipo)=>{ window.location.href=window.location.pathname+'?sala='+encodeURIComponent(sala)+'&tipo='+(tipo||'agile'); }} />`;
+    }
     return html`<${NeedLink} onLogin=${()=>setShowLogin(true)} showLogin=${showLogin} onJoin=${handleJoin} onCloseLogin=${()=>setShowLogin(false)} />`;
   }
 
@@ -545,7 +555,7 @@ function App() {
 }
 
 /* ═══ USER HOMEPAGE ═══ */
-function UserHomePage({ user, onLogout }) {
+function UserHomePage({ user, onLogout, onSelectProject }) {
   const [rooms,   setRooms]   = useState([]);
   const [profile, setProfile] = useState(null);
   const [allData, setAllData] = useState({}); // { sala: { actions, risks } }
@@ -661,8 +671,8 @@ function UserHomePage({ user, onLogout }) {
                       const rActions = (d.actions||[]).filter(a=>(a.owner===user.name||a.createdBy===user.id)&&a.status!=='done'&&a.status!=='discarded');
                       const rRisks   = (d.risks||[]).filter(x=>x.status!=='mitigated');
                       return html`
-                        <a href=${'/?sala='+encodeURIComponent(r.slug)+'&tipo='+(r.tipo||'agile')}
-                          style=${{ display:'block', textDecoration:'none', padding:'14px 16px', borderRadius:14, background:'#FFF',
+                        <div onClick=${()=>(onSelectProject||((s,t)=>{window.location.href='/?sala='+encodeURIComponent(s)+'&tipo='+(t||'agile')}))(r.slug,r.tipo)}
+                          style=${{ display:'block', cursor:'pointer', padding:'14px 16px', borderRadius:14, background:'#FFF',
                             border:'1.5px solid #E5E5EA', transition:'border-color .15s' }}
                           onMouseOver=${e=>e.currentTarget.style.borderColor='#007AFF'}
                           onMouseOut=${e=>e.currentTarget.style.borderColor='#E5E5EA'}>
@@ -1316,13 +1326,13 @@ function AdminEscaladoGlobal({ rooms }) {
   const setGlobalManager = async (memberId, managerId) => {
     setOrgSaving(true);
     setGlobalOrg(prev=>({...prev,[memberId]:managerId||null}));
-    await supabase.from('org_chart').upsert({sala:'__global__',member_id:memberId,manager_id:managerId||null},{onConflict:'sala,member_id'});
+    await (async()=>{ const {data:_g}=await supabase.from('org_chart').select('id').eq('sala','__global__').eq('member_id',memberId).single(); if(_g?.id){await supabase.from('org_chart').update({manager_id:managerId||null}).eq('id',_g.id);}else{await supabase.from('org_chart').insert({sala:'__global__',member_id:memberId,manager_id:managerId||null});} })();
     setOrgSaving(false);
   };
   const addToOrg = async (memberId) => {
     if (Object.keys(globalOrg).includes(memberId)) return;
     setGlobalOrg(prev=>({...prev,[memberId]:null}));
-    await supabase.from('org_chart').upsert({sala:'__global__',member_id:memberId,manager_id:null},{onConflict:'sala,member_id'});
+    await (async()=>{ const {data:_g2}=await supabase.from('org_chart').select('id').eq('sala','__global__').eq('member_id',memberId).single(); if(_g2?.id){await supabase.from('org_chart').update({manager_id:null}).eq('id',_g2.id);}else{await supabase.from('org_chart').insert({sala:'__global__',member_id:memberId,manager_id:null});} })();
   };
 
   const LEVELS = [
@@ -3002,7 +3012,7 @@ function PFTEs({ team, org, orgData: orgDataProp }) {
   const prevM = () => { if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1); };
   const nextM = () => { if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1); };
   const updateOrgField = async (memberId, managerId, field, val) => {
-    await supabase.from('org_chart').upsert({sala:SALA,member_id:memberId,manager_id:managerId||null,[field]:val},{onConflict:'sala,member_id'});
+    const {data:_pf}=await supabase.from('org_chart').select('id').eq('sala',SALA).eq('member_id',memberId).single(); if(_pf?.id){await supabase.from('org_chart').update({[field]:val}).eq('id',_pf.id);}else{await supabase.from('org_chart').insert({sala:SALA,member_id:memberId,manager_id:managerId||null,[field]:val});}
     setOrgData(prev=>prev.map(r=>r.member_id===memberId?{...r,[field]:val}:r));
   };
 
