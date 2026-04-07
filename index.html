@@ -334,7 +334,7 @@ const BADGES = [
 ];
 
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const fd = d => d ? new Date(d).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '';
+const fd = d => { if(!d) return ''; const dt=new Date(d); return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+String(dt.getFullYear()).toString().slice(-2); };
 
 /* ═══ STYLES ═══ */
 const gl = { background:'rgba(255,255,255,0.78)', backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)', border:'1px solid rgba(0,0,0,0.05)' };
@@ -4524,7 +4524,7 @@ function PTrabajo({ actions, sA, risks, user }) {
               ${overdue && html`<span style=${{ fontSize:8, fontWeight:700, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>VENCIDO</span>`}
               ${!compact && html`<span style=${{ fontSize:8, fontWeight:600, color:KAN_COLS.find(s=>s.id===a.status)?.color||'#86868B', background:(KAN_COLS.find(s=>s.id===a.status)?.color||'#86868B')+'12', padding:'1px 5px', borderRadius:4 }}>${KAN_COLS.find(s=>s.id===a.status)?.label||a.status}</span>`}
               ${a.source==='retro' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF9500', background:'#FF950010', padding:'1px 5px', borderRadius:4 }}>retro</span>`}
-              ${a.source==='risk' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>riesgo</span>`}
+              ${a.source==='risk' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>🔗 riesgo</span>`}
               ${a.storyPoints && html`<span style=${{ fontSize:8, fontWeight:700, color:'#5856D6', background:'#5856D610', padding:'1px 5px', borderRadius:4 }}>${a.storyPoints} SP</span>`}
               ${a.sprint && html`<span style=${{ fontSize:8, fontWeight:600, color:'#007AFF', background:'#007AFF10', padding:'1px 5px', borderRadius:4 }}>${a.sprint}</span>`}
               ${a.epicLink && !compact && html`<span style=${{ fontSize:8, fontWeight:600, color:'#AF52DE', background:'#AF52DE10', padding:'1px 5px', borderRadius:4 }}>${a.epicLink}</span>`}
@@ -4574,6 +4574,7 @@ function PTrabajo({ actions, sA, risks, user }) {
         <span style=${{ fontSize:11, background:'#007AFF12', color:'#007AFF', padding:'3px 10px', borderRadius:8, fontWeight:600 }}>${openItems.length} abiertas</span>
         ${overdueCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B30', color:'#FFF', fontWeight:700, padding:'3px 8px', borderRadius:8 }}>⚠ ${overdueCount} vencidas</span>`}
         ${blockedCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B3012', color:'#FF3B30', fontWeight:600, padding:'3px 8px', borderRadius:8 }}>🚫 ${blockedCount} bloqueadas</span>`}
+        ${(()=>{const sp=actions.reduce((s,a)=>s+(parseInt(a.storyPoints)||0),0); return sp>0?html`<span style=${{ fontSize:11, background:'#5856D610', color:'#5856D6', fontWeight:600, padding:'3px 8px', borderRadius:8 }}>${sp} SP total</span>`:null;})()}
         <div style=${{ flex:1 }}/>
         <button onClick=${()=>setShowTagManager(true)}
           style=${{ padding:'8px 14px', borderRadius:10, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:'#6E6E73' }}>
@@ -7890,7 +7891,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
         ${[
           {l:'Notas',          v:tN,                   i:'📝', c:'#007AFF'},
           {l:'Votos',          v:tV,                   i:'👍', c:'#FF9500'},
-          {l:'Tareas',    v:aD+'/'+actions.length, i:'🎯', c:'#34C759'},
+          {l:'Acciones',  v:String(actions.length), i:'🎯', c:'#34C759'},
           {l:'Riesgos abiertos',v:openRisks.length,    i:'⚠️', c:openRisks.length>0?'#FF3B30':'#34C759'},
           {l:'Objetivo',       v:objL,                 i:'🏁', c:objColor},
         ].map((s,i) => html`
@@ -8060,7 +8061,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
       `}
 
       <!-- ══ ACCIONABLES ══ -->
-      ${activeTab === 'accionables' && html`
+      ${activeTab === 'tareas' && html`
         <div style=${{ ...cS, padding:20 }}>
           <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
             <h3 style=${{ fontSize:15, fontWeight:700 }}>Tareas (${actions.length})</h3>
