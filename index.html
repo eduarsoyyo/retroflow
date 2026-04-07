@@ -222,11 +222,11 @@ function debounce(fn, ms) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-async function sbSaveRetroSnapshot(sala, tipo, stateData, userId) {
+async function sbSaveRetroSnapshot(sala, tipo, stateData, userId, status) {
   try {
-    const {error} = await supabase.from('retros').insert({ sala, tipo, status:'closed', data:stateData, created_by:userId });
-    if (error) setErrToast('⚠️ Error guardando retro: ' + error.message);
-  } catch { setErrToast('⚠️ Sin conexión con Supabase'); }
+    const {error} = await supabase.from('retros').insert({ sala, tipo, status:status||'active', data:stateData, created_by:userId });
+    if (error) console.warn('sbSaveRetroSnapshot:', error.message);
+  } catch(e) { console.warn('sbSaveRetroSnapshot:', e); }
 }
 
 /* ═══ CONSTANTS ═══ */
@@ -2554,7 +2554,7 @@ function AdminUsuarios({ rooms }) {
 /* ═══ SALA CARD COMPONENT ═══ */
 function SalaCard({ r, sbRetros, go, onRemove, setEditRoom }) {
   const rm    = sbRetros.filter(rt => rt.sala === r.slug);
-  const retroCount = [...new Set(rm.map(rt=>(rt.created_at||'').slice(0,10)))].length;
+  const retroCount = rm.filter(rt=>rt.status==='closed').length;
   const users = loadUserRegistry(r.slug);
   const link  = window.location.origin + window.location.pathname + '?sala=' + r.slug + '&tipo=' + (r.tipo||'agile');
   const rTipo = TASK_TEMPLATES[r.tipo] || TASK_TEMPLATES.agile;
@@ -2866,7 +2866,7 @@ function RoomPicker() {
     const last    = sbSala[0] || null;
     return {
       ...r, rTipo,
-      retros: [...new Set(sbSala.map(rt=>(rt.created_at||'').slice(0,10)))].length, // unique days = unique sessions
+      retros: sbSala.filter(rt=>rt.status==='closed').length, // only 'Nueva retro' events count
       notes, votes, actions, done, parts,
       risksOpen, risksMitigated, risksTotal: risks.length,
       avgP: sbSala.length > 0 ? (parts.length / sbSala.length).toFixed(1) : 0,
@@ -4489,8 +4489,8 @@ function PTrabajo({ actions, sA, risks, user }) {
   const [overCol, setOverCol] = useState(null);
 
   const today = new Date().toISOString().slice(0,10);
-  // Expose risks for TaskDetailModal risk linking
-  useEffect(() => { window.__currentRisks = risks||[]; window.__currentActions = actions||[]; return ()=>{ window.__currentRisks=[]; window.__currentActions=[]; }; }, [risks]);
+  // Expose risks/actions for cross-component callbacks (TaskDetailModal, PRiesgos link dialog)
+  useEffect(() => { window.__currentRisks = risks||[]; window.__currentActions = actions||[]; }, [risks, actions]);
   // Callback for risk mitigation from task completion
   useEffect(() => { window.__mitigateRisk = (riskId) => {
     // Find the risk update function — we need sR but PTrabajo doesn't have it
@@ -6580,19 +6580,29 @@ function RetroBoard({ user, onLogout }) {
   const sR = d => { upd('risks',d); saveRisks(d); };
 
   // Risk navigation + mitigation callbacks for TaskDetailModal
+  // NOTE: these use window globals (__currentRisks/__currentActions) set by PTrabajo
+  // because state refs from useRealtime are not in scope here.
+  // sA/sR use upd() which calls setState(prev=>{...}) so they work even from stale closures.
+  const sRRef = useRef(sR); sRRef.current = sR;
+  const sARef = useRef(sA); sARef.current = sA;
+
+  // Keep window globals fresh from RetroBoard (always mounted) for cross-component callbacks
+  useEffect(() => { window.__currentRisks = state.risks||[]; }, [state.risks]);
+  useEffect(() => { window.__currentActions = state.actions||[]; }, [state.actions]);
+
   useEffect(() => {
     window.__createLinkedTask = (riskId, riskText) => {
-      const currentActions = stRef.current.actions || [];
+      const currentActions = window.__currentActions || [];
       const newTask = {id:uid(),text:'Mitigar: '+riskText,description:'Tarea vinculada al riesgo',owner:'Sin asignar',date:'',status:'backlog',priority:'high',voteScore:0,createdBy:user?.id||'',fromCategory:null,noteId:null,riskId:riskId,source:'risk',type:'tarea',createdAt:new Date().toISOString()};
-      sA([...currentActions, newTask]);
+      sARef.current([...currentActions, newTask]);
     };
     window.__goToRisk = (riskId) => {
       setMainTab('riesgos');
     };
     window.__goMitigateRisk = (riskId) => {
-      const currentRisks = stRef.current.risks || [];
+      const currentRisks = window.__currentRisks || [];
       const updated = currentRisks.map(r => r.id === riskId ? {...r, status:'mitigated'} : r);
-      sR(updated);
+      sRRef.current(updated);
     };
     return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; };
   }, []);
@@ -7219,7 +7229,7 @@ function NewRetroModal({ user, state, onClose, onConfirm }) {
   const handleConfirm = async () => {
     setSaving(true);
     // Save current retro to Supabase before resetting
-    await sbSaveRetroSnapshot(SALA, TIPO, state, user.id).catch(() => {});
+    await sbSaveRetroSnapshot(SALA, TIPO, state, user.id, 'closed').catch(() => {});
     setSaving(false);
     onConfirm();
   };
