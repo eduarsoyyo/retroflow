@@ -285,7 +285,7 @@ const PHASES = [
 ];
 const MAIN_TABS = [
   { id:'resumen',     label:'Resumen',     lucide:'LayoutDashboard' },
-  { id:'trabajo',     label:'Trabajo',     lucide:'CheckSquare' },
+  { id:'trabajo',     label:'Seguimiento', lucide:'ClipboardList' },
   { id:'retro',       label:'Retro',       lucide:'RotateCcw' },
   { id:'riesgos',     label:'Riesgos',     lucide:'AlertTriangle' },
   { id:'equipo',      label:'Equipo',      lucide:'Users' },
@@ -1204,7 +1204,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             <div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
               ${[
                 {v:roomsLoaded&&profileLoaded?myRooms.length:'—',    l:'Proyectos',    i:'FolderOpen',   c:'#007AFF'},
-                {v:profileLoaded?pendingAct.length:'—',               l:'Tareas pend.',  i:'CheckSquare',  c:'#34C759'},
+                {v:profileLoaded?pendingAct.length:'—',               l:'Tareas pend.',  i:'ClipboardList',  c:'#34C759'},
                 {v:profileLoaded?overdueAct.length:'—',               l:'Vencidos',     i:'AlertCircle',  c:overdueAct.length?'#FF3B30':'#86868B'},
                 {v:profileLoaded?myRisks.length:'—',                  l:'Mis riesgos', i:'AlertTriangle', c:myRisks.length?'#FF9500':'#86868B'},
               ].map((k,i)=>html`
@@ -4570,7 +4570,7 @@ function PTrabajo({ actions, sA, risks, user }) {
     <div style=${{ maxWidth:'100%' }}>
       <!-- Header row -->
       <div style=${{ display:'flex', alignItems:'center', gap:10, marginBottom:12, flexWrap:'wrap' }}>
-        <h2 style=${{ fontSize:18, fontWeight:700, margin:0 }}>Trabajo</h2>
+        <h2 style=${{ fontSize:18, fontWeight:700, margin:0 }}>Seguimiento</h2>
         <span style=${{ fontSize:11, background:'#007AFF12', color:'#007AFF', padding:'3px 10px', borderRadius:8, fontWeight:600 }}>${openItems.length} abiertas</span>
         ${overdueCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B30', color:'#FFF', fontWeight:700, padding:'3px 8px', borderRadius:8 }}>⚠ ${overdueCount} vencidas</span>`}
         ${blockedCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B3012', color:'#FF3B30', fontWeight:600, padding:'3px 8px', borderRadius:8 }}>🚫 ${blockedCount} bloqueadas</span>`}
@@ -6593,7 +6593,7 @@ function RetroBoard({ user, onLogout }) {
               <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
                 <!-- Quick access cards -->
                 ${[
-                  {tab:'trabajo', icon:'CheckSquare', label:'Trabajo', desc:state.actions.filter(a=>a.status!=='done'&&a.status!=='discarded').length+' tareas abiertas', c:'#007AFF'},
+                  {tab:'trabajo', icon:'ClipboardList', label:'Seguimiento', desc:state.actions.filter(a=>a.status!=='done'&&a.status!=='discarded').length+' tareas abiertas', c:'#007AFF'},
                   {tab:'retro', icon:'RotateCcw', label:'Retro', desc:'Fase actual: '+PHASES[phase].label, c:'#34C759'},
                   {tab:'riesgos', icon:'AlertTriangle', label:'Riesgos', desc:(state.risks||[]).filter(r=>r.status!=='mitigated').length+' riesgos activos', c:'#FF9500'},
                   {tab:'equipo', icon:'Users', label:'Equipo', desc:'Gestión del equipo del proyecto', c:'#5856D6'},
@@ -7385,7 +7385,6 @@ function P3({ notes, sN, user }) {
 
 /* ═══ PHASE 4: ACTIONS ═══ */
 function P4({ notes, actions, risks, sA, user }) {
-  // P4 = Trabajo phase (formerly Accionables)
   const [teamMembers, setTeamMembers] = useState([]);
   useEffect(() => {
     sbLoadTeamMembers().then(data => {
@@ -7396,239 +7395,149 @@ function P4({ notes, actions, risks, sA, user }) {
   const [form, setForm] = useState({text:'',owner:'',date:'',priority:'medium'});
   const [eId, setEId] = useState(null);
   const [eF, setEF] = useState({});
-  const [actFilter, setActFilter] = useState('all');
-  const [viewMode, setViewMode]   = useState('kanban');
-  const [dragAct,  setDragAct]    = useState(null);  // id being dragged
-  const [overCol,  setOverCol]    = useState(null);  // column id being hovered
-  const touchActRef = useRef(null);
-  const [touchPos,  setTouchPos]  = useState(null);
 
-  const onActDragStart = (id) => setDragAct(id);
-  const onActDrop = (colId) => { if(dragAct) upSt(dragAct, colId); setDragAct(null); setOverCol(null); };
-  const onActTouchStart = (e, id) => { touchActRef.current=id; setTouchPos({x:e.touches[0].clientX,y:e.touches[0].clientY}); e.stopPropagation(); };
-  const onActTouchMove = (e) => {
-    if(!touchActRef.current) return; e.preventDefault();
-    const t=e.touches[0]; setTouchPos({x:t.clientX,y:t.clientY});
-    const el=document.elementFromPoint(t.clientX,t.clientY);
-    const col=el?.closest('[data-kanban-col]');
-    setOverCol(col?col.getAttribute('data-kanban-col'):null);
-  };
-  const onActTouchEnd = (e) => {
-    if(!touchActRef.current) return;
-    const t=e.changedTouches[0];
-    const el=document.elementFromPoint(t.clientX,t.clientY);
-    const col=el?.closest('[data-kanban-col]');
-    if(col) upSt(touchActRef.current, col.getAttribute('data-kanban-col'));
-    touchActRef.current=null; setTouchPos(null); setOverCol(null);
-  };
   const topN = [...notes].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0)).slice(0,12);
   const openRisks = (risks||[]).filter(r => r.status !== 'mitigated');
+
   const addA = fn => {
     const t=fn?fn.text:form.text; if(!t.trim())return;
     const vs=fn?(fn.voters?.length||0):0; const pri=fn?(vs>=5?'high':vs>=2?'medium':'low'):form.priority;
-    sA([...actions,{id:uid(),text:t.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:pri,voteScore:vs,createdBy:user.id,fromCategory:fn?.category||null,noteId:fn?.id||null,riskId:null,source:fn?'retro':'manual',type:'accion_retro',createdAt:new Date().toISOString()}]);
+    sA([...actions,{id:uid(),text:t.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'backlog',priority:pri,voteScore:vs,createdBy:user.id,fromCategory:fn?.category||null,noteId:fn?.id||null,riskId:null,source:fn?'retro':'manual',type:'accion_retro',createdAt:new Date().toISOString()}]);
     if(!fn)setForm({text:'',owner:'',date:'',priority:'medium'});
   };
   const addAFromRisk = r => {
     const imp = getRiskLevel(r.impactVotes);
     const pri = imp.id==='alto'?'high':imp.id==='medio'?'medium':'low';
-    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'Sin asignar',date:'',status:'pending',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id,source:'risk',type:'tarea',createdAt:new Date().toISOString()}]);
-  };
-  // Promote retro action to formal backlog task
-  const promoteToTask = (a) => {
-    sA(actions.map(x=>x.id===a.id?{...x,type:'tarea',source:'retro',description:'Origen: acción de retro',updatedAt:new Date().toISOString()}:x));
+    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'Sin asignar',date:'',status:'backlog',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id,source:'risk',type:'tarea',createdAt:new Date().toISOString()}]);
   };
   const togN = n => { const ex=actions.find(a=>a.noteId===n.id); if(ex)sA(actions.filter(a=>a.noteId!==n.id)); else addA(n); };
   const togR = r => { const ex=actions.find(a=>a.riskId===r.id); if(ex)sA(actions.filter(a=>a.riskId!==r.id)); else addAFromRisk(r); };
-  const upSt = (id,st) => sA(actions.map(a=>a.id===id?{...a,status:st}:a));
   const delA = id => sA(actions.filter(a=>a.id!==id));
   const saveEA = () => { sA(actions.map(a=>a.id===eId?{...a,...eF}:a)); setEId(null); };
-  const priO = {high:3,medium:2,low:1};
+  const priO = {critical:4,high:3,medium:2,low:1};
 
   return html`
-    <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr', gap:14 }}>
-        <div style=${{ ...cS, padding:22 }}>
-          <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <h3 style=${{ fontSize:17, fontWeight:700 }}>Trabajo</h3>
-            <div style=${{ display:'flex', gap:4 }}>
-              ${[{id:'all',label:'Todos'},{id:'mine',label:'👤 Mis tareas'},{id:'done',label:'✅ Completados'}].map(f => html`
-                <button key=${f.id} onClick=${()=>setActFilter(f.id)} style=${{ padding:'4px 10px', borderRadius:7, border:actFilter===f.id?'none':'1px solid #E5E5EA', background:actFilter===f.id?'#1D1D1F':'#FFF', color:actFilter===f.id?'#FFF':'#6E6E73', fontSize:10, fontWeight:600 }}>${f.label}</button>
-              `)}
-            </div>
-          </div>
-          <div style=${{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Nueva tarea…" style=${{ ...iS, flex:2, minWidth:150 }} />
-            <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:100 }}>
+    <div style=${{ maxWidth:'100%' }}>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 300px', gap:14, alignItems:'start' }}>
+
+        <!-- Left: action list + form -->
+        <div style=${{ ...cS, padding:20 }}>
+          <h3 style=${{ fontSize:16, fontWeight:700, marginBottom:4 }}>Acciones de la retro</h3>
+          <p style=${{ fontSize:11, color:'#86868B', marginBottom:14 }}>Se añadirán al backlog del proyecto para su seguimiento</p>
+
+          <!-- Add form -->
+          <div style=${{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap', padding:'10px 12px', borderRadius:12, background:'#F9F9FB', border:'1.5px solid #E5E5EA' }}>
+            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Nueva acción…"
+              onKeyDown=${e=>e.key==='Enter'&&addA(null)}
+              style=${{ ...iS, flex:2, minWidth:150, background:'#FFF' }} />
+            <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:100, background:'#FFF' }}>
               <option value="">— Responsable —</option>
               ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
             </select>
-            <input type="date" value=${form.date} onInput=${e=>setForm({...form,date:e.target.value})} style=${{ ...iS, width:120, flex:'none' }} />
-            <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})} style=${{ ...iS, width:100, flex:'none' }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
+            <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', background:'#FFF' }}>
+              ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
+            </select>
             <button onClick=${()=>addA(null)} style=${bP}>+ Añadir</button>
           </div>
-          <!-- View toggle -->
-          <div style=${{ display:'flex', gap:4, marginBottom:10 }}>
-            <button onClick=${()=>setViewMode('kanban')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='kanban'?'none':'1px solid #E5E5EA', background:viewMode==='kanban'?'#1D1D1F':'#FFF', color:viewMode==='kanban'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>⬜ Kanban</button>
-            <button onClick=${()=>setViewMode('list')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='list'?'none':'1px solid #E5E5EA', background:viewMode==='list'?'#1D1D1F':'#FFF', color:viewMode==='list'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>☰ Lista</button>
-          </div>
 
-          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea tareas o selecciona notas/riesgos →</p></div>`}
-
-          <!-- KANBAN VIEW -->
-          ${viewMode==='kanban' && actions.length > 0 && html`
-            <div style=${{ position:'relative' }}>
-            ${touchPos && html`
-              <div style=${{ position:'fixed', left:touchPos.x-60, top:touchPos.y-30, pointerEvents:'none', zIndex:9999,
-                background:'#007AFF', color:'#FFF', borderRadius:10, padding:'6px 14px', fontSize:11, fontWeight:600,
-                boxShadow:'0 6px 20px rgba(0,122,255,.35)', transform:'rotate(-2deg) scale(1.05)' }}>
-                ✋ Moviendo…
-              </div>
-            `}
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, minHeight:200 }}>
-              ${[
-                {id:'pending',    label:'Pendiente',  color:'#FF9500', bg:'#FFF9E6'},
-                {id:'inprogress', label:'En proceso',  color:'#007AFF', bg:'#EEF5FF'},
-                {id:'done',       label:'Completado',  color:'#34C759', bg:'#F0FFF4'},
-                {id:'discarded',  label:'Descartado',  color:'#C7C7CC', bg:'#F9F9F9'},
-              ].map(col => {
-                const colActs = [...actions].filter(a =>
-                  (actFilter==='mine'?a.createdBy===user.id:true) && a.status===col.id
-                ).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0));
-                return html`
-                  <div key=${col.id} data-kanban-col=${col.id}
-                    onDragOver=${e=>{e.preventDefault();setOverCol(col.id)}}
-                    onDragLeave=${()=>setOverCol(null)}
-                    onDrop=${()=>onActDrop(col.id)}
-                    style=${{ background:overCol===col.id?col.color+'18':col.bg, borderRadius:14, border:'1.5px solid '+(overCol===col.id?col.color:col.color+'25'), display:'flex', flexDirection:'column', minHeight:120, transition:'all .15s' }}>
-                    <!-- Column header -->
-                    <div style=${{ padding:'10px 12px 8px', borderBottom:'2px solid '+col.color+'20', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span style=${{ fontSize:12, fontWeight:700, color:col.color }}>${col.label}</span>
-                      <span style=${{ fontSize:11, fontWeight:700, background:col.color+'20', color:col.color, padding:'1px 7px', borderRadius:10 }}>${colActs.length}</span>
-                    </div>
-                    <!-- Cards -->
-                    <div style=${{ flex:1, padding:'6px', display:'flex', flexDirection:'column', gap:5, overflowY:'auto', maxHeight:400 }}>
-                      ${colActs.map(a => {
-                        const pr = PRIS.find(p=>p.id===a.priority)||PRIS[1];
-                        const ct = a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
-                        return html`
-                          <div key=${a.id}
-                            draggable=${true}
-                            onDragStart=${()=>onActDragStart(a.id)}
-                            onDragEnd=${()=>{setDragAct(null);setOverCol(null)}}
-                            onTouchStart=${e=>onActTouchStart(e,a.id)}
-                            onTouchMove=${onActTouchMove}
-                            onTouchEnd=${onActTouchEnd}
-                            style=${{ background:'#FFF', borderRadius:10, padding:'9px 10px', border:'1px solid '+col.color+'20', boxShadow:'0 1px 4px rgba(0,0,0,.04)', cursor:'grab', opacity:dragAct===a.id?.4:1, touchAction:'none', userSelect:'none' }}>
-                            <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
-                              <span style=${{ fontSize:11 }}>${pr.icon}</span>
-                              ${ct&&html`<span style=${{ fontSize:8, color:ct.color, background:ct.color+'10', padding:'1px 4px', borderRadius:3, fontWeight:700 }}>${ct.emoji}</span>`}
-                              <div style=${{ flex:1 }}/>
-                              ${(a.type||'accion_retro')==='accion_retro'&&html`<button onClick=${()=>promoteToTask(a)} title="Promover a tarea formal del backlog" style=${{ border:'none',background:'#007AFF10',fontSize:9,color:'#007AFF',cursor:'pointer',padding:'2px 5px',borderRadius:4,fontWeight:700 }}>📋 Backlog</button>`}
-                              <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none',background:'none',fontSize:11,color:'#C7C7CC',cursor:'pointer',padding:'1px' }}>✏️</button>
-                              <button onClick=${()=>delA(a.id)} style=${{ border:'none',background:'none',fontSize:11,color:'#E5E5EA',cursor:'pointer',padding:'1px' }}>✕</button>
-                            </div>
-                            <p style=${{ fontSize:12, fontWeight:600, lineHeight:1.3, marginBottom:4 }}>${a.text}</p>
-                            <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                              <span style=${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>${a.owner||''}</span>
-                              ${a.date&&html`<span style=${{ fontSize:9, color:'#86868B' }}>📅${fd(a.date).slice(0,5)}</span>`}
-                            </div>
-                            <!-- drag hint -->
-                            <div style=${{ fontSize:8, color:'#C7C7CC', marginTop:4, textAlign:'center' }}>⠿ arrastra para mover</div>
-                            ${eId===a.id && html`
-                              <div style=${{ marginTop:6, display:'flex', flexDirection:'column', gap:4 }}>
-                                <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})}
-                                  style=${{ border:'1px solid #007AFF40', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }} />
-                                <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})}
-                                  style=${{ border:'1px solid #E5E5EA', borderRadius:6, padding:'4px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
-                                  <option value="">— Responsable —</option>
-                                  ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
-                                </select>
-                                <div style=${{ display:'flex', gap:4 }}>
-                                  <button onClick=${saveEA} style=${{ flex:1, padding:'4px', borderRadius:6, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:10, fontWeight:600, cursor:'pointer' }}>Guardar</button>
-                                  <button onClick=${()=>setEId(null)} style=${{ padding:'4px 8px', borderRadius:6, border:'1px solid #E5E5EA', background:'#FFF', fontSize:10, cursor:'pointer' }}>✕</button>
-                                </div>
-                              </div>`}
-                          </div>`;
-                      })}
-                    </div>
-                  </div>`;
-              })}
-            </div>
-            </div>
-          `}
-
-          <!-- LIST VIEW -->
-          ${viewMode==='list' && html`
-            <div style=${{ display:'flex', flexDirection:'column', gap:7 }}>
-              ${[...actions].filter(a => actFilter==='mine' ? a.createdBy===user.id : actFilter==='done' ? a.status==='done' : true).sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a=>{
-                const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1]; const st=STS.find(s=>s.id===a.status); const ct=a.fromCategory?CATS.find(c=>c.id===a.fromCategory):null;
-                if(eId===a.id) return html`
-                  <div key=${a.id} style=${{ padding:'14px 16px', borderRadius:13, background:'#F9F9FB', border:'2px solid #007AFF30' }}>
-                    <div style=${{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                      <input autofocus value=${eF.text} onInput=${e=>setEF({...eF,text:e.target.value})} style=${{ ...iS, flex:2, minWidth:140, fontSize:13 }} />
-                      <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:100, fontSize:13 }}>
-                        <option value="">— Responsable —</option>
-                        ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
-                      </select>
-                      <input type="date" value=${eF.date} onInput=${e=>setEF({...eF,date:e.target.value})} style=${{ ...iS, width:120, flex:'none', fontSize:13 }} />
-                      <select value=${eF.priority} onChange=${e=>setEF({...eF,priority:e.target.value})} style=${{ ...iS, width:90, flex:'none', fontSize:13 }}>${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}</select>
-                    </div>
-                    <div style=${{ display:'flex', gap:6 }}><button onClick=${saveEA} style=${{ ...bP, padding:'8px 16px', fontSize:12 }}>Guardar</button><button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'8px 14px', fontSize:12 }}>Cancelar</button></div>
-                  </div>`;
-                return html`
-                  <div key=${a.id} class="hl" style=${{ padding:'12px 14px', borderRadius:13, background:'#FFF', border:'1.5px solid #E5E5EA', display:'flex', alignItems:'center', gap:10 }}>
-                    <div style=${{ display:'flex', flexDirection:'column', alignItems:'center', gap:1, minWidth:40 }}><span style=${{ fontSize:14 }}>${pr.icon}</span><span style=${{ fontSize:8, fontWeight:700, color:pr.color, textTransform:'uppercase' }}>${pr.label}</span></div>
-                    <div style=${{ flex:1 }}>
-                      ${ct&&html`<span style=${{ fontSize:9, fontWeight:700, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:3, display:'inline-block', marginBottom:2 }}>${ct.emoji} ${ct.label}</span>`}
-                      <p style=${{ fontSize:13, fontWeight:600 }}>${a.text}</p>
-                      <div style=${{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}><span style=${{ fontSize:11, color:'#007AFF', fontWeight:600 }}>${a.owner}</span>${a.date&&html`<span style=${{ fontSize:10, color:'#86868B' }}>📅 ${fd(a.date)}</span>`}</div>
-                    </div>
-                    <select value=${a.status} onChange=${e=>upSt(a.id,e.target.value)} style=${{ padding:'5px 8px', borderRadius:7, border:'1.5px solid '+st.color+'28', background:st.bg, color:st.color, fontSize:11, fontWeight:600, outline:'none' }}>${STS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}</select>
-                    <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none', background:'none', fontSize:14, color:'#86868B' }}>✏️</button>
-                    <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', fontSize:14, color:'#C7C7CC' }}>✕</button>
-                  </div>`;
-              })}
-            </div>
-          `}
+          <!-- Actions list (no statuses) -->
+          ${actions.length===0
+            ? html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea acciones o selecciona notas/riesgos del panel derecho</p></div>`
+            : html`<div style=${{ display:'flex', flexDirection:'column', gap:5 }}>
+                ${[...actions].sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a=>{
+                  const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1];
+                  const ct=a.fromCategory?CATS.find(cc=>cc.id===a.fromCategory):null;
+                  const isEdit=eId===a.id;
+                  return isEdit ? html`
+                    <div key=${a.id} style=${{ padding:'10px 12px', borderRadius:10, background:'#F9F9FB', border:'2px solid #007AFF30' }}>
+                      <div style=${{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        <input autofocus value=${eF.text||''} onInput=${e=>setEF({...eF,text:e.target.value})}
+                          style=${{ flex:2, minWidth:140, border:'1.5px solid #007AFF40', borderRadius:8, padding:'6px 10px', fontSize:12, fontFamily:'inherit', outline:'none' }} />
+                        <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})}
+                          style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+                          <option value="">— Responsable —</option>
+                          ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+                        </select>
+                        <button onClick=${saveEA} style=${{ padding:'6px 14px', borderRadius:8, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer' }}>Guardar</button>
+                        <button onClick=${()=>setEId(null)} style=${{ padding:'6px 10px', borderRadius:8, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>✕</button>
+                      </div>
+                    </div>`
+                  : html`
+                    <div key=${a.id} style=${{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, background:'#FFF', border:'1.5px solid #E5E5EA' }}>
+                      <span style=${{ fontSize:12, fontWeight:800, color:pr.color, minWidth:18 }}>${pr.icon}</span>
+                      ${ct&&html`<span style=${{ fontSize:8, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:4, fontWeight:700, flexShrink:0 }}>${ct.emoji} ${ct.label}</span>`}
+                      <div style=${{ flex:1, minWidth:0 }}>
+                        <p style=${{ fontSize:12, fontWeight:600, margin:0 }}>${a.text}</p>
+                        <div style=${{ display:'flex', gap:8, marginTop:2, fontSize:10, color:'#86868B' }}>
+                          <span style=${{ color:'#007AFF', fontWeight:600 }}>${a.owner}</span>
+                          ${a.date&&html`<span>📅 ${fd(a.date)}</span>`}
+                          ${a.source==='retro'&&html`<span style=${{ color:'#FF9500' }}>retro</span>`}
+                          ${a.source==='risk'&&html`<span style=${{ color:'#FF3B30' }}>riesgo</span>`}
+                        </div>
+                      </div>
+                      <div style=${{ display:'flex', gap:3, flexShrink:0 }}>
+                        <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner||'',date:a.date||'',priority:a.priority})}}
+                          style=${{ border:'none', background:'none', fontSize:11, color:'#C7C7CC', cursor:'pointer' }}>✏️</button>
+                        <button onClick=${()=>delA(a.id)}
+                          style=${{ border:'none', background:'none', fontSize:11, color:'#E5E5EA', cursor:'pointer' }}>✕</button>
+                      </div>
+                    </div>`;
+                })}
+              </div>`}
         </div>
-        <div style=${{ ...cS, padding:18, display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          <div>
-          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas más votadas</h4>
-          <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para añadir / quitar</p>
-          <div style=${{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
-            ${topN.map(n=>{const ct=CATS.find(c=>c.id===n.category); const lk=actions.some(a=>a.noteId===n.id);
-              return html`<button key=${n.id} onClick=${()=>togN(n)} style=${{ padding:'9px 10px', borderRadius:10, background:lk?'#1D1D1F':ct.bg, border:'1px solid '+(lk?'#1D1D1F':ct.color+'18'), textAlign:'left', transition:'all .2s' }}>
-                <div style=${{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}><span style=${{ fontSize:11 }}>${ct.emoji}</span><span style=${{ fontSize:11, fontWeight:700, color:lk?'#FFF':ct.color }}>👍 ${n.voters?.length||0}</span>${lk&&html`<span style=${{ fontSize:9, color:'#34C759', fontWeight:700 }}>✓ Añadido</span>`}</div>
-                <p style=${{ fontSize:11, color:lk?'#CCC':'#1D1D1F', lineHeight:1.35 }}>${n.text}</p>
-              </button>`})}
-          </div>
-          ${openRisks.length > 0 && html`
-            <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>⚠️ Riesgos abiertos</h4>
-            <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para crear accionable de mitigación</p>
-            <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-              ${openRisks.map(r => {
-                const lk = actions.some(a => a.riskId === r.id);
-                const imp = getRiskLevel(r.impactVotes);
-                const hc = getHeatColor(imp, getRiskLevel(r.probVotes));
-                return html`<button key=${r.id} onClick=${()=>togR(r)} style=${{ padding:'9px 10px', borderRadius:10, background:lk?'#1D1D1F':'#FFF5F5', border:'1px solid '+(lk?'#1D1D1F':hc+'30'), borderLeft:'3px solid '+(lk?'#34C759':hc), textAlign:'left', transition:'all .2s' }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}>
-                    <span style=${{ fontSize:10, fontWeight:700, color:lk?'#FFF':hc }}>⚠️ ${imp.label}</span>
-                    ${lk&&html`<span style=${{ fontSize:9, color:'#34C759', fontWeight:700 }}>✓ Accionable</span>`}
+
+        <!-- Right: notes + risks to convert -->
+        <div style=${{ display:'flex', flexDirection:'column', gap:12 }}>
+          <!-- Top notes -->
+          <div style=${{ ...cS, padding:16 }}>
+            <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:8 }}>📝 Notas más votadas</h4>
+            <p style=${{ fontSize:10, color:'#86868B', marginBottom:8 }}>Clic para crear acción</p>
+            <div style=${{ display:'flex', flexDirection:'column', gap:5, maxHeight:280, overflowY:'auto' }}>
+              ${topN.map(n => {
+                const linked = actions.some(a=>a.noteId===n.id);
+                const ct = CATS.find(cc=>cc.id===n.category);
+                return html`<button key=${n.id} onClick=${()=>togN(n)}
+                  style=${{ padding:'7px 9px', borderRadius:8, border:'1px solid '+(linked?'#34C759':'#E5E5EA'),
+                    background:linked?'#F0FFF4':'#FFF', textAlign:'left', cursor:'pointer', transition:'all .15s' }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
+                    ${ct&&html`<span style=${{ fontSize:8, color:ct.color, fontWeight:700 }}>${ct.emoji}</span>`}
+                    <span style=${{ fontSize:9, color:'#86868B' }}>👍 ${n.voters?.length||0}</span>
+                    ${linked&&html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700, marginLeft:'auto' }}>✓ Añadida</span>`}
                   </div>
-                  <p style=${{ fontSize:11, color:lk?'#CCC':'#1D1D1F', lineHeight:1.35 }}>${r.text}</p>
+                  <p style=${{ fontSize:11, lineHeight:1.3, color:linked?'#86868B':'#1D1D1F' }}>${n.text}</p>
                 </button>`;
               })}
             </div>
-          `}
           </div>
+
+          <!-- Risks -->
+          ${openRisks.length>0 && html`
+            <div style=${{ ...cS, padding:16 }}>
+              <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:6 }}>⚠️ Riesgos abiertos</h4>
+              <p style=${{ fontSize:10, color:'#86868B', marginBottom:8 }}>Clic para crear acción de mitigación</p>
+              <div style=${{ display:'flex', flexDirection:'column', gap:5, maxHeight:200, overflowY:'auto' }}>
+                ${openRisks.map(r => {
+                  const linked = actions.some(a=>a.riskId===r.id);
+                  const imp = getRiskLevel(r.impactVotes);
+                  const hc = getHeatColor(imp, getRiskLevel(r.probVotes));
+                  return html`<button key=${r.id} onClick=${()=>togR(r)}
+                    style=${{ padding:'7px 9px', borderRadius:8, border:'1px solid '+(linked?'#34C759':hc+'30'),
+                      borderLeft:'3px solid '+(linked?'#34C759':hc), background:linked?'#F0FFF4':'#FFF',
+                      textAlign:'left', cursor:'pointer' }}>
+                    <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
+                      <span style=${{ fontSize:9, fontWeight:700, color:hc }}>${imp.label}</span>
+                      ${linked&&html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700, marginLeft:'auto' }}>✓ Mitigación</span>`}
+                    </div>
+                    <p style=${{ fontSize:11, lineHeight:1.3, color:linked?'#86868B':'#1D1D1F' }}>${r.text}</p>
+                  </button>`;
+                })}
+              </div>
+            </div>`}
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-/* ═══ PHASE 5: RISKS ═══ */
 function P5Risks({ risks, sR, notes, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
   useEffect(() => {
@@ -8032,16 +7941,16 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
           <div style=${{ ...cS, padding:20, display:'flex', flexDirection:'column', gap:16 }}>
             <div>
               <h3 style=${{ fontSize:14, fontWeight:700, marginBottom:14 }}>📋 Progreso</h3>
-              ${[{l:'Tareas',d:tD,t:tasks.length,c:'#007AFF'},{l:'Tareas',d:aD,t:actions.length,c:'#34C759'}].map((r,i) => html`
-                <div key=${i} style=${{ marginBottom:12 }}>
-                  <div style=${{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                    <span style=${{ fontSize:12, fontWeight:600 }}>${r.l}</span>
-                    <span style=${{ fontSize:12, fontWeight:700, color:r.c }}>${r.d}/${r.t}</span>
-                  </div>
-                  <div style=${{ height:8, background:'#F2F2F7', borderRadius:4, overflow:'hidden' }}>
-                    <div style=${{ height:'100%', width:(r.t>0?(r.d/r.t)*100:0)+'%', background:r.c, borderRadius:4, transition:'width .6s' }} />
-                  </div>
-                </div>`)}
+              <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                <div style=${{ textAlign:'center', padding:12, borderRadius:10, background:'#F0F7FF', border:'1.5px solid #007AFF20' }}>
+                  <div style=${{ fontSize:24, fontWeight:800, color:'#007AFF' }}>${tasks.filter(t=>t.done).length}/${tasks.length}</div>
+                  <div style=${{ fontSize:10, color:'#86868B', marginTop:2 }}>Checklist</div>
+                </div>
+                <div style=${{ textAlign:'center', padding:12, borderRadius:10, background:'#F0FFF4', border:'1.5px solid #34C75920' }}>
+                  <div style=${{ fontSize:24, fontWeight:800, color:'#34C759' }}>${actions.length}</div>
+                  <div style=${{ fontSize:10, color:'#86868B', marginTop:2 }}>Acciones creadas</div>
+                </div>
+              </div>
             </div>
 
             <!-- Tiempo real por fase -->
