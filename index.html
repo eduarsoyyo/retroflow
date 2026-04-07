@@ -2913,6 +2913,38 @@ function RoomPicker() {
           </div>
           <div style=${{ display:'flex', alignItems:'center', gap:10 }}>
             ${authUser && html`<span style=${{ fontSize:12, color:'#86868B', fontWeight:500 }}>${authUser._member?.name || authUser.email}</span>`}
+            <!-- Bell -->
+            <div style=${{ position:'relative' }}>
+              <button onClick=${()=>setShowAdminNotifs(v=>!v)}
+                style=${{ width:36, height:36, borderRadius:10, border:'1px solid #E5E5EA', background:'#FFF', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:15, position:'relative' }}>
+                🔔
+                ${(()=>{const ov=sbRetros.flatMap(rt=>(rt.data?.actions||[]).filter(a=>a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<new Date().toISOString().slice(0,10))); return ov.length>0?html`<div style=${{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:8,background:'#FF3B30',color:'#FFF',fontSize:9,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>${ov.length>9?'9+':ov.length}</div>`:null;})()}
+              </button>
+              ${showAdminNotifs&&html`
+                <div style=${{position:'absolute',right:0,top:44,width:320,background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',boxShadow:'0 8px 32px rgba(0,0,0,.12)',zIndex:9999}}>
+                  <div style=${{padding:'12px 16px',borderBottom:'1px solid #F2F2F7'}}>
+                    <span style=${{fontSize:13,fontWeight:700}}>Notificaciones</span>
+                  </div>
+                  ${(()=>{
+                    const today=new Date().toISOString().slice(0,10);
+                    const allActs=sbRetros.flatMap(rt=>(rt.data?.actions||[]));
+                    const overdue=allActs.filter(a=>a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<today);
+                    const escalated=sbRetros.flatMap(rt=>(rt.data?.risks||[]).filter(r=>r.escalation));
+                    const items=[
+                      ...overdue.slice(0,5).map(a=>({icon:'⏰',msg:'Tarea vencida: '+a.text.slice(0,40),type:'overdue'})),
+                      ...escalated.slice(0,5).map(r=>({icon:'📈',msg:'Riesgo escalado: '+r.text.slice(0,40),type:'escalation'})),
+                    ];
+                    return items.length===0
+                      ?html`<div style=${{padding:'24px 16px',textAlign:'center',color:'#C7C7CC',fontSize:12}}>Sin alertas</div>`
+                      :html`<div style=${{maxHeight:280,overflowY:'auto'}}>
+                        ${items.map((n,i)=>html`
+                          <div key=${i} style=${{padding:'10px 16px',borderBottom:'1px solid #F9F9FB',background:n.type==='overdue'?'#FFF5F5':'#F8F5FF'}}>
+                            <p style=${{fontSize:12,lineHeight:1.4}}>${n.icon} ${n.msg}</p>
+                          </div>`)}
+                      </div>`;
+                  })()}
+                </div>`}
+            </div>
             <a href="/" style=${{ width:36, height:36, borderRadius:10, border:'1px solid #E5E5EA', background:'#FFF', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontSize:15, textDecoration:'none' }} title="Ir al inicio">🏠</a>
             <button onClick=${handleSignOut} style=${{ padding:'6px 14px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', color:'#86868B', fontSize:11, fontWeight:600, cursor:'pointer' }}>Cerrar sesión</button>
           </div>
@@ -5832,20 +5864,70 @@ const addItem = () => {
       `}
 
       <!-- Link task to risk modal -->
-      ${linkModal && html`<${ConfirmModal}
-        icon="📋"
-        title="¿Crear tarea vinculada?"
-        message=${'Has creado el riesgo: <b>'+linkModal.riskText+'</b><br/><br/>¿Quieres crear una tarea de mitigación vinculada a este riesgo?'}
-        confirmLabel="Sí, crear tarea"
-        cancelLabel="No, solo el riesgo"
-        confirmColor="#007AFF"
-        onConfirm=${()=>{
-          const rId=linkModal.riskId; const rText=linkModal.riskText;
-          setLinkModal(null);
-          // Create mitigation task via window callback
-          if(window.__createLinkedTask) window.__createLinkedTask(rId, rText);
-        }}
-        onCancel=${()=>setLinkModal(null)} />`}
+      <!-- Risk-Task Link Dialog -->
+      ${linkModal && html`
+        <div style=${{position:'fixed',inset:0,zIndex:20000,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}
+          onClick=${e=>{if(e.target===e.currentTarget)setLinkModal(null)}}>
+          <div style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.15)',backdropFilter:'blur(6px)',WebkitBackdropFilter:'blur(6px)'}}></div>
+          <div style=${{position:'relative',background:'#FFF',borderRadius:18,width:'100%',maxWidth:460,boxShadow:'0 12px 40px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04)',animation:'fadeIn .15s ease',overflow:'hidden'}}>
+            <div style=${{padding:'24px 24px 12px',textAlign:'center'}}>
+              <div style=${{fontSize:36,marginBottom:12}}>📋</div>
+              <h3 style=${{fontSize:16,fontWeight:700,margin:'0 0 6px',color:'#1D1D1F'}}>Vincular tarea al riesgo</h3>
+              <p style=${{fontSize:13,color:'#6E6E73',lineHeight:1.4}}>${linkModal.riskText}</p>
+            </div>
+            <div style=${{padding:'8px 24px 20px',display:'flex',flexDirection:'column',gap:8}}>
+              <!-- Option 1: Create new -->
+              <button onClick=${()=>{
+                const rId=linkModal.riskId; const rText=linkModal.riskText;
+                setLinkModal(null);
+                if(window.__createLinkedTask) window.__createLinkedTask(rId, rText);
+              }} style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:12,border:'1.5px solid #007AFF20',background:'#F0F7FF',cursor:'pointer',textAlign:'left'}}>
+                <div style=${{width:36,height:36,borderRadius:10,background:'#007AFF15',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>➕</div>
+                <div>
+                  <div style=${{fontSize:13,fontWeight:700,color:'#007AFF'}}>Crear tarea nueva</div>
+                  <div style=${{fontSize:11,color:'#86868B',marginTop:2}}>Se creará "Mitigar: ..." en el Backlog</div>
+                </div>
+              </button>
+              <!-- Option 2: Link existing -->
+              <button onClick=${()=>{
+                setLinkModal({...linkModal, showPicker:true});
+              }} style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:12,border:'1.5px solid #5856D620',background:'#F8F5FF',cursor:'pointer',textAlign:'left'}}>
+                <div style=${{width:36,height:36,borderRadius:10,background:'#5856D615',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>🔗</div>
+                <div>
+                  <div style=${{fontSize:13,fontWeight:700,color:'#5856D6'}}>Vincular tarea existente</div>
+                  <div style=${{fontSize:11,color:'#86868B',marginTop:2}}>Asociar una tarea del Backlog a este riesgo</div>
+                </div>
+              </button>
+              <!-- Existing task picker (shown when selected) -->
+              ${linkModal.showPicker && html`
+                <div style=${{background:'#F9F9FB',borderRadius:12,border:'1.5px solid #E5E5EA',padding:'10px',maxHeight:200,overflowY:'auto'}}>
+                  ${(()=>{
+                    const tasks = (window.__currentActions||[]).filter(a=>!a.riskId && a.status!=='done' && a.status!=='cancelled');
+                    return tasks.length===0
+                      ? html`<p style=${{fontSize:12,color:'#C7C7CC',textAlign:'center',padding:12}}>No hay tareas sin vincular</p>`
+                      : tasks.map(a=>html`
+                        <button key=${a.id} onClick=${()=>{
+                          // Link existing task to this risk
+                          const updated = (window.__currentActions||[]).map(x=>x.id===a.id?{...x,riskId:linkModal.riskId,source:'risk'}:x);
+                          if(window.__updateActions) window.__updateActions(updated);
+                          setLinkModal(null);
+                        }} style=${{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'none',background:'#FFF',cursor:'pointer',width:'100%',textAlign:'left',marginBottom:4}}>
+                          <span style=${{fontSize:10}}>${(ITEM_TYPE_MAP[a.type]||ITEM_TYPES[0]).icon}</span>
+                          <div style=${{flex:1,minWidth:0}}>
+                            <div style=${{fontSize:11,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${a.text}</div>
+                            <div style=${{fontSize:9,color:'#86868B'}}>${a.owner||'Sin asignar'}${a.date?' · '+fd(a.date):''}</div>
+                          </div>
+                        </button>`);
+                  })()}
+                </div>`}
+              <!-- Option 3: Skip -->
+              <button onClick=${()=>setLinkModal(null)}
+                style=${{padding:'10px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',color:'#86868B',fontSize:13,fontWeight:500,cursor:'pointer',textAlign:'center'}}>
+                Solo el riesgo, sin tarea
+              </button>
+            </div>
+          </div>
+        </div>`}
     </div>`;
 }
 
@@ -6591,6 +6673,9 @@ function RetroBoard({ user, onLogout }) {
   useEffect(() => { window.__currentActions = state.actions||[]; }, [state.actions]);
 
   useEffect(() => {
+    window.__updateActions = (updatedActions) => {
+      sARef.current(updatedActions);
+    };
     window.__createLinkedTask = (riskId, riskText) => {
       const currentActions = window.__currentActions || [];
       const newTask = {id:uid(),text:'Mitigar: '+riskText,description:'Tarea vinculada al riesgo',owner:'Sin asignar',date:'',status:'backlog',priority:'high',voteScore:0,createdBy:user?.id||'',fromCategory:null,noteId:null,riskId:riskId,source:'risk',type:'tarea',createdAt:new Date().toISOString()};
@@ -6604,7 +6689,7 @@ function RetroBoard({ user, onLogout }) {
       const updated = currentRisks.map(r => r.id === riskId ? {...r, status:'mitigated'} : r);
       sRRef.current(updated);
     };
-    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; };
+    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; window.__updateActions = null; };
   }, []);
 
   const saveRetro = () => {
