@@ -5577,19 +5577,35 @@ function RiskDetailModal({ risk, onSave, onClose, onDelete, teamMembers, onGoToT
                         <div style=${{fontSize:12,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:'#007AFF'}}>${a.text}</div>
                         <div style=${{fontSize:10,color:'#86868B',marginTop:1}}>${a.owner||'Sin asignar'}${a.date?' · '+fd(a.date):''}</div>
                       </div>
-                      <button onClick=${(e)=>{e.stopPropagation(); const updated=(window.__currentActions||[]).map(x=>x.id===a.id?{...x,riskId:null,source:x.source==='risk'?'manual':x.source}:x); if(window.__updateActions)window.__updateActions(updated);}}
+                      <button onClick=${(e)=>{e.stopPropagation(); if(window.__unlinkTask)window.__unlinkTask(a.id);}}
                         style=${{border:'none',background:'#FF3B3010',color:'#FF3B30',fontSize:9,fontWeight:700,padding:'3px 7px',borderRadius:6,cursor:'pointer'}} title="Desvincular">✕</button>
                     </div>`;
                 })}
               </div>`}
               <!-- Add task dropdown -->
-              <select onChange=${e=>{if(!e.target.value)return; const updated=(window.__currentActions||[]).map(x=>x.id===e.target.value?{...x,riskId:risk.id,source:'risk'}:x); if(window.__updateActions)window.__updateActions(updated); e.target.value='';}}
+              <select onChange=${e=>{if(!e.target.value)return; if(window.__linkTaskToRisk)window.__linkTaskToRisk(e.target.value,risk.id); e.target.value='';}}
                 style=${{width:'100%',border:'1.5px dashed #007AFF40',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',color:'#007AFF',background:'#F0F7FF',cursor:'pointer'}}>
                 <option value="">+ Vincular tarea existente…</option>
                 ${(window.__currentActions||[]).filter(a=>!a.riskId&&a.status!=='done'&&a.status!=='cancelled').map(a=>html`<option key=${a.id} value=${a.id}>${a.text.slice(0,50)}</option>`)}
               </select>
             </div>
 
+            <!-- Tags -->
+            <div>
+              ${fieldLabel('Etiquetas')}
+              <div style=${{display:'flex',gap:4,flexWrap:'wrap'}}>
+                ${(()=>{const tgs=(window.__riskTags||[]).filter(t=>(window.__riskTagAssignments||[]).some(a=>a.tag_id===t.id&&a.entity_type==='risk'&&a.entity_id===risk.id)); const avail=(window.__riskTags||[]).filter(t=>!tgs.some(x=>x.id===t.id)); return html`
+                  ${tgs.map(t=>html`<span key=${t.id} onClick=${()=>window.__toggleRiskTag&&window.__toggleRiskTag(t.id,'risk',risk.id)}
+                    style=${{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:12,background:t.color+'15',color:t.color,border:'1.5px solid '+t.color+'40',cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                    ${t.name} <span style=${{fontSize:9,opacity:.6}}>✕</span>
+                  </span>`)}
+                  ${avail.map(t=>html`<span key=${t.id} onClick=${()=>window.__toggleRiskTag&&window.__toggleRiskTag(t.id,'risk',risk.id)}
+                    style=${{fontSize:11,padding:'3px 10px',borderRadius:12,border:'1.5px dashed '+t.color+'50',color:t.color,cursor:'pointer'}}>
+                    + ${t.name}
+                  </span>`)}
+                `;})()}
+              </div>
+            </div>
             <!-- Meta -->
             <div style=${{fontSize:10,color:'#C7C7CC',display:'flex',gap:16,paddingTop:8,borderTop:'1px solid #F2F2F7'}}>
               ${f.createdAt&&html`<span>Identificado: ${fd(f.createdAt)}</span>`}
@@ -5698,16 +5714,12 @@ function RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMem
                 <span style=${{ fontSize:9, color:'#007AFF', fontWeight:700 }}>📋</span>
                 ${lt.map(a=>html`<span key=${a.id} style=${{ fontSize:9, padding:'1px 6px', borderRadius:6, background:a.status==='done'?'#34C75915':'#007AFF10', color:a.status==='done'?'#34C759':'#007AFF', fontWeight:600, textDecoration:a.status==='done'?'line-through':'none' }}>${a.text.slice(0,35)}${a.text.length>35?'…':''}</span>`)}
               </div>`:null;})()}
-            <!-- Tag badges -->
-            ${(()=>{const tgs=entityTagList('risk',r.id); const avail=tags.filter(t=>!hasTag(t.id,'risk',r.id)); return (tgs.length>0||(!fromHist&&avail.length>0))?html`
+            <!-- Tag badges (read-only, manage in detail modal) -->
+            ${(()=>{const tgs=entityTagList('risk',r.id); return tgs.length>0?html`
               <div style=${{ display:'flex', gap:4, flexWrap:'wrap', marginTop:6 }}>
-                ${tgs.map(t=>html`<span key=${t.id} onClick=${(e)=>{e.stopPropagation();!fromHist&&quickToggleTag(t.id,'risk',r.id)}}
-                  style=${{ fontSize:10, fontWeight:600, padding:'3px 10px', borderRadius:12, background:t.color+'15', color:t.color, border:'1.5px solid '+t.color+'40', cursor:fromHist?'default':'pointer' }}>
-                  ${t.name}${!fromHist?' ✕':''}
-                </span>`)}
-                ${!fromHist&&avail.slice(0,3).map(t=>html`<span key=${t.id} onClick=${(e)=>{e.stopPropagation();quickToggleTag(t.id,'risk',r.id)}}
-                  style=${{ fontSize:10, padding:'3px 10px', borderRadius:12, border:'1.5px dashed '+t.color+'50', color:t.color, cursor:'pointer' }}>
-                  + ${t.name}
+                ${tgs.map(t=>html`<span key=${t.id} onClick=${e=>e.stopPropagation()}
+                  style=${{ fontSize:10, fontWeight:600, padding:'3px 10px', borderRadius:12, background:t.color+'15', color:t.color, border:'1.5px solid '+t.color+'40' }}>
+                  ${t.name}
                 </span>`)}
               </div>`:null;})()}
             <!-- Impact + Prob vote buttons -->
@@ -5759,15 +5771,18 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
       setTeamMembers(filtered.length > 0 ? filtered : data);
     });
     sbLoadTags(SALA).then(t => setTags(t||[]));
-    sbLoadTagAssignments(SALA).then(a => setTagAssignments(a||[]));
+    sbLoadTagAssignments(SALA).then(a => { setTagAssignments(a||[]); window.__riskTagAssignments = a||[]; });
   }, []);
+  // Expose tag state and toggle for RiskDetailModal
+  useEffect(() => { window.__riskTags = tags; window.__riskTagAssignments = tagAssignments; }, [tags, tagAssignments]);
   const hasTag = (tagId, type, entityId) => tagAssignments.some(a=>a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId);
   const entityTagList = (type, id) => tags.filter(t=>hasTag(t.id,type,id));
   const quickToggleTag = async (tagId, type, entityId) => {
     const added = await sbToggleTagAssignment(tagId, type, entityId, SALA);
-    if (added) setTagAssignments(prev=>[...prev,{tag_id:tagId,entity_type:type,entity_id:entityId,sala:SALA}]);
-    else setTagAssignments(prev=>prev.filter(a=>!(a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId)));
+    if (added) setTagAssignments(prev=>{const n=[...prev,{tag_id:tagId,entity_type:type,entity_id:entityId,sala:SALA}]; window.__riskTagAssignments=n; return n;});
+    else setTagAssignments(prev=>{const n=prev.filter(a=>!(a.tag_id===tagId&&a.entity_type===type&&a.entity_id===entityId)); window.__riskTagAssignments=n; return n;});
   };
+  useEffect(() => { window.__toggleRiskTag = quickToggleTag; }, [tagAssignments]);
   const [subTab,    setSubTab]    = useState('resumen');
   const [escalForm, setEscalForm] = useState({riskId:'', level:'equipo', responsible:'', deadline:'', note:'', status:'pendiente'});
   // Escalation chain: must start from 'equipo' and progress sequentially
@@ -6193,9 +6208,7 @@ const addItem = () => {
                       ? html`<p style=${{fontSize:12,color:'#C7C7CC',textAlign:'center',padding:12}}>No hay tareas sin vincular</p>`
                       : tasks.map(a=>html`
                         <button key=${a.id} onClick=${()=>{
-                          // Link existing task to this risk
-                          const updated = (window.__currentActions||[]).map(x=>x.id===a.id?{...x,riskId:linkModal.riskId,source:'risk'}:x);
-                          if(window.__updateActions) window.__updateActions(updated);
+                          if(window.__linkTaskToRisk) window.__linkTaskToRisk(a.id, linkModal.riskId);
                           setLinkModal(null);
                         }} style=${{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'none',background:'#FFF',cursor:'pointer',width:'100%',textAlign:'left',marginBottom:4}}>
                           <span style=${{fontSize:10}}>${(ITEM_TYPE_MAP[a.type]||ITEM_TYPES[0]).icon}</span>
@@ -6959,13 +6972,19 @@ function RetroBoard({ user, onLogout }) {
   useEffect(() => { window.__currentActions = state.actions||[]; }, [state.actions]);
 
   useEffect(() => {
-    window.__updateActions = (updatedActions) => {
-      sARef.current(updatedActions);
+    // TARGETED operations (never replace entire array — prevents data loss)
+    window.__linkTaskToRisk = (taskId, riskId) => {
+      const cur = window.__currentActions || [];
+      sARef.current(cur.map(a => a.id===taskId ? {...a, riskId, source:'risk'} : a));
+    };
+    window.__unlinkTask = (taskId) => {
+      const cur = window.__currentActions || [];
+      sARef.current(cur.map(a => a.id===taskId ? {...a, riskId:null, source:a.source==='risk'?'manual':a.source} : a));
     };
     window.__createLinkedTask = (riskId, riskText) => {
-      const currentActions = window.__currentActions || [];
+      const cur = window.__currentActions || [];
       const newTask = {id:uid(),text:'Mitigar: '+riskText,description:'Tarea vinculada al riesgo',owner:'Sin asignar',date:'',status:'backlog',priority:'high',voteScore:0,createdBy:user?.id||'',fromCategory:null,noteId:null,riskId:riskId,source:'risk',type:'tarea',createdAt:new Date().toISOString()};
-      sARef.current([...currentActions, newTask]);
+      sARef.current([...cur, newTask]);
     };
     window.__goToTask = (task) => {
       setMainTab('trabajo');
@@ -6980,7 +6999,7 @@ function RetroBoard({ user, onLogout }) {
       const updated = currentRisks.map(r => r.id === riskId ? {...r, status:'mitigated'} : r);
       sRRef.current(updated);
     };
-    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; window.__updateActions = null; window.__goToTask = null; };
+    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; window.__linkTaskToRisk = null; window.__unlinkTask = null; window.__goToTask = null; };
   }, []);
 
   const saveRetro = () => {
