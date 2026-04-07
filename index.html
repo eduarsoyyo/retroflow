@@ -4450,7 +4450,17 @@ function PTrabajo({ actions, sA, risks, user }) {
   const priO = {critical:4,high:3,medium:2,low:1};
 
   // ── Helpers ──
-  const upSt = (id,st) => sA(actions.map(a=>a.id===id?{...a,status:st,updatedAt:new Date().toISOString()}:a));
+  const upSt = (id,st) => {
+    const task = actions.find(a=>a.id===id);
+    // If completing a task linked to a risk, prompt mitigation
+    if (st==='done' && task?.riskId) {
+      const mitigate = confirm('Esta tarea está vinculada a un riesgo.\n¿Quieres marcar el riesgo como mitigado?');
+      sA(actions.map(a=>a.id===id?{...a,status:st,updatedAt:new Date().toISOString()}:a));
+      if (mitigate) window.__goMitigateRisk && window.__goMitigateRisk(task.riskId);
+    } else {
+      sA(actions.map(a=>a.id===id?{...a,status:st,updatedAt:new Date().toISOString()}:a));
+    }
+  };
   const delA = id => sA(actions.filter(a=>a.id!==id));
   const saveEdit = () => { sA(actions.map(a=>a.id===eId?{...a,...eF,updatedAt:new Date().toISOString()}:a)); setEId(null); };
 
@@ -4572,15 +4582,15 @@ function PTrabajo({ actions, sA, risks, user }) {
           </div>
           <!-- Actions -->
           <div style=${{ display:'flex', gap:2, flexShrink:0, alignItems:'flex-start', flexDirection:'column' }}>
-            <div style=${{ display:'flex', gap:2 }}>
+            <div style=${{ display:'flex', gap:2, flexWrap:'wrap' }}>
               ${a.status==='backlog'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'pending')}} title="Planificar"
                 style=${{ border:'none', background:'#FF9500', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▷ Pendiente</button>`}
-              ${a.status==='pending'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Iniciar — mover al Board"
+              ${a.status==='pending'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Iniciar"
                 style=${{ border:'none', background:'#007AFF', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▶ Iniciar</button>`}
-              ${a.status==='inprogress'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'done')}} title="Completar tarea"
-                style=${{ border:'none', background:'#34C759', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>✓ Hecho</button>`}
               ${a.status==='blocked'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Desbloquear"
                 style=${{ border:'none', background:'#FF9500', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>↻ Reanudar</button>`}
+              ${a.status!=='done'&&a.status!=='cancelled'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'done')}} title="Completar"
+                style=${{ border:'none', background:'#34C759', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>✓</button>`}
               <button onClick=${(e)=>{e.stopPropagation();setDetailTask({...a})}}
                 style=${{ border:'none', background:'none', fontSize:11, color:'#C7C7CC', cursor:'pointer', padding:'2px' }} title="Abrir detalle">✏️</button>
               <button onClick=${()=>delA(a.id)}
