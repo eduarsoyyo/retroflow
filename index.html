@@ -254,6 +254,16 @@ const PRIS = [
   { id:'medium', label:'Media', icon:'—', color:'#FF9500' },
   { id:'low', label:'Baja', icon:'▽', color:'#34C759' },
 ];
+const ITEM_TYPES = [
+  { id:'tarea',        label:'Tarea',         icon:'☐',  color:'#007AFF', lucide:'CheckSquare' },
+  { id:'historia',     label:'Historia',      icon:'📖', color:'#5856D6', lucide:'BookOpen' },
+  { id:'bug',          label:'Bug / Incidencia', icon:'🐛', color:'#FF3B30', lucide:'Bug' },
+  { id:'mejora',       label:'Mejora',        icon:'✨', color:'#34C759', lucide:'Sparkles' },
+  { id:'accion_retro', label:'Acción de retro', icon:'🔄', color:'#FF9500', lucide:'RotateCcw' },
+];
+const ITEM_TYPE_MAP = Object.fromEntries(ITEM_TYPES.map(t=>[t.id,t]));
+const DEFAULT_ITEM_TYPE = 'tarea';
+
 const PHASES = [
   { id:'review',     label:'Repaso',       num:'01' },
   { id:'individual', label:'Individual',   num:'02' },
@@ -4060,6 +4070,391 @@ function PFTEs({ team, org, orgData: orgDataProp }) {
 /* ═══ PHASE 8 — VACACIONES (calendar view) ═══ */
 
 /* ═══ PACCIONABLES — Gestión entre retros ═══ */
+/* ═══════════════════════════════════════════════════════════
+   PTrabajo — JIRA-like work management module
+   Sub-views: Backlog, Board, Lista, Mis tareas, Historial
+═══════════════════════════════════════════════════════════ */
+function PTrabajo({ actions, sA, risks, user }) {
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [tagAssignments, setTagAssignments] = useState([]);
+  const [activeTagFilter, setActiveTagFilter] = useState(null);
+  useEffect(() => {
+    sbLoadTeamMembers().then(data => {
+      const f = data.filter(m=>(m.rooms||[]).includes(SALA));
+      setTeamMembers(f.length > 0 ? f : data);
+    });
+    sbLoadTags(SALA).then(t => setTags(t||[]));
+    sbLoadTagAssignments(SALA).then(a => setTagAssignments(a||[]));
+  }, []);
+  const hasTagA = (tagId, entityId) => tagAssignments.some(a=>a.tag_id===tagId&&a.entity_type==='action'&&a.entity_id===entityId);
+  const actionTagList = (id) => tags.filter(t=>hasTagA(t.id,id));
+  const quickToggleActionTag = async (tagId, actionId) => {
+    const added = await sbToggleTagAssignment(tagId, 'action', actionId, SALA);
+    if (added) setTagAssignments(prev=>[...prev,{tag_id:tagId,entity_type:'action',entity_id:actionId,sala:SALA}]);
+    else setTagAssignments(prev=>prev.filter(a=>!(a.tag_id===tagId&&a.entity_type==='action'&&a.entity_id===actionId)));
+  };
+
+  // ── State ──
+  const [subView, setSubView] = useState('board');
+  const [form, setForm] = useState({text:'',description:'',owner:'',date:'',priority:'medium',type:'tarea'});
+  const [showForm, setShowForm] = useState(false);
+  const [eId, setEId] = useState(null);
+  const [eF, setEF] = useState({});
+  const [searchQ, setSearchQ] = useState('');
+  const [sortBy, setSortBy] = useState('priority'); // priority | date | type | status
+  const [dragAct, setDragAct] = useState(null);
+  const [overCol, setOverCol] = useState(null);
+
+  const today = new Date().toISOString().slice(0,10);
+  const priO = {critical:4,high:3,medium:2,low:1};
+
+  // ── Helpers ──
+  const upSt = (id,st) => sA(actions.map(a=>a.id===id?{...a,status:st,updatedAt:new Date().toISOString()}:a));
+  const delA = id => sA(actions.filter(a=>a.id!==id));
+  const saveEdit = () => { sA(actions.map(a=>a.id===eId?{...a,...eF,updatedAt:new Date().toISOString()}:a)); setEId(null); };
+
+  const addTask = () => {
+    if (!form.text.trim()) return;
+    sA([...actions, {
+      id: uid(), text: form.text.trim(), description: form.description||'',
+      owner: form.owner||'Sin asignar', date: form.date||'',
+      status: 'pending', priority: form.priority, type: form.type||'tarea',
+      voteScore: 0, createdBy: user.id, source: 'manual',
+      fromCategory: null, noteId: null, riskId: null, parentId: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }]);
+    setForm({text:'',description:'',owner:'',date:'',priority:'medium',type:'tarea'});
+    setShowForm(false);
+  };
+
+  // ── Filtered/sorted data ──
+  const filterActions = (arr) => {
+    let filtered = arr;
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      filtered = filtered.filter(a => a.text.toLowerCase().includes(q) || (a.owner||'').toLowerCase().includes(q) || (a.description||'').toLowerCase().includes(q));
+    }
+    if (activeTagFilter) {
+      filtered = filtered.filter(a => tagAssignments.some(ta=>ta.tag_id===activeTagFilter&&ta.entity_type==='action'&&ta.entity_id===a.id));
+    }
+    return filtered;
+  };
+
+  const sortActions = (arr) => {
+    const sorted = [...arr];
+    if (sortBy==='priority') sorted.sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0));
+    else if (sortBy==='date') sorted.sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
+    else if (sortBy==='type') sorted.sort((a,b)=>(a.type||'tarea').localeCompare(b.type||'tarea'));
+    else if (sortBy==='status') sorted.sort((a,b)=>(a.status||'').localeCompare(b.status||''));
+    return sorted;
+  };
+
+  const openItems = actions.filter(a=>a.status!=='done'&&a.status!=='cancelled');
+  const doneItems = actions.filter(a=>a.status==='done'||a.status==='cancelled');
+  const myItems = actions.filter(a=>(a.owner===user.name||a.createdBy===user.id)&&a.status!=='done'&&a.status!=='cancelled');
+  const overdueCount = openItems.filter(a=>a.date&&a.date<today).length;
+  const blockedCount = openItems.filter(a=>a.status==='blocked').length;
+
+  const KAN_COLS = [
+    {id:'pending',    label:'Pendiente',  color:'#FF9500', bg:'#FFF9E6'},
+    {id:'inprogress', label:'En proceso', color:'#007AFF', bg:'#EEF5FF'},
+    {id:'blocked',    label:'Bloqueado',  color:'#FF3B30', bg:'#FFF5F5'},
+    {id:'done',       label:'Completado', color:'#34C759', bg:'#F0FFF4'},
+    {id:'cancelled',  label:'Cancelado',  color:'#C7C7CC', bg:'#F9F9F9'},
+  ];
+
+  const VIEWS = [
+    {id:'backlog', label:'Backlog',    lucide:'List'},
+    {id:'board',   label:'Board',      lucide:'LayoutGrid'},
+    {id:'list',    label:'Lista',      lucide:'AlignJustify'},
+    {id:'mine',    label:'Mis tareas', lucide:'User'},
+    {id:'history', label:'Historial',  lucide:'Clock'},
+  ];
+
+  // ── Task card renderer ──
+  const renderTask = (a, compact) => {
+    const pr = PRIS.find(p=>p.id===a.priority)||PRIS[2];
+    const tp = ITEM_TYPE_MAP[a.type||'tarea']||ITEM_TYPES[0];
+    const overdue = a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<today;
+    const memberAvatar = teamMembers.find(m=>m.name===a.owner)?.avatar||'👤';
+    const isEditing = eId===a.id;
+
+    if (isEditing) return html`
+      <div key=${a.id} style=${{ padding:'12px', borderRadius:12, background:'#F9F9FB', border:'2px solid #007AFF30', marginBottom:6 }}>
+        <div style=${{ display:'flex', flexDirection:'column', gap:6 }}>
+          <input autofocus value=${eF.text||''} onInput=${e=>setEF({...eF,text:e.target.value})}
+            style=${{ border:'1.5px solid #007AFF40', borderRadius:8, padding:'8px 10px', fontSize:13, fontFamily:'inherit', outline:'none' }} />
+          <textarea value=${eF.description||''} onInput=${e=>setEF({...eF,description:e.target.value})} placeholder="Descripción (opcional)"
+            style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px 10px', fontSize:12, fontFamily:'inherit', outline:'none', resize:'vertical', minHeight:48 }} />
+          <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
+            <select value=${eF.type||'tarea'} onChange=${e=>setEF({...eF,type:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+              ${ITEM_TYPES.map(t=>html`<option key=${t.id} value=${t.id}>${t.icon} ${t.label}</option>`)}
+            </select>
+            <select value=${eF.owner||''} onChange=${e=>setEF({...eF,owner:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+              <option value="">— Responsable —</option>
+              ${eF.owner && !teamMembers.some(m=>m.name===eF.owner) && html`<option value=${eF.owner}>${eF.owner}</option>`}
+              ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+            </select>
+            <select value=${eF.priority||'medium'} onChange=${e=>setEF({...eF,priority:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none' }}>
+              ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
+            </select>
+          </div>
+          <input type="date" value=${eF.date||''} onInput=${e=>setEF({...eF,date:e.target.value})}
+            style=${{ border:'1.5px solid #E5E5EA', borderRadius:7, padding:'5px 8px', fontSize:11, fontFamily:'inherit', outline:'none', width:150 }} />
+          <div style=${{ display:'flex', gap:4 }}>
+            <button onClick=${saveEdit} style=${{ flex:1, padding:'6px', borderRadius:7, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer' }}>Guardar</button>
+            <button onClick=${()=>setEId(null)} style=${{ padding:'6px 10px', borderRadius:7, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:11, cursor:'pointer' }}>✕</button>
+          </div>
+        </div>
+      </div>`;
+
+    return html`
+      <div key=${a.id}
+        draggable=${subView==='board'}
+        onDragStart=${()=>setDragAct(a.id)}
+        onDragEnd=${()=>{setDragAct(null);setOverCol(null)}}
+        style=${{ background:'#FFF', borderRadius:compact?8:12, padding:compact?'7px 9px':'10px 12px',
+          border:'1px solid '+(overdue?'#FF3B3025':'#E5E5EA'),
+          borderLeft:'3px solid '+tp.color,
+          boxShadow:'0 1px 3px rgba(0,0,0,.03)', cursor:subView==='board'?'grab':'default',
+          opacity:dragAct===a.id?.4:a.status==='cancelled'?.5:1,
+          marginBottom:compact?4:6, transition:'all .12s' }}>
+        <div style=${{ display:'flex', alignItems:'flex-start', gap:8 }}>
+          <!-- Type badge + priority -->
+          <div style=${{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', flexShrink:0, minWidth:20 }}>
+            <span title=${tp.label} style=${{ fontSize:compact?10:12 }}>${tp.icon}</span>
+            <span style=${{ fontSize:9, fontWeight:800, color:pr.color }}>${pr.icon}</span>
+          </div>
+          <!-- Content -->
+          <div style=${{ flex:1, minWidth:0 }}>
+            <p style=${{ fontSize:compact?11:13, fontWeight:600, lineHeight:1.3, margin:0,
+              textDecoration:a.status==='done'?'line-through':'none',
+              color:a.status==='done'||a.status==='cancelled'?'#86868B':'#1D1D1F' }}>
+              ${a.text}
+            </p>
+            ${a.description && !compact && html`<p style=${{ fontSize:11, color:'#86868B', marginTop:3, lineHeight:1.3 }}>${a.description.slice(0,100)}${a.description.length>100?'…':''}</p>`}
+            <div style=${{ display:'flex', gap:8, marginTop:4, alignItems:'center', flexWrap:'wrap' }}>
+              ${a.owner && a.owner!=='Sin asignar' ? html`
+                <span style=${{ display:'flex', alignItems:'center', gap:3, fontSize:10, color:'#007AFF', fontWeight:600 }}>
+                  <span style=${{ fontSize:12 }}>${memberAvatar}</span> ${a.owner}
+                </span>` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>Sin asignar</span>`}
+              ${a.date && html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${a.date}</span>`}
+              ${overdue && html`<span style=${{ fontSize:8, fontWeight:700, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>VENCIDO</span>`}
+              ${a.source==='retro' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF9500', background:'#FF950010', padding:'1px 5px', borderRadius:4 }}>retro</span>`}
+              ${a.source==='risk' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>riesgo</span>`}
+              <!-- Tag badges -->
+              ${actionTagList(a.id).map(t=>html`
+                <span key=${t.id} style=${{ fontSize:8, fontWeight:700, padding:'1px 5px', borderRadius:8, background:t.color, color:'#FFF', cursor:'pointer' }}
+                  onClick=${e=>{e.stopPropagation();quickToggleActionTag(t.id,a.id);}}>
+                  ${t.name}
+                </span>`)}
+            </div>
+          </div>
+          <!-- Actions -->
+          <div style=${{ display:'flex', gap:2, flexShrink:0, alignItems:'flex-start' }}>
+            <button onClick=${()=>{setEId(a.id);setEF({text:a.text,description:a.description||'',owner:a.owner||'',date:a.date||'',priority:a.priority,type:a.type||'tarea'})}}
+              style=${{ border:'none', background:'none', fontSize:11, color:'#C7C7CC', cursor:'pointer', padding:'2px' }}>✏️</button>
+            <button onClick=${()=>delA(a.id)}
+              style=${{ border:'none', background:'none', fontSize:11, color:'#E5E5EA', cursor:'pointer', padding:'2px' }}>✕</button>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  // ── Board DnD ──
+  const onActDrop = (colId) => { if(dragAct) upSt(dragAct,colId); setDragAct(null); setOverCol(null); };
+
+  return html`
+    <div style=${{ maxWidth:'100%' }}>
+      <!-- Header row -->
+      <div style=${{ display:'flex', alignItems:'center', gap:10, marginBottom:12, flexWrap:'wrap' }}>
+        <h2 style=${{ fontSize:18, fontWeight:700, margin:0 }}>Trabajo</h2>
+        <span style=${{ fontSize:11, background:'#007AFF12', color:'#007AFF', padding:'3px 10px', borderRadius:8, fontWeight:600 }}>${openItems.length} abiertas</span>
+        ${overdueCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B30', color:'#FFF', fontWeight:700, padding:'3px 8px', borderRadius:8 }}>⚠ ${overdueCount} vencidas</span>`}
+        ${blockedCount>0&&html`<span style=${{ fontSize:11, background:'#FF3B3012', color:'#FF3B30', fontWeight:600, padding:'3px 8px', borderRadius:8 }}>🚫 ${blockedCount} bloqueadas</span>`}
+        <div style=${{ flex:1 }}/>
+        <button onClick=${()=>setShowForm(!showForm)}
+          style=${{ padding:'8px 16px', borderRadius:10, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+          <${Icon} name="Plus" size=${14} color="#FFF" /> Nueva tarea
+        </button>
+      </div>
+
+      <!-- Sub-view tabs -->
+      <div style=${{ display:'flex', gap:3, marginBottom:12 }}>
+        ${VIEWS.map(v => html`
+          <button key=${v.id} onClick=${()=>setSubView(v.id)}
+            style=${{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:9,
+              border:'none', background:subView===v.id?'#1D1D1F':'#F2F2F7',
+              color:subView===v.id?'#FFF':'#6E6E73',
+              fontSize:12, fontWeight:subView===v.id?700:500, cursor:'pointer' }}>
+            <${Icon} name=${v.lucide} size=${13} color=${subView===v.id?'#FFF':'#86868B'} />
+            ${v.label}
+            ${v.id==='mine'&&myItems.length>0?html`<span style=${{ background:'rgba(255,255,255,.2)', borderRadius:8, padding:'0 5px', fontSize:10, marginLeft:2 }}>${myItems.length}</span>`:''}
+          </button>`)}
+      </div>
+
+      <!-- Search + filters bar -->
+      <div style=${{ display:'flex', gap:6, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
+        <div style=${{ position:'relative', flex:'1 1 200px' }}>
+          <${Icon} name="Search" size=${14} color="#C7C7CC" />
+          <input value=${searchQ} onInput=${e=>setSearchQ(e.target.value)} placeholder="Buscar tareas…"
+            style=${{ border:'1.5px solid #E5E5EA', borderRadius:9, padding:'7px 10px 7px 8px', fontSize:12, fontFamily:'inherit', outline:'none', width:'100%', background:'#FAFAFA' }} />
+        </div>
+        ${tags.length>0 && html`
+          <div style=${{ display:'flex', gap:3, alignItems:'center' }}>
+            ${tags.map(t=>html`
+              <button key=${t.id} onClick=${()=>setActiveTagFilter(activeTagFilter===t.id?null:t.id)}
+                style=${{ padding:'3px 8px', borderRadius:16, border:'1.5px solid '+(activeTagFilter===t.id?t.color:'#E5E5EA'),
+                  background:activeTagFilter===t.id?t.color:'#FFF', color:activeTagFilter===t.id?'#FFF':t.color,
+                  fontSize:9, fontWeight:700, cursor:'pointer' }}>${t.name}</button>`)}
+          </div>`}
+        ${subView!=='board' && html`
+          <select value=${sortBy} onChange=${e=>setSortBy(e.target.value)}
+            style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'6px 10px', fontSize:11, fontFamily:'inherit', outline:'none', background:'#FFF' }}>
+            <option value="priority">Ordenar: Prioridad</option>
+            <option value="date">Ordenar: Fecha</option>
+            <option value="type">Ordenar: Tipo</option>
+            <option value="status">Ordenar: Estado</option>
+          </select>`}
+      </div>
+
+      <!-- Creation form (collapsible) -->
+      ${showForm && html`
+        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #007AFF30', padding:'16px', marginBottom:14, animation:'fadeIn .2s ease' }}>
+          <div style=${{ display:'flex', gap:8, marginBottom:8, flexWrap:'wrap' }}>
+            <select value=${form.type} onChange=${e=>setForm({...form,type:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none', background:'#FAFAFA' }}>
+              ${ITEM_TYPES.map(t=>html`<option key=${t.id} value=${t.id}>${t.icon} ${t.label}</option>`)}
+            </select>
+            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Título de la tarea…"
+              onKeyDown=${e=>e.key==='Enter'&&!e.shiftKey&&addTask()}
+              style=${{ flex:2, minWidth:200, border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 12px', fontSize:13, fontFamily:'inherit', outline:'none', background:'#FAFAFA' }} />
+          </div>
+          <textarea value=${form.description} onInput=${e=>setForm({...form,description:e.target.value})} placeholder="Descripción (opcional)…"
+            style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 12px', fontSize:12, fontFamily:'inherit', outline:'none', resize:'vertical', minHeight:48, marginBottom:8, background:'#FAFAFA', boxSizing:'border-box' }} />
+          <div style=${{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+            <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', flex:'1 1 140px' }}>
+              <option value="">— Responsable —</option>
+              ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+            </select>
+            <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:110 }}>
+              ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
+            </select>
+            <input type="date" value=${form.date} onInput=${e=>setForm({...form,date:e.target.value})}
+              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:140 }} />
+            <button onClick=${addTask} style=${{ padding:'8px 18px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>Crear</button>
+            <button onClick=${()=>setShowForm(false)} style=${{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+          </div>
+        </div>`}
+
+      <!-- ══ BACKLOG VIEW ══ -->
+      ${subView==='backlog' && html`
+        <div style=${{ display:'flex', flexDirection:'column', gap:0 }}>
+          ${sortActions(filterActions(openItems)).length===0
+            ? html`<div style=${{ textAlign:'center', padding:40, color:'#C7C7CC' }}><p>Sin tareas en backlog</p></div>`
+            : sortActions(filterActions(openItems)).map(a => renderTask(a, false))}
+        </div>`}
+
+      <!-- ══ BOARD VIEW ══ -->
+      ${subView==='board' && html`
+        <div style=${{ display:'grid', gridTemplateColumns:'repeat('+KAN_COLS.length+',1fr)', gap:6, minHeight:200 }}>
+          ${KAN_COLS.map(col => {
+            const colActs = sortActions(filterActions(actions.filter(a=>a.status===col.id)));
+            return html`
+              <div key=${col.id} data-kanban-col=${col.id}
+                onDragOver=${e=>{e.preventDefault();setOverCol(col.id)}}
+                onDragLeave=${()=>setOverCol(null)}
+                onDrop=${()=>onActDrop(col.id)}
+                style=${{ background:overCol===col.id?col.color+'18':col.bg, borderRadius:12,
+                  border:'1.5px solid '+(overCol===col.id?col.color:col.color+'25'),
+                  display:'flex', flexDirection:'column', minHeight:120, transition:'all .12s' }}>
+                <div style=${{ padding:'9px 10px 7px', borderBottom:'2px solid '+col.color+'20', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <span style=${{ fontSize:11, fontWeight:700, color:col.color }}>${col.label}</span>
+                  <span style=${{ fontSize:10, fontWeight:700, background:col.color+'20', color:col.color, padding:'1px 6px', borderRadius:8 }}>${colActs.length}</span>
+                </div>
+                <div style=${{ flex:1, padding:'5px', display:'flex', flexDirection:'column', gap:0, overflowY:'auto', maxHeight:500 }}>
+                  ${colActs.map(a => renderTask(a, true))}
+                </div>
+              </div>`;
+          })}
+        </div>`}
+
+      <!-- ══ LIST VIEW ══ -->
+      ${subView==='list' && html`
+        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', overflow:'auto' }}>
+          <table style=${{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style=${{ background:'#F9F9FB', borderBottom:'1.5px solid #E5E5EA' }}>
+                ${['Tipo','Título','Responsable','Prioridad','Estado','Fecha',''].map(h=>html`
+                  <th key=${h} style=${{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#86868B', fontSize:10, textTransform:'uppercase', whiteSpace:'nowrap' }}>${h}</th>`)}
+              </tr>
+            </thead>
+            <tbody>
+              ${sortActions(filterActions(actions)).map(a => {
+                const tp = ITEM_TYPE_MAP[a.type||'tarea']||ITEM_TYPES[0];
+                const pr = PRIS.find(p=>p.id===a.priority)||PRIS[2];
+                const st = KAN_COLS.find(s=>s.id===a.status)||KAN_COLS[0];
+                const overdue = a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<today;
+                return html`
+                  <tr key=${a.id} style=${{ borderBottom:'1px solid #F2F2F7', opacity:a.status==='cancelled'?.5:1 }}
+                    onMouseOver=${e=>e.currentTarget.style.background='#F9F9FB'}
+                    onMouseOut=${e=>e.currentTarget.style.background='transparent'}>
+                    <td style=${{ padding:'8px 10px', whiteSpace:'nowrap' }}>
+                      <span title=${tp.label} style=${{ fontSize:14 }}>${tp.icon}</span>
+                    </td>
+                    <td style=${{ padding:'8px 10px' }}>
+                      <span style=${{ fontWeight:600, textDecoration:a.status==='done'?'line-through':'none', color:a.status==='done'?'#86868B':'#1D1D1F', cursor:'pointer' }}
+                        onClick=${()=>{setEId(a.id);setEF({text:a.text,description:a.description||'',owner:a.owner||'',date:a.date||'',priority:a.priority,type:a.type||'tarea'})}}>${a.text}</span>
+                      ${a.source==='retro'&&html`<span style=${{ fontSize:8, marginLeft:6, color:'#FF9500', fontWeight:600 }}>retro</span>`}
+                    </td>
+                    <td style=${{ padding:'8px 10px', color:'#007AFF', fontSize:11 }}>${a.owner||'—'}</td>
+                    <td style=${{ padding:'8px 10px' }}>
+                      <span style=${{ fontSize:10, fontWeight:700, color:pr.color }}>${pr.icon} ${pr.label}</span>
+                    </td>
+                    <td style=${{ padding:'8px 10px' }}>
+                      <select value=${a.status||'pending'} onChange=${e=>upSt(a.id,e.target.value)}
+                        style=${{ fontSize:10, padding:'3px 6px', borderRadius:5, border:'1px solid #E5E5EA', outline:'none', background:st.bg, color:st.color, fontWeight:600, cursor:'pointer' }}>
+                        ${KAN_COLS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+                      </select>
+                    </td>
+                    <td style=${{ padding:'8px 10px', fontSize:10, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>${a.date||'—'}</td>
+                    <td style=${{ padding:'8px 10px' }}>
+                      <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', color:'#E5E5EA', fontSize:13, cursor:'pointer' }}>✕</button>
+                    </td>
+                  </tr>`;
+              })}
+            </tbody>
+          </table>
+        </div>`}
+
+      <!-- ══ MIS TAREAS VIEW ══ -->
+      ${subView==='mine' && html`
+        <div style=${{ display:'flex', flexDirection:'column', gap:0 }}>
+          ${filterActions(myItems).length===0
+            ? html`<div style=${{ textAlign:'center', padding:40, color:'#C7C7CC' }}>
+                <${Icon} name="CheckCircle2" size=${36} color="#34C759" />
+                <p style=${{ marginTop:10, fontSize:13, color:'#34C759', fontWeight:600 }}>¡Todo al día!</p>
+              </div>`
+            : sortActions(filterActions(myItems)).map(a => renderTask(a, false))}
+        </div>`}
+
+      <!-- ══ HISTORIAL VIEW ══ -->
+      ${subView==='history' && html`
+        <div style=${{ display:'flex', flexDirection:'column', gap:0 }}>
+          ${doneItems.length===0
+            ? html`<div style=${{ textAlign:'center', padding:40, color:'#C7C7CC' }}><p>Sin tareas completadas o canceladas</p></div>`
+            : doneItems.sort((a,b)=>(b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||'')).map(a => renderTask(a, false))}
+        </div>`}
+    </div>`;
+}
+
+
 function PAccionables({ actions, sA, risks, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
   const [tags, setTags] = useState([]);
@@ -5927,7 +6322,7 @@ function RetroBoard({ user, onLogout }) {
           </div>` : ''}
           ${mainTab==='retro' ? '' : ''}
           ${mainTab==='equipo'     ? html`<${PEquipo} />`  : ''}
-          ${mainTab==='trabajo' ? html`<${PAccionables} actions=${state.actions} sA=${sA} risks=${state.risks} user=${user} />` : ''}
+          ${mainTab==='trabajo' ? html`<${PTrabajo} actions=${state.actions} sA=${sA} risks=${state.risks} user=${user} />` : ''}
           ${mainTab==='riesgos'    ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} />` : ''}
           ${mainTab==='tags'       ? html`<${PTags} teamMembers=${window.__teamLocal||[]} risks=${state.risks} actions=${state.actions} />` : ''}
         </div>
@@ -6673,13 +7068,17 @@ function P4({ notes, actions, risks, sA, user }) {
   const addA = fn => {
     const t=fn?fn.text:form.text; if(!t.trim())return;
     const vs=fn?(fn.voters?.length||0):0; const pri=fn?(vs>=5?'high':vs>=2?'medium':'low'):form.priority;
-    sA([...actions,{id:uid(),text:t.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:pri,voteScore:vs,createdBy:user.id,fromCategory:fn?.category||null,noteId:fn?.id||null,riskId:null}]);
+    sA([...actions,{id:uid(),text:t.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:pri,voteScore:vs,createdBy:user.id,fromCategory:fn?.category||null,noteId:fn?.id||null,riskId:null,source:fn?'retro':'manual',type:'accion_retro',createdAt:new Date().toISOString()}]);
     if(!fn)setForm({text:'',owner:'',date:'',priority:'medium'});
   };
   const addAFromRisk = r => {
     const imp = getRiskLevel(r.impactVotes);
     const pri = imp.id==='alto'?'high':imp.id==='medio'?'medium':'low';
-    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'Sin asignar',date:'',status:'pending',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id}]);
+    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'Sin asignar',date:'',status:'pending',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id,source:'risk',type:'tarea',createdAt:new Date().toISOString()}]);
+  };
+  // Promote retro action to formal backlog task
+  const promoteToTask = (a) => {
+    sA(actions.map(x=>x.id===a.id?{...x,type:'tarea',source:'retro',description:'Origen: acción de retro',updatedAt:new Date().toISOString()}:x));
   };
   const togN = n => { const ex=actions.find(a=>a.noteId===n.id); if(ex)sA(actions.filter(a=>a.noteId!==n.id)); else addA(n); };
   const togR = r => { const ex=actions.find(a=>a.riskId===r.id); if(ex)sA(actions.filter(a=>a.riskId!==r.id)); else addAFromRisk(r); };
@@ -6693,15 +7092,15 @@ function P4({ notes, actions, risks, sA, user }) {
       <div style=${{ display:'grid', gridTemplateColumns:'1fr', gap:14 }}>
         <div style=${{ ...cS, padding:22 }}>
           <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <h3 style=${{ fontSize:17, fontWeight:700 }}>🎯 Accionables</h3>
+            <h3 style=${{ fontSize:17, fontWeight:700 }}>Trabajo</h3>
             <div style=${{ display:'flex', gap:4 }}>
-              ${[{id:'all',label:'Todos'},{id:'mine',label:'👤 Mis accionables'},{id:'done',label:'✅ Completados'}].map(f => html`
+              ${[{id:'all',label:'Todos'},{id:'mine',label:'👤 Mis tareas'},{id:'done',label:'✅ Completados'}].map(f => html`
                 <button key=${f.id} onClick=${()=>setActFilter(f.id)} style=${{ padding:'4px 10px', borderRadius:7, border:actFilter===f.id?'none':'1px solid #E5E5EA', background:actFilter===f.id?'#1D1D1F':'#FFF', color:actFilter===f.id?'#FFF':'#6E6E73', fontSize:10, fontWeight:600 }}>${f.label}</button>
               `)}
             </div>
           </div>
           <div style=${{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Acción concreta..." style=${{ ...iS, flex:2, minWidth:150 }} />
+            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Nueva tarea…" style=${{ ...iS, flex:2, minWidth:150 }} />
             <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})} style=${{ ...iS, flex:1, minWidth:100 }}>
               <option value="">— Responsable —</option>
               ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
@@ -6716,7 +7115,7 @@ function P4({ notes, actions, risks, sA, user }) {
             <button onClick=${()=>setViewMode('list')} style=${{ padding:'4px 10px', borderRadius:7, border:viewMode==='list'?'none':'1px solid #E5E5EA', background:viewMode==='list'?'#1D1D1F':'#FFF', color:viewMode==='list'?'#FFF':'#6E6E73', fontSize:10, fontWeight:600, cursor:'pointer' }}>☰ Lista</button>
           </div>
 
-          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea accionables o selecciona notas/riesgos →</p></div>`}
+          ${actions.length===0&&html`<div style=${{ textAlign:'center', padding:'28px 0', color:'#C7C7CC' }}><p style=${{ fontSize:13 }}>Crea tareas o selecciona notas/riesgos →</p></div>`}
 
           <!-- KANBAN VIEW -->
           ${viewMode==='kanban' && actions.length > 0 && html`
@@ -6767,6 +7166,7 @@ function P4({ notes, actions, risks, sA, user }) {
                               <span style=${{ fontSize:11 }}>${pr.icon}</span>
                               ${ct&&html`<span style=${{ fontSize:8, color:ct.color, background:ct.color+'10', padding:'1px 4px', borderRadius:3, fontWeight:700 }}>${ct.emoji}</span>`}
                               <div style=${{ flex:1 }}/>
+                              ${(a.type||'accion_retro')==='accion_retro'&&html`<button onClick=${()=>promoteToTask(a)} title="Promover a tarea formal del backlog" style=${{ border:'none',background:'#007AFF10',fontSize:9,color:'#007AFF',cursor:'pointer',padding:'2px 5px',borderRadius:4,fontWeight:700 }}>📋 Backlog</button>`}
                               <button onClick=${()=>{setEId(a.id);setEF({text:a.text,owner:a.owner,date:a.date,priority:a.priority})}} style=${{ border:'none',background:'none',fontSize:11,color:'#C7C7CC',cursor:'pointer',padding:'1px' }}>✏️</button>
                               <button onClick=${()=>delA(a.id)} style=${{ border:'none',background:'none',fontSize:11,color:'#E5E5EA',cursor:'pointer',padding:'1px' }}>✕</button>
                             </div>
