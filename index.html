@@ -1088,9 +1088,21 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
     return (d.actions||[]).filter(a=>a.owner===user.name||a.createdBy===user.id).map(a=>({...a,_room:roomName}));
   });
   const myRisks = isSuperUser
-    // Superusers see ALL escalated risks
-    ? Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation))
-    : Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id||r.owner===user.name)));
+    // Superusers see ALL open risks
+    ? Object.entries(allData).flatMap(([slug,d])=>{
+        const roomName = rooms.find(r=>r.slug===slug)?.name||slug;
+        return (d.risks||[]).filter(r=>r.status!=='mitigated').map(r=>({...r,_room:roomName}));
+      })
+    // Regular users: risks where I'm owner OR escalation target
+    : Object.entries(allData).flatMap(([slug,d])=>{
+        const roomName = rooms.find(r=>r.slug===slug)?.name||slug;
+        return (d.risks||[]).filter(r=>
+          r.status!=='mitigated' && (
+            r.owner===user.name ||
+            (r.escalation && (r.escalation.memberName===user.name || r.escalation.memberId===user.id))
+          )
+        ).map(r=>({...r,_room:roomName}));
+      });
   const overdueAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded'&&a.date&&a.date<today);
   const pendingAct = myActions.filter(a=>a.status!=='done'&&a.status!=='discarded');
 
@@ -1194,7 +1206,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                 {v:roomsLoaded&&profileLoaded?myRooms.length:'—',    l:'Proyectos',    i:'FolderOpen',   c:'#007AFF'},
                 {v:profileLoaded?pendingAct.length:'—',               l:'Tareas pend.',  i:'CheckSquare',  c:'#34C759'},
                 {v:profileLoaded?overdueAct.length:'—',               l:'Vencidos',     i:'AlertCircle',  c:overdueAct.length?'#FF3B30':'#86868B'},
-                {v:profileLoaded?myRisks.length:'—',                  l:'Escalados',    i:'TrendingUp',   c:myRisks.length?'#5856D6':'#86868B'},
+                {v:profileLoaded?myRisks.length:'—',                  l:'Mis riesgos', i:'AlertTriangle', c:myRisks.length?'#FF9500':'#86868B'},
               ].map((k,i)=>html`
                 <div key=${i} style=${{background:'#FFF',borderRadius:18,border:'1.5px solid #E5E5EA',padding:'18px',display:'flex',flexDirection:'column',gap:10}}>
                   <div style=${{width:36,height:36,borderRadius:11,background:k.c+'18',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1216,21 +1228,28 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                   const ov=a.date&&a.date<today;
                   return html`<div style=${{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:11,background:'#F9F9FB',marginBottom:6,borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
                     <${Icon} name=${ov?'AlertCircle':'Clock'} size=${14} color=${ov?'#FF3B30':'#86868B'} />
-                    <span style=${{flex:1,fontSize:12,fontWeight:600}}>${a.text}</span>
-                    ${a.date&&html`<span style=${{fontSize:10,color:ov?'#FF3B30':'#86868B'}}>${a.date}</span>`}
+                    <div style=${{flex:1,minWidth:0}}>
+                      <div style=${{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${a.text}</div>
+                      ${a._room&&html`<div style=${{fontSize:10,color:'#007AFF',fontWeight:500,marginTop:1}}>📂 ${a._room}</div>`}
+                    </div>
+                    ${a.date&&html`<span style=${{fontSize:10,color:ov?'#FF3B30':'#86868B',flexShrink:0}}>${a.date}</span>`}
                   </div>`;
                 })}
               </div>`}
             ${myRisks.length>0&&html`
-              <div style=${{background:'#F8F5FF',borderRadius:18,border:'1.5px solid #5856D620',padding:'18px'}}>
-                <h3 style=${{fontSize:14,fontWeight:700,marginBottom:10,color:'#5856D6'}}>Escalados a mí</h3>
-                ${myRisks.map(r=>html`<div style=${{display:'flex',gap:10,padding:'9px 12px',borderRadius:11,background:'#FFF',marginBottom:6,borderLeft:'3px solid #5856D6'}}>
-                  <${Icon} name="TrendingUp" size=${14} color="#5856D6" />
+              <div style=${{background:'#FFF',borderRadius:18,border:'1.5px solid #FF950020',padding:'18px'}}>
+                <h3 style=${{fontSize:14,fontWeight:700,marginBottom:10,color:'#FF9500'}}>Mis riesgos</h3>
+                ${myRisks.slice(0,6).map(r=>html`<div key=${r.id} style=${{display:'flex',gap:10,padding:'9px 12px',borderRadius:11,background:'#F9F9FB',marginBottom:6,borderLeft:'3px solid '+(r.escalation?'#5856D6':'#FF9500')}}>
+                  <${Icon} name=${r.escalation?'TrendingUp':'AlertTriangle'} size=${14} color=${r.escalation?'#5856D6':'#FF9500'} />
                   <div style=${{flex:1}}>
                     <div style=${{fontSize:12,fontWeight:600}}>${r.text}</div>
-                    <div style=${{fontSize:10,color:'#5856D6',marginTop:2}}>${r.escalation?.levelLabel||'—'}</div>
+                    <div style=${{display:'flex',gap:8,marginTop:2,fontSize:10,color:'#86868B'}}>
+                      ${r._room&&html`<span style=${{color:'#007AFF',fontWeight:600}}>📂 ${r._room}</span>`}
+                      ${r.escalation&&html`<span style=${{color:'#5856D6'}}>📈 ${r.escalation.levelLabel||'Escalado'}</span>`}
+                    </div>
                   </div>
                 </div>`)}
+                ${myRisks.length>6&&html`<p style=${{fontSize:11,color:'#86868B',textAlign:'center',marginTop:6}}>+ ${myRisks.length-6} más</p>`}
               </div>`}
           </div>`}
 
