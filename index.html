@@ -1895,7 +1895,10 @@ function CalForm({ cal, setCal, saving, onSave, onCancel }) {
   const [pendingName, setPendingName] = useState('');
   const nameRef = useRef(null);
 
-  const holidays = cal.holidays || [];
+  const allHolidays = cal.holidays || [];
+  const years = [...new Set(allHolidays.map(h=>h.date.slice(0,4)))].sort();
+  const [calYear, setCalYear] = useState(()=>years.length>0?years[years.length-1]:String(new Date().getFullYear()));
+  const holidays = allHolidays.filter(h=>h.date.startsWith(calYear));
   const holSet = new Set(holidays.map(h=>h.date));
   const MONTHS_S = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -1927,20 +1930,28 @@ function CalForm({ cal, setCal, saving, onSave, onCancel }) {
         <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
           <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
             <label style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>📅 Festivos (${holidays.length})</label>
-            ${holidays.length>0 && html`<button onClick=${()=>{
-              const years = [...new Set(holidays.map(h=>h.date.slice(0,4)))].sort();
-              const lastYear = parseInt(years[years.length-1]);
-              const nextYear = lastYear + 1;
-              const existing = new Set(holidays.map(h=>h.date));
-              const newHols = holidays.filter(h=>h.date.startsWith(String(lastYear))).map(h=>({
-                date: String(nextYear) + h.date.slice(4),
-                name: h.name
-              })).filter(h=>!existing.has(h.date));
-              if(newHols.length===0){alert('Ya existen los festivos para '+nextYear); return;}
-              setCal({...cal, holidays: [...holidays, ...newHols].sort((a,b)=>a.date<b.date?-1:1)});
-            }} style=${{ fontSize:10, fontWeight:600, padding:'4px 10px', borderRadius:7, border:'1.5px solid #5856D620', background:'#F8F5FF', color:'#5856D6', cursor:'pointer' }}>
-              📋 Duplicar a ${(()=>{const yrs=[...new Set(holidays.map(h=>h.date.slice(0,4)))].sort(); return parseInt(yrs[yrs.length-1])+1;})()}
-            </button>`}
+            <!-- Year navigator -->
+            <div style=${{ display:'flex', gap:4, alignItems:'center' }}>
+              ${years.map(y=>html`
+                <button key=${y} onClick=${()=>setCalYear(y)}
+                  style=${{ padding:'3px 10px', borderRadius:6, border:calYear===y?'none':'1px solid #E5E5EA',
+                    background:calYear===y?'#1D1D1F':'#FFF', color:calYear===y?'#FFF':'#6E6E73',
+                    fontSize:10, fontWeight:600, cursor:'pointer' }}>${y}</button>`)}
+              ${holidays.length>0 && html`<button onClick=${()=>{
+                const nextYear = parseInt(calYear) + 1;
+                const nextYearStr = String(nextYear);
+                const existing = new Set(allHolidays.map(h=>h.date));
+                const newHols = holidays.map(h=>({
+                  date: nextYearStr + h.date.slice(4),
+                  name: h.name
+                })).filter(h=>!existing.has(h.date));
+                if(newHols.length===0){alert('Ya existen los festivos para '+nextYear); return;}
+                setCal({...cal, holidays: [...allHolidays, ...newHols].sort((a,b)=>a.date<b.date?-1:1)});
+                setCalYear(nextYearStr);
+              }} style=${{ fontSize:10, fontWeight:600, padding:'3px 10px', borderRadius:6, border:'1.5px solid #5856D620', background:'#F8F5FF', color:'#5856D6', cursor:'pointer' }}>
+                📋 Duplicar a ${parseInt(calYear)+1}
+              </button>`}
+            </div>
           </div>
           <div style=${{ display:'flex', gap:4 }}>
             <button onClick=${()=>setViewYear(y=>y-1)} style=${{ border:'none', background:'#F2F2F7', borderRadius:8, width:28, height:28, cursor:'pointer', color:'#86868B', display:'flex', alignItems:'center', justifyContent:'center' }}>‹</button>
@@ -4352,6 +4363,7 @@ function ConfirmModal({ title, message, confirmLabel, cancelLabel, confirmColor,
 /* ═══ TASK DETAIL MODAL — JIRA-style ═══ */
 function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGoToRisk, teamMembers, tags, tagAssignments, onToggleTag }) {
   const [f, setF] = useState({...task});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const tp = ITEM_TYPE_MAP[f.type||'tarea']||ITEM_TYPES[0];
   const pr = PRIS.find(p=>p.id===f.priority)||PRIS[1];
   const st = STS.find(s=>s.id===f.status)||STS[0];
@@ -4452,20 +4464,7 @@ function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGo
                 })}
               </select>
             </div>
-            ${task.riskId && html`
-              <div style=${{background:'#FFF5F5',borderRadius:12,border:'1.5px solid #FF3B3015',padding:'14px 16px',cursor:'pointer',transition:'all .15s'}}
-                onClick=${()=>{ window.__pendingRiskDetail = task.riskId; if(onGoToRisk) onGoToRisk(task.riskId); onClose(); }}
-                onMouseOver=${e=>{e.currentTarget.style.borderColor='#FF3B30';e.currentTarget.style.background='#FFF0F0';}}
-                onMouseOut=${e=>{e.currentTarget.style.borderColor='#FF3B3015';e.currentTarget.style.background='#FFF5F5';}}>
-                <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                  ${(()=>{const allR=(window.__currentRisks||[]); const rsk=allR.find(r=>r.id===task.riskId); const rNum=rsk?allR.filter(x=>(x.type||'riesgo')===(rsk.type||'riesgo')).indexOf(rsk)+1:0; const prefix=(rsk?.type||'riesgo')==='problema'?'P':'R'; return html`
-                    <span style=${{fontSize:12,fontWeight:800,color:'#FF3B30',background:'#FF3B3012',padding:'2px 8px',borderRadius:6}}>${prefix}${rNum||'?'}</span>`;})()}
-                  <span style=${{fontSize:12,fontWeight:700,color:'#FF3B30'}}>Vinculado a riesgo</span>
-                  <span style=${{marginLeft:'auto',fontSize:11,color:'#FF3B30',fontWeight:600}}>Ver riesgo →</span>
-                </div>
-                <p style=${{fontSize:13,color:'#1D1D1F',margin:0,fontWeight:500}}>${(()=>{const rsk=(window.__currentRisks||[]).find(r=>r.id===task.riskId); return rsk?rsk.text:'Riesgo no encontrado';})()}</p>
-                <p style=${{fontSize:10,color:'#86868B',marginTop:6}}>Clic para ir al riesgo · Al completar la tarea se preguntará si el riesgo está mitigado</p>
-              </div>`}
+
             <!-- Meta info -->
             <div style=${{fontSize:10,color:'#C7C7CC',display:'flex',gap:16,paddingTop:8,borderTop:'1px solid #F2F2F7'}}>
               ${f.createdAt&&html`<span>Creado: ${fd(f.createdAt)}</span>`}
@@ -4535,7 +4534,7 @@ function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGo
 
         <!-- Footer -->
         <div style=${{padding:'14px 24px',borderTop:'1px solid #F2F2F7',display:'flex',gap:8,justifyContent:'space-between',flexShrink:0,background:'#FAFAFA'}}>
-          <button onClick=${()=>{if(confirm('¿Eliminar esta tarea?'))onDelete(task.id)}}
+          <button onClick=${()=>setShowDeleteConfirm(true)}
             style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #FF3B3015',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>Eliminar</button>
           <div style=${{display:'flex',gap:8}}>
             <button onClick=${onClose} style=${{padding:'8px 20px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:500,cursor:'pointer',color:'#6E6E73'}}>Cancelar</button>
@@ -4543,6 +4542,15 @@ function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGo
           </div>
         </div>
       </div>
+      ${showDeleteConfirm && html`<${ConfirmModal}
+        icon="🗑️"
+        title="Eliminar tarea"
+        message=${html`¿Eliminar <b>${task.text?.slice(0,50)}</b>?<br/>Esta acción no se puede deshacer.`}
+        confirmLabel="Sí, eliminar"
+        cancelLabel="Cancelar"
+        confirmColor="#FF3B30"
+        onConfirm=${()=>{setShowDeleteConfirm(false);onDelete(task.id)}}
+        onCancel=${()=>setShowDeleteConfirm(false)} />`}
     </div>`;
 }
 
@@ -4589,7 +4597,8 @@ function PTrabajo({ actions, sA, risks, user }) {
       setDetailTask({...fresh});
     }
   }, []);
-  const [mitigateModal, setMitigateModal] = useState(null); // {riskId, taskText}
+  const [mitigateModal, setMitigateModal] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // {id, text, type:'task'} // {riskId, taskText}
   const [showTagManager, setShowTagManager] = useState(false);
   const [searchQ, setSearchQ] = useState('');
   const [sortBy, setSortBy] = useState('priority'); // priority | date | type | status
@@ -4751,7 +4760,7 @@ function PTrabajo({ actions, sA, risks, user }) {
               ${a.status!=='done'&&a.status!=='cancelled'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'done')}} title="Completar"
                 style=${{ border:'none', background:'#34C759', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>✓</button>`}
 
-              <button onClick=${(e)=>{e.stopPropagation();if(confirm('¿Eliminar esta tarea?'))delA(a.id)}}
+              <button onClick=${(e)=>{e.stopPropagation();setDeleteConfirm({id:a.id,text:a.text,type:'task'})}}
                 style=${{ border:'none', background:'none', fontSize:11, color:'#E5E5EA', cursor:'pointer', padding:'2px' }}>✕</button>
             </div>
             ${!compact && a.status!=='done' && a.status!=='cancelled' && html`
@@ -5015,6 +5024,17 @@ function PTrabajo({ actions, sA, risks, user }) {
         confirmColor="#34C759"
         onConfirm=${()=>{ window.__goMitigateRisk && window.__goMitigateRisk(mitigateModal.riskId); setMitigateModal(null); }}
         onCancel=${()=>setMitigateModal(null)} />`}
+
+      <!-- Delete confirmation modal -->
+      ${deleteConfirm && html`<${ConfirmModal}
+        icon="🗑️"
+        title="Eliminar elemento"
+        message=${html`¿Eliminar <b>${deleteConfirm.text?.slice(0,50)}${(deleteConfirm.text?.length||0)>50?'…':''}</b>?<br/>Esta acción no se puede deshacer.`}
+        confirmLabel="Sí, eliminar"
+        cancelLabel="Cancelar"
+        confirmColor="#FF3B30"
+        onConfirm=${()=>{ delA(deleteConfirm.id); setDeleteConfirm(null); }}
+        onCancel=${()=>setDeleteConfirm(null)} />`}
 
       <!-- ══ HISTORIAL VIEW ══ -->
       ${subView==='history' && html`
@@ -5486,6 +5506,7 @@ function heatColor(imp, prob) {
 /* ═══ RISK DETAIL MODAL ═══ */
 function RiskDetailModal({ risk, onSave, onClose, onDelete, teamMembers, onGoToTask }) {
   const [f, setF] = useState({...risk});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const typeKey = f.type||'riesgo';
   const prefix = typeKey==='problema'?'P':typeKey==='oportunidad'?'O':'R';
   const hc = typeKey==='problema' ? '#FF3B30' : heatColor(f.impact||'medio', f.prob||'media');
@@ -5630,7 +5651,7 @@ function RiskDetailModal({ risk, onSave, onClose, onDelete, teamMembers, onGoToT
 
         <!-- Footer -->
         <div style=${{padding:'14px 24px',borderTop:'1px solid #F2F2F7',display:'flex',gap:8,justifyContent:'space-between',flexShrink:0,background:'#FAFAFA'}}>
-          <button onClick=${()=>{if(confirm('¿Eliminar este riesgo?'))onDelete(risk.id)}}
+          <button onClick=${()=>setShowDeleteConfirm(true)}
             style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #FF3B3015',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>Eliminar</button>
           <div style=${{display:'flex',gap:8}}>
             <button onClick=${onClose} style=${{padding:'8px 20px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:500,cursor:'pointer',color:'#6E6E73'}}>Cancelar</button>
@@ -5676,6 +5697,11 @@ function RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMem
               <div style=${{ display:'flex', gap:4, flexWrap:'wrap', marginTop:6, alignItems:'center' }}>
                 <span style=${{ fontSize:9, color:'#007AFF', fontWeight:700 }}>📋</span>
                 ${lt.map(a=>html`<span key=${a.id} style=${{ fontSize:9, padding:'1px 6px', borderRadius:6, background:a.status==='done'?'#34C75915':'#007AFF10', color:a.status==='done'?'#34C759':'#007AFF', fontWeight:600, textDecoration:a.status==='done'?'line-through':'none' }}>${a.text.slice(0,35)}${a.text.length>35?'…':''}</span>`)}
+              </div>`:null;})()}
+            <!-- Tag badges -->
+            ${(()=>{const tgs=entityTagList('risk',r.id); return tgs.length>0?html`
+              <div style=${{ display:'flex', gap:3, flexWrap:'wrap', marginTop:4 }}>
+                ${tgs.map(t=>html`<span key=${t.id} style=${{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:10, background:t.color, color:'#FFF' }}>${t.name}</span>`)}
               </div>`:null;})()}
             <!-- Impact + Prob vote buttons -->
             <div style=${{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
