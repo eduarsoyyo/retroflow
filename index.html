@@ -2843,13 +2843,14 @@ function RoomPicker() {
     <div style=${{ minHeight:'100vh', background:'#F5F5F7', display:'flex', flexDirection:'column' }}>
       <div style=${{ maxWidth:'100%', width:'100%', flex:1, display:'flex', flexDirection:'column' }}>
         <div style=${{ background:'rgba(255,255,255,.9)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(0,0,0,.06)', padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between', height:56, position:'sticky', top:0, zIndex:50 }}>
-          <div style=${{ display:'flex', alignItems:'center', gap:12 }}>
-            <span style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:20, fontWeight:400, letterSpacing:2, background:'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>revelio</span>
-            <span style=${{ fontSize:14, fontWeight:700 }}>Centro de control</span>
-          </div>
           <div style=${{ display:'flex', alignItems:'center', gap:8 }}>
-            ${authUser && html`<span style=${{ fontSize:11, color:'#86868B' }}>${authUser._member?.name || authUser.email}</span>`}
-            <button onClick=${handleSignOut} style=${{ ...bS, padding:'5px 12px', fontSize:11, color:'#FF3B30', borderColor:'#FF3B3030' }}>🔒 Cerrar sesión</button>
+            <a href="/" style=${{ fontFamily:"'Comfortaa',sans-serif", fontSize:20, fontWeight:400, letterSpacing:2, background:'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', textDecoration:'none', cursor:'pointer' }}>revelio</a>
+            <span style=${{ color:'#E5E5EA' }}>|</span>
+            <span style=${{ fontSize:13, fontWeight:600, color:'#6E6E73' }}>Centro de control</span>
+          </div>
+          <div style=${{ display:'flex', alignItems:'center', gap:10 }}>
+            ${authUser && html`<span style=${{ fontSize:12, color:'#86868B', fontWeight:500 }}>${authUser._member?.name || authUser.email}</span>`}
+            <button onClick=${handleSignOut} style=${{ padding:'6px 14px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', color:'#86868B', fontSize:11, fontWeight:600, cursor:'pointer' }}>Cerrar sesión</button>
           </div>
         </div>
 
@@ -2866,11 +2867,11 @@ function RoomPicker() {
               {id:'escalado_global',label:'Escalado',    lucide:'TrendingUp'},
             ].map(t => html`
               <button key=${t.id} onClick=${()=>setTab(t.id)}
-                style=${{ display:'flex', alignItems:'center', gap:8, padding:'9px 11px', borderRadius:10,
+                style=${{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:11,
                   border:'none', background:tab===t.id?'linear-gradient(135deg,#007AFF,#5856D6)':'transparent',
                   color:tab===t.id?'#FFF':'#6E6E73',
-                  fontSize:12, fontWeight:tab===t.id?600:500, cursor:'pointer', textAlign:'left', transition:'all .18s' }}>
-                <${Icon} name=${t.lucide} size=${14} color=${tab===t.id?'#FFF':'#86868B'} />
+                  fontSize:13, fontWeight:tab===t.id?600:500, cursor:'pointer', textAlign:'left', transition:'all .2s', width:'100%' }}>
+                <${Icon} name=${t.lucide} size=${16} color=${tab===t.id?'#FFF':'#86868B'} />
                 ${t.label}
               </button>`)}
           </aside>
@@ -2918,7 +2919,7 @@ function RoomPicker() {
 
               return html`
                 <!-- Row 1: Retro metrics -->
-                <p style=${{ fontSize:10, fontWeight:700, color:'#86868B', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Métricas de retro</p>
+                <p style=${{ fontSize:10, fontWeight:700, color:'#86868B', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Resumen del servicio</p>
                 <div style=${{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:14 }}>
                   ${[
                     {l:'Proyectos',  v:rooms.length,    lu:'FolderOpen',    c:'#5856D6', tip:'Total de proyectos registrados'},
@@ -3045,7 +3046,7 @@ function RoomPicker() {
 
               <!-- Donut % accionables -->
               <div style=${{ ...cS, padding:'20px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center' }}>
-                <h3 style=${{ fontSize:12, fontWeight:700, marginBottom:12 }}>🎯 Accionables</h3>
+                <h3 style=${{ fontSize:12, fontWeight:700, marginBottom:12 }}>Tareas</h3>
                 ${(() => {
                   const r=46, circ=2*Math.PI*r;
                   const dash = (actionRate/100)*circ;
@@ -6941,7 +6942,7 @@ ${risks.length?'<h2>⚠️ Riesgos ('+risks.length+')</h2>'+risks.map(r=>'<div c
               </div>`;
           })}
           ${(viewRetro.data?.actions||[]).length > 0 && html`
-            <p style=${{ fontWeight:700, fontSize:13, margin:'14px 0 8px' }}>🎯 Accionables</p>
+            <p style=${{ fontWeight:700, fontSize:13, margin:'14px 0 8px' }}>Tareas</p>
             ${[...viewRetro.data.actions].sort((a,b)=>({high:3,medium:2,low:1}[b.priority]||0)-({high:3,medium:2,low:1}[a.priority]||0)).map(a=>{
               const st=STS.find(s=>s.id===a.status)||STS[0];
               const pr=PRIS.find(p=>p.id===a.priority)||PRIS[1];
@@ -8146,7 +8147,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
       ${activeTab === 'accionables' && html`
         <div style=${{ ...cS, padding:20 }}>
           <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-            <h3 style=${{ fontSize:15, fontWeight:700 }}>🎯 Accionables (${actions.length})</h3>
+            <h3 style=${{ fontSize:15, fontWeight:700 }}>Tareas (${actions.length})</h3>
             <div style=${{ display:'flex', gap:6, fontSize:11 }}>
               <span style=${{ color:'#34C759', fontWeight:700 }}>${aD} ✅ completados</span>
               <span style=${{ color:'#86868B' }}>·</span>
