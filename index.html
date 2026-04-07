@@ -1232,7 +1232,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                       <div style=${{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${a.text}</div>
                       ${a._room&&html`<div style=${{fontSize:10,color:'#007AFF',fontWeight:500,marginTop:1}}>📂 ${a._room}</div>`}
                     </div>
-                    ${a.date&&html`<span style=${{fontSize:10,color:ov?'#FF3B30':'#86868B',flexShrink:0}}>${a.date}</span>`}
+                    ${a.date&&html`<span style=${{fontSize:10,color:ov?'#FF3B30':'#86868B',flexShrink:0}}>${fd(a.date)}</span>`}
                   </div>`;
                 })}
               </div>`}
@@ -1471,7 +1471,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                   <div style=${{flex:1}}>
                     <div style=${{fontSize:13,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:a.status==='done'?'#86868B':'#1D1D1F'}}>${a.text}</div>
                     <div style=${{display:'flex',gap:8,marginTop:2,fontSize:10,color:'#86868B'}}>
-                      ${a.date&&html`<span style=${{color:ov?'#FF3B30':'inherit'}}>📅 ${a.date}</span>`}
+                      ${a.date&&html`<span style=${{color:ov?'#FF3B30':'inherit'}}>📅 ${fd(a.date)}</span>`}
                       ${a._room&&html`<span>📂 ${a._room}</span>`}
                     </div>
                   </div>
@@ -4520,7 +4520,7 @@ function PTrabajo({ actions, sA, risks, user }) {
                 <span style=${{ display:'flex', alignItems:'center', gap:3, fontSize:10, color:'#007AFF', fontWeight:600 }}>
                   <span style=${{ fontSize:12 }}>${memberAvatar}</span> ${a.owner}
                 </span>` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>Sin asignar</span>`}
-              ${a.date && html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${a.date}</span>`}
+              ${a.date && html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${fd(a.date)}</span>`}
               ${overdue && html`<span style=${{ fontSize:8, fontWeight:700, color:'#FF3B30', background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>VENCIDO</span>`}
               ${!compact && html`<span style=${{ fontSize:8, fontWeight:600, color:KAN_COLS.find(s=>s.id===a.status)?.color||'#86868B', background:(KAN_COLS.find(s=>s.id===a.status)?.color||'#86868B')+'12', padding:'1px 5px', borderRadius:4 }}>${KAN_COLS.find(s=>s.id===a.status)?.label||a.status}</span>`}
               ${a.source==='retro' && html`<span style=${{ fontSize:8, fontWeight:600, color:'#FF9500', background:'#FF950010', padding:'1px 5px', borderRadius:4 }}>retro</span>`}
@@ -4852,7 +4852,7 @@ function PAccionables({ actions, sA, risks, user }) {
     : actions;
   const addA  = () => {
     if (!form.text.trim()) return;
-    sA([...actions,{id:uid(),text:form.text.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'pending',priority:form.priority,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:null}]);
+    sA([...actions,{id:uid(),text:form.text.trim(),owner:form.owner||'Sin asignar',date:form.date||'',status:'backlog',priority:form.priority,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:null}]);
     setForm({text:'',owner:'',date:'',priority:'medium'});
   };
   const priO = {high:3,medium:2,low:1};
@@ -5000,7 +5000,7 @@ function PAccionables({ actions, sA, risks, user }) {
                                     <span style=${{ fontSize:13 }}>${memberAvatar}</span>
                                     <span style=${{ fontSize:10, color:'#007AFF', fontWeight:600 }}>${a.owner}</span>
                                   </div>` : html`<span style=${{ fontSize:10, color:'#C7C7CC' }}>Sin asignar</span>`}
-                                ${a.date&&html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${a.date}</span>`}
+                                ${a.date&&html`<span style=${{ fontSize:9, color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${fd(a.date)}</span>`}
                               </div>
                               <!-- Tag badges -->
                               ${actionTagList(a.id).length>0&&html`
@@ -5079,7 +5079,7 @@ function PAccionables({ actions, sA, risks, user }) {
                       <p style=${{ fontSize:13, fontWeight:600, marginBottom:2 }}>${a.text}</p>
                       <div style=${{ display:'flex', gap:8, alignItems:'center', fontSize:11 }}>
                         ${a.owner&&html`<div style=${{ display:'flex', alignItems:'center', gap:3 }}><span>${memberAvatar}</span><span style=${{ color:'#007AFF', fontWeight:600 }}>${a.owner}</span></div>`}
-                        ${a.date&&html`<span style=${{ color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${a.date}</span>`}
+                        ${a.date&&html`<span style=${{ color:overdue?'#FF3B30':'#86868B', fontWeight:overdue?700:400 }}>📅 ${fd(a.date)}</span>`}
                         ${overdue&&html`<span style=${{ color:'#FF3B30', fontWeight:700, fontSize:9, background:'#FF3B3010', padding:'1px 5px', borderRadius:4 }}>VENCIDO</span>`}
                       </div>
                     </div>
@@ -5111,7 +5111,7 @@ function PAccionables({ actions, sA, risks, user }) {
                   if (linked) { sA(actions.filter(a=>a.riskId!==r.id)); }
                   else {
                     const pri=imp.id==='alto'?'high':imp.id==='medio'?'medium':'low';
-                    sA([...actions,{id:uid(),text:'🛡️ Mitigar: '+r.text,owner:r.owner||'',date:r.deadline||'',status:'pending',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id}]);
+                    sA([...actions,{id:uid(),text:'🛡️ Mitigar: '+r.text,owner:r.owner||'',date:r.deadline||'',status:'backlog',priority:pri,voteScore:0,createdBy:user.id,fromCategory:null,noteId:null,riskId:r.id}]);
                   }
                 };
                 return html`
@@ -6232,7 +6232,7 @@ function UserProfileModal({ user, onClose, state, sA, sR }) {
                           background:overdue?'#FFF5F5':'#F9F9FB', border:'1px solid '+(overdue?'#FF3B3020':'#E5E5EA') }}>
                           <div style=${{ width:8, height:8, borderRadius:4, background:PRIS_LOCAL[a.priority]||'#86868B', flexShrink:0 }}></div>
                           <span style=${{ flex:1, fontSize:12, fontWeight:500 }}>${a.text}</span>
-                          ${a.date && html`<span style=${{ fontSize:10, color:overdue?'#FF3B30':'#86868B' }}>📅 ${a.date}</span>`}
+                          ${a.date && html`<span style=${{ fontSize:10, color:overdue?'#FF3B30':'#86868B' }}>📅 ${fd(a.date)}</span>`}
                           <span style=${{ fontSize:9, fontWeight:700, color:a.status==='done'?'#34C759':a.status==='inprogress'?'#007AFF':'#FF9500',
                             background:a.status==='done'?'#F0FFF4':a.status==='inprogress'?'#EEF5FF':'#FFF9E6', padding:'2px 7px', borderRadius:8 }}>
                             ${a.status==='done'?'Hecho':a.status==='inprogress'?'En proceso':a.status==='blocked'?'Bloqueado':a.status==='cancelled'?'Cancelado':'Pendiente'}
