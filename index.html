@@ -2796,6 +2796,7 @@ function RoomPicker() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [rooms, setRooms] = useState(loadRooms);
   const [tab, setTab] = useState('dashboard');
+  const [showAdminNotifs, setShowAdminNotifs] = useState(false);
   const [filterProject, setFilterProject] = useState([]);  // array for multi-select, empty=all
   const [sbRetros, setSbRetros] = useState([]);
   const [loadingSb, setLoadingSb] = useState(true);
@@ -4393,7 +4394,7 @@ function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGo
             <!-- Linked Risk -->
             ${task.riskId && html`
               <div style=${{background:'#FFF5F5',borderRadius:12,border:'1.5px solid #FF3B3015',padding:'14px 16px',cursor:'pointer',transition:'all .15s'}}
-                onClick=${()=>{ if(onGoToRisk) onGoToRisk(task.riskId); onClose(); }}
+                onClick=${()=>{ window.__pendingRiskDetail = task.riskId; if(onGoToRisk) onGoToRisk(task.riskId); onClose(); }}
                 onMouseOver=${e=>{e.currentTarget.style.borderColor='#FF3B30';e.currentTarget.style.background='#FFF0F0';}}
                 onMouseOut=${e=>{e.currentTarget.style.borderColor='#FF3B3015';e.currentTarget.style.background='#FFF5F5';}}>
                 <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
@@ -4513,6 +4514,16 @@ function PTrabajo({ actions, sA, risks, user }) {
   const [eId, setEId] = useState(null);
   const [eF, setEF] = useState({});
   const [detailTask, setDetailTask] = useState(null); // Task for modal view
+  // Check if another component wants to open a specific task
+  useEffect(() => {
+    if (window.__pendingTaskDetail) {
+      const t = window.__pendingTaskDetail;
+      window.__pendingTaskDetail = null;
+      // Find the actual task in actions (the passed one might be stale)
+      const fresh = actions.find(a=>a.id===t.id) || t;
+      setDetailTask({...fresh});
+    }
+  }, []);
   const [mitigateModal, setMitigateModal] = useState(null); // {riskId, taskText}
   const [showTagManager, setShowTagManager] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -5407,7 +5418,164 @@ function heatColor(imp, prob) {
   return score >= 6 ? '#FF3B30' : score >= 3 ? '#FF9500' : '#34C759';
 }
 
-function RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMembers, getAlerts, tags, hasTag, entityTagList, quickToggleTag, IMPACT_BTNS, allRisks, riskNum}) {
+/* ═══ RISK DETAIL MODAL ═══ */
+function RiskDetailModal({ risk, onSave, onClose, onDelete, teamMembers, onGoToTask }) {
+  const [f, setF] = useState({...risk});
+  const typeKey = f.type||'riesgo';
+  const prefix = typeKey==='problema'?'P':typeKey==='oportunidad'?'O':'R';
+  const hc = typeKey==='problema' ? '#FF3B30' : heatColor(f.impact||'medio', f.prob||'media');
+  const linkedTasks = (window.__currentActions||[]).filter(a=>a.riskId===risk.id);
+  const allR = window.__currentRisks||[];
+  const idx = allR.filter(x=>(x.type||'riesgo')===(risk.type||'riesgo')).indexOf(risk)+1;
+
+  const TYPE_OPTS = [
+    {id:'riesgo',label:'Riesgo',icon:'⚠️'},
+    {id:'problema',label:'Problema',icon:'🔴'},
+    {id:'oportunidad',label:'Oportunidad',icon:'🌟'},
+  ];
+  const IMPACT = [{id:'bajo',label:'Bajo'},{id:'medio',label:'Medio'},{id:'alto',label:'Alto'}];
+  const PROB = [{id:'baja',label:'Baja'},{id:'media',label:'Media'},{id:'alta',label:'Alta'}];
+  const STATUS = [{id:'open',label:'Abierto',c:'#FF9500'},{id:'mitigated',label:'Mitigado',c:'#34C759'}];
+
+  const fieldLabel = (text) => html`<label style=${{fontSize:10,color:'#86868B',fontWeight:700,textTransform:'uppercase',letterSpacing:.4,display:'block',marginBottom:4}}>${text}</label>`;
+
+  return html`
+    <div style=${{position:'fixed',inset:0,zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}
+      onClick=${e=>{if(e.target===e.currentTarget)onClose()}}>
+      <div style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.18)',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)'}}></div>
+      <div style=${{position:'relative',background:'#FFF',borderRadius:20,width:'90%',maxWidth:720,maxHeight:'85vh',overflow:'hidden',boxShadow:'0 12px 48px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04)',animation:'fadeIn .2s ease',display:'flex',flexDirection:'column'}}>
+        <!-- Header -->
+        <div style=${{padding:'18px 24px',borderBottom:'1px solid #F2F2F7',display:'flex',alignItems:'center',gap:10,flexShrink:0,background:'#FAFAFA'}}>
+          <span style=${{fontSize:14,fontWeight:800,color:hc,background:hc+'15',padding:'4px 10px',borderRadius:8}}>${prefix}${idx||'?'}</span>
+          <div style=${{flex:1}}>
+            <div style=${{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <span style=${{fontSize:10,fontWeight:700,color:hc,background:hc+'12',padding:'2px 8px',borderRadius:6}}>${TYPE_OPTS.find(t=>t.id===typeKey)?.icon} ${TYPE_OPTS.find(t=>t.id===typeKey)?.label||typeKey}</span>
+              <span style=${{fontSize:10,fontWeight:700,color:f.status==='mitigated'?'#34C759':'#FF9500',background:f.status==='mitigated'?'#F0FFF4':'#FFF8EB',padding:'2px 8px',borderRadius:6}}>${f.status==='mitigated'?'Mitigado':'Abierto'}</span>
+            </div>
+          </div>
+          <button onClick=${onClose} style=${{border:'none',background:'#F2F2F7',borderRadius:10,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:'#86868B'}}>✕</button>
+        </div>
+
+        <!-- Body: 2 columns -->
+        <div style=${{display:'flex',flex:1,overflow:'hidden'}}>
+          <!-- Left: content -->
+          <div style=${{flex:1,padding:'20px',overflowY:'auto',display:'flex',flexDirection:'column',gap:14}}>
+            <div>
+              ${fieldLabel('Descripción del riesgo')}
+              <textarea value=${f.text||''} onInput=${e=>setF({...f,text:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:14,fontWeight:600,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:60,boxSizing:'border-box'}} />
+            </div>
+            <div>
+              ${fieldLabel('Plan de mitigación')}
+              <textarea value=${f.mitigation||''} onInput=${e=>setF({...f,mitigation:e.target.value})}
+                placeholder="¿Cómo se va a mitigar este riesgo?"
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:60,boxSizing:'border-box'}} />
+            </div>
+            ${typeKey==='oportunidad'&&html`<div>
+              ${fieldLabel('Oportunidad asociada')}
+              <textarea value=${f.opportunity||''} onInput=${e=>setF({...f,opportunity:e.target.value})}
+                placeholder="Beneficio potencial si se materializa"
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:40,boxSizing:'border-box'}} />
+            </div>`}
+
+            <!-- Linked Tasks -->
+            <div>
+              ${fieldLabel('Tareas vinculadas')}
+              ${linkedTasks.length===0
+                ? html`<p style=${{fontSize:12,color:'#C7C7CC',padding:'8px 0'}}>Sin tareas vinculadas a este riesgo</p>`
+                : html`<div style=${{display:'flex',flexDirection:'column',gap:5}}>
+                    ${linkedTasks.map(a=>{
+                      const st=STS.find(s=>s.id===a.status)||STS[0];
+                      return html`
+                        <div key=${a.id} onClick=${()=>{if(onGoToTask)onGoToTask(a);onClose();}}
+                          style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,background:'#F9F9FB',border:'1.5px solid #E5E5EA',cursor:'pointer',transition:'border-color .15s'}}
+                          onMouseOver=${e=>e.currentTarget.style.borderColor='#007AFF'}
+                          onMouseOut=${e=>e.currentTarget.style.borderColor='#E5E5EA'}>
+                          <span style=${{fontSize:10,fontWeight:700,color:st.color,background:st.bg,padding:'2px 7px',borderRadius:5}}>${st.label}</span>
+                          <div style=${{flex:1,minWidth:0}}>
+                            <div style=${{fontSize:12,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none'}}>${a.text}</div>
+                            <div style=${{fontSize:10,color:'#86868B',marginTop:1}}>${a.owner||'Sin asignar'}${a.date?' · '+fd(a.date):''}</div>
+                          </div>
+                          <span style=${{fontSize:11,color:'#007AFF',fontWeight:600,flexShrink:0}}>Abrir →</span>
+                        </div>`;
+                    })}
+                  </div>`}
+            </div>
+
+            <!-- Meta -->
+            <div style=${{fontSize:10,color:'#C7C7CC',display:'flex',gap:16,paddingTop:8,borderTop:'1px solid #F2F2F7'}}>
+              ${f.createdAt&&html`<span>Identificado: ${fd(f.createdAt)}</span>`}
+              ${f.deadline&&html`<span>Resolución: ${fd(f.deadline)}</span>`}
+            </div>
+          </div>
+
+          <!-- Right sidebar -->
+          <div style=${{width:220,borderLeft:'1px solid #E5E5EA',padding:'16px',overflowY:'auto',background:'#FAFAFA',display:'flex',flexDirection:'column',gap:12,flexShrink:0}}>
+            <div>
+              ${fieldLabel('Estado')}
+              <select value=${f.status||'open'} onChange=${e=>setF({...f,status:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',background:'#FFF'}}>
+                ${STATUS.map(s=>html`<option key=${s.id} value=${s.id}>${s.label}</option>`)}
+              </select>
+            </div>
+            <div>
+              ${fieldLabel('Tipo')}
+              <select value=${f.type||'riesgo'} onChange=${e=>setF({...f,type:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',background:'#FFF'}}>
+                ${TYPE_OPTS.map(t=>html`<option key=${t.id} value=${t.id}>${t.icon} ${t.label}</option>`)}
+              </select>
+            </div>
+            <div>
+              ${fieldLabel('Responsable')}
+              <select value=${f.owner||''} onChange=${e=>setF({...f,owner:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',background:'#FFF'}}>
+                <option value="">— Sin asignar —</option>
+                ${f.owner && !(teamMembers||[]).some(m=>m.name===f.owner) && html`<option value=${f.owner}>${f.owner}</option>`}
+                ${(teamMembers||[]).map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
+              </select>
+            </div>
+            <div>
+              ${fieldLabel('Impacto')}
+              <select value=${f.impact||'medio'} onChange=${e=>setF({...f,impact:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',background:'#FFF'}}>
+                ${IMPACT.map(i=>html`<option key=${i.id} value=${i.id}>${i.label}</option>`)}
+              </select>
+            </div>
+            ${typeKey!=='problema'&&html`<div>
+              ${fieldLabel('Probabilidad')}
+              <select value=${f.prob||'media'} onChange=${e=>setF({...f,prob:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',background:'#FFF'}}>
+                ${PROB.map(p=>html`<option key=${p.id} value=${p.id}>${p.label}</option>`)}
+              </select>
+            </div>`}
+            <div>
+              ${fieldLabel('Fecha identificación')}
+              <input type="date" value=${(f.createdAt||'').slice(0,10)} onInput=${e=>setF({...f,createdAt:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}} />
+            </div>
+            <div>
+              ${fieldLabel('Fecha resolución')}
+              <input type="date" value=${f.deadline||''} onInput=${e=>setF({...f,deadline:e.target.value})}
+                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px 10px',fontSize:12,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}} />
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div style=${{padding:'14px 24px',borderTop:'1px solid #F2F2F7',display:'flex',gap:8,justifyContent:'space-between',flexShrink:0,background:'#FAFAFA'}}>
+          <button onClick=${()=>{if(confirm('¿Eliminar este riesgo?'))onDelete(risk.id)}}
+            style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #FF3B3015',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>Eliminar</button>
+          <div style=${{display:'flex',gap:8}}>
+            <button onClick=${onClose} style=${{padding:'8px 20px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:500,cursor:'pointer',color:'#6E6E73'}}>Cancelar</button>
+            <button onClick=${()=>{onSave({...f});onClose();}} style=${{padding:'8px 24px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#007AFF,#5856D6)',color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+
+function RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMembers, getAlerts, tags, hasTag, entityTagList, quickToggleTag, IMPACT_BTNS, allRisks, riskNum, onOpenDetail}) {
     const typeKey = r.type||'riesgo';
     const prefix = typeKey==='problema'?'P':typeKey==='oportunidad'?'O':'R';
     const hc = typeKey==='problema' ? '#FF3B30' : heatColor(r.impact||'medio', r.prob||'media');
@@ -5438,9 +5606,9 @@ function RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMem
         ` : html`
           <div>
             <div style=${{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:8 }}>
-              <span style=${{ fontSize:13, fontWeight:800, color:hc, minWidth:30 }}>${prefix}${idx}</span>
+              <span onClick=${()=>!fromHist&&onOpenDetail&&onOpenDetail(r)} style=${{ fontSize:13, fontWeight:800, color:hc, minWidth:30, cursor:fromHist?'default':'pointer' }}>${prefix}${idx}</span>
               <div style=${{ flex:1 }}>
-                <p style=${{ fontSize:13, fontWeight:600, margin:'0 0 3px' }}>${r.text}</p>
+                <p onClick=${()=>!fromHist&&onOpenDetail&&onOpenDetail(r)} style=${{ fontSize:13, fontWeight:600, margin:'0 0 3px', cursor:fromHist?'default':'pointer' }}>${r.text}</p>
                 ${r.mitigation && html`<p style=${{ fontSize:11, color:'#86868B', margin:0 }}>🛡️ ${r.mitigation}</p>`}
                 ${r.opportunity && html`<p style=${{ fontSize:11, color:'#34C759', margin:0 }}>🌟 ${r.opportunity}</p>`}
                 ${!fromHist && html`
@@ -5536,7 +5704,17 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
     const idx = ESCAL_CHAIN.indexOf(current);
     return idx >= 0 && idx < ESCAL_CHAIN.length - 1 ? ESCAL_CHAIN[idx + 1] : null;
   };
-  const [linkModal, setLinkModal] = useState(null); // {riskId, riskText} - post-creation link dialog
+  const [linkModal, setLinkModal] = useState(null);
+  const [detailRisk, setDetailRisk] = useState(null);
+  // Check if another component wants to open a specific risk
+  useEffect(() => {
+    if (window.__pendingRiskDetail) {
+      const rId = window.__pendingRiskDetail;
+      window.__pendingRiskDetail = null;
+      const r = allRisks.find(x=>x.id===rId);
+      if (r) setDetailRisk({...r});
+    }
+  }, []); // {riskId, riskText} - post-creation link dialog
   const [form,   setForm]   = useState({type:'riesgo', text:'', impact:'medio', prob:'media', owner:'', mitigation:'', status:'open', opportunity:'', deadline:''});
   const [eId,    setEId]    = useState(null);
   const [eF,     setEF]     = useState({});
@@ -5641,7 +5819,7 @@ const addItem = () => {
 
   const IMPACT_BTNS = [{id:'alto',label:'Alto',color:'#FF3B30'},{id:'medio',label:'Medio',color:'#FF9500'},{id:'bajo',label:'Bajo',color:'#34C759'}];
 
-  const renderRisk = (r, fromHist) => RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMembers, getAlerts, tags, hasTag, entityTagList, quickToggleTag, IMPACT_BTNS, allRisks, riskNum});
+  const renderRisk = (r, fromHist) => RiskCard({r, fromHist, upd, del, setEId, setEF, eId, eF, saveE, teamMembers, getAlerts, tags, hasTag, entityTagList, quickToggleTag, IMPACT_BTNS, allRisks, riskNum, onOpenDetail:x=>setDetailRisk({...x})});
 
   return html`
     <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
@@ -5864,6 +6042,19 @@ const addItem = () => {
       `}
 
       <!-- Link task to risk modal -->
+      <!-- RiskDetailModal -->
+      ${detailRisk && html`<${RiskDetailModal}
+        risk=${detailRisk}
+        teamMembers=${teamMembers}
+        onSave=${(updated) => { sR(allRisks.map(r=>r.id===updated.id?{...r,...updated}:r)); setDetailRisk(null); }}
+        onDelete=${(id) => { sR(allRisks.filter(r=>r.id!==id)); setDetailRisk(null); }}
+        onClose=${() => setDetailRisk(null)}
+        onGoToTask=${(task) => {
+          setDetailRisk(null);
+          // Navigate to Seguimiento and open task detail
+          if(window.__goToTask) window.__goToTask(task);
+        }} />`}
+
       <!-- Risk-Task Link Dialog -->
       ${linkModal && html`
         <div style=${{position:'fixed',inset:0,zIndex:20000,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}
@@ -6681,6 +6872,11 @@ function RetroBoard({ user, onLogout }) {
       const newTask = {id:uid(),text:'Mitigar: '+riskText,description:'Tarea vinculada al riesgo',owner:'Sin asignar',date:'',status:'backlog',priority:'high',voteScore:0,createdBy:user?.id||'',fromCategory:null,noteId:null,riskId:riskId,source:'risk',type:'tarea',createdAt:new Date().toISOString()};
       sARef.current([...currentActions, newTask]);
     };
+    window.__goToTask = (task) => {
+      setMainTab('trabajo');
+      // The PTrabajo component will pick up window.__pendingTaskDetail
+      window.__pendingTaskDetail = task;
+    };
     window.__goToRisk = (riskId) => {
       setMainTab('riesgos');
     };
@@ -6689,7 +6885,7 @@ function RetroBoard({ user, onLogout }) {
       const updated = currentRisks.map(r => r.id === riskId ? {...r, status:'mitigated'} : r);
       sRRef.current(updated);
     };
-    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; window.__updateActions = null; };
+    return () => { window.__goToRisk = null; window.__goMitigateRisk = null; window.__createLinkedTask = null; window.__updateActions = null; window.__goToTask = null; };
   }, []);
 
   const saveRetro = () => {
