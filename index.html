@@ -242,6 +242,7 @@ const CATS = [
   { id:'stop', label:'Stop', emoji:'🛑', color:'#FF9500', bg:'#FFF8EB' },
 ];
 const STS = [
+  { id:'backlog', label:'Backlog', color:'#86868B', bg:'#F2F2F7' },
   { id:'pending', label:'Pendiente', color:'#FF9500', bg:'#FFF8EB' },
   { id:'inprogress', label:'En progreso', color:'#007AFF', bg:'#EBF5FF' },
   { id:'blocked', label:'Bloqueado', color:'#FF3B30', bg:'#FFF5F5' },
@@ -2907,7 +2908,7 @@ function RoomPicker() {
             <!-- KPI grid: Retro + Equipo + Riesgos + Vacaciones -->
             ${(() => {
               const allMembers = window.__allMembers || [];
-              const salaMembers = filterProject==='all' ? allMembers : allMembers.filter(m=>(m.rooms||[]).includes(filterProject));
+              const salaMembers = filterProject.length===0 ? allMembers : allMembers.filter(m=>(m.rooms||[]).some(r=>filterProject.includes(r)));
               const today = new Date().toISOString().slice(0,10);
               const onVacToday = salaMembers.filter(m=>(m.vacations||[]).some(v=>v.from<=today&&(!v.to||v.to>=today))).length;
               const totalRisksFromRetros = filteredStats.reduce((s,x)=>s+x.risksOpen,0);
@@ -4402,7 +4403,7 @@ function PTrabajo({ actions, sA, risks, user }) {
     sA([...actions, {
       id: uid(), text: form.text.trim(), description: form.description||'',
       owner: form.owner||'Sin asignar', date: form.date||'',
-      status: 'pending', priority: form.priority, type: form.type||'tarea',
+      status: 'backlog', priority: form.priority, type: form.type||'tarea',
       voteScore: 0, createdBy: user.id, source: 'manual',
       storyPoints: form.storyPoints||null, sprint: form.sprint||'', epicLink: form.epicLink||'', demandOrigin: form.demandOrigin||'',
       fromCategory: null, noteId: null, riskId: null, parentId: null,
@@ -4516,6 +4517,8 @@ function PTrabajo({ actions, sA, risks, user }) {
           <!-- Actions -->
           <div style=${{ display:'flex', gap:2, flexShrink:0, alignItems:'flex-start', flexDirection:'column' }}>
             <div style=${{ display:'flex', gap:2 }}>
+              ${a.status==='backlog'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'pending')}} title="Planificar"
+                style=${{ border:'none', background:'#FF9500', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▷ Pendiente</button>`}
               ${a.status==='pending'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Iniciar — mover al Board"
                 style=${{ border:'none', background:'#007AFF', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▶ Iniciar</button>`}
               ${a.status==='inprogress'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'done')}} title="Completar tarea"
@@ -4641,14 +4644,14 @@ function PTrabajo({ actions, sA, risks, user }) {
       ${subView==='backlog' && html`
         <div>
           ${(() => {
-            const pending = sortActions(filterActions(openItems.filter(a=>a.status==='pending')));
-            const active = sortActions(filterActions(openItems.filter(a=>a.status!=='pending')));
+            const pending = sortActions(filterActions(openItems.filter(a=>a.status==='backlog')));
+            const active = sortActions(filterActions(openItems.filter(a=>a.status!=='backlog')));
             return html`
               <!-- Pending section: items to pull into board -->
               <div style=${{ marginBottom:active.length>0?16:0 }}>
                 <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                   <h3 style=${{ fontSize:13, fontWeight:700, color:'#FF9500', margin:0 }}>Pendientes</h3>
-                  <span style=${{ fontSize:10, color:'#86868B' }}>${pending.length} — pulsa "▶ Iniciar" para mover al Board</span>
+                  <span style=${{ fontSize:10, color:'#86868B' }}>${pending.length} — pulsa "▷ Pendiente" para planificar</span>
                 </div>
                 ${pending.length===0
                   ? html`<div style=${{ textAlign:'center', padding:24, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:12, fontSize:12 }}>Backlog vacío. Crea tareas con el botón "Nueva tarea".</div>`
@@ -4716,7 +4719,7 @@ function PTrabajo({ actions, sA, risks, user }) {
                     </td>
                     <td style=${{ padding:'8px 10px' }}>
                       <span style=${{ fontWeight:600, textDecoration:a.status==='done'?'line-through':'none', color:a.status==='done'?'#86868B':'#1D1D1F', cursor:'pointer' }}
-                        onClick=${()=>setDetailTask(a)}>${a.text}</span>
+                        onClick=${()=>setDetailTask({...a})}>${a.text}</span>
                       ${a.source==='retro'&&html`<span style=${{ fontSize:8, marginLeft:6, color:'#FF9500', fontWeight:600 }}>retro</span>`}
                     </td>
                     <td style=${{ padding:'8px 10px', color:'#007AFF', fontSize:11 }}>${a.owner||'—'}</td>
@@ -8137,7 +8140,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
       `}
 
       <!-- ══ ACCIONABLES ══ -->
-      ${activeTab === 'tareas' && html`
+      ${activeTab === 'accionables' && html`
         <div style=${{ ...cS, padding:20 }}>
           <div style=${{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
             <h3 style=${{ fontSize:15, fontWeight:700 }}>🎯 Accionables (${actions.length})</h3>
