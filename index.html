@@ -7817,10 +7817,10 @@ function P5Risks({ risks, sR, notes, user }) {
                     </select>
                   </div>
                   <!-- Tag badges on risk card -->
-                  ${!fromHist && tags.length>0 && html`
+                  ${tags.length>0 && html`
                     <div style=${{display:'flex',gap:3,flexWrap:'wrap',marginTop:6}}>
                       ${entityTagList('risk',r.id).map(t=>html`
-                        <span key=${t.id} onClick=${()=>!fromHist&&quickToggleTag(t.id,'risk',r.id)}
+                        <span key=${t.id} onClick=${()=>quickToggleTag(t.id,'risk',r.id)}
                           style=${{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:10,background:t.color,color:'#FFF',cursor:'pointer'}}>
                           ${t.name} ✕
                         </span>`)}
