@@ -1008,6 +1008,7 @@ function GobiernoPanel({ rooms, allData, myActions, myRisks }) {
 
 function UserHomePage({ user, onLogout, onSelectProject }) {
   const [section,      setSection]      = useState('dashboard');
+  const [miTrabajoTab, setMiTrabajoTab] = useState('hoy');
   const [rooms,        setRooms]        = useState([]);
   const [profile,      setProfile]      = useState(null);
   const [allData,      setAllData]      = useState({});
@@ -1489,8 +1490,60 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
           ${/* ═══ PERSONAS (SM only) ═══ */''} 
           ${section==='personas'&&isSM&&html`<div>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Personas</h1>
-            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Directorio, roles, organigrama y capacidad</p>
-            <${PersonasPanel} rooms=${rooms} />
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Directorio, roles y carga de trabajo</p>
+            <!-- Person cards with KPIs -->
+            ${(()=>{
+              const members = window.__allMembers||[];
+              if(members.length===0) return html`<p style=${{color:'#86868B',fontSize:13}}>Cargando equipo...</p>`;
+              const today = new Date().toISOString().slice(0,10);
+              const yr = new Date().getFullYear();
+              return html`<div style=${{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+                ${members.map(m=>{
+                  // Count tasks across all projects
+                  const myTasks = Object.values(allData).flatMap(d=>(d.actions||[]).filter(a=>a.owner===m.name&&a.status!=='done'&&a.status!=='cancelled'));
+                  const myRisksCount = Object.values(allData).flatMap(d=>(d.risks||[]).filter(r=>r.owner===m.name&&r.status!=='mitigated')).length;
+                  const vacs = Array.isArray(m.vacations)?m.vacations:[];
+                  const usedDays = vacs.filter(v=>v.from&&v.from.startsWith(String(yr))).reduce((s,v)=>{
+                    const f=new Date(v.from),t=new Date(v.to||v.from); return s+Math.max(1,Math.round((t-f)/(86400000))+1);
+                  },0);
+                  const totalDays = 22; // default annual leave
+                  const vacPct = Math.min(100,Math.round((usedDays/totalDays)*100));
+                  const isAway = vacs.some(v=>v.from<=today&&(!v.to||v.to>=today));
+                  const overdue = myTasks.filter(a=>a.date&&a.date<today).length;
+                  return html`
+                    <div key=${m.id} style=${{background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',padding:'16px',display:'flex',flexDirection:'column',gap:10}}>
+                      <div style=${{display:'flex',alignItems:'center',gap:12}}>
+                        <div style=${{width:40,height:40,borderRadius:12,background:m.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0,position:'relative'}}>
+                          ${m.avatar||'👤'}
+                          ${isAway&&html`<div style=${{position:'absolute',bottom:-2,right:-2,width:14,height:14,borderRadius:7,background:'#FF9500',border:'2px solid #FFF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8}}>🌴</div>`}
+                        </div>
+                        <div style=${{flex:1,minWidth:0}}>
+                          <div style=${{fontSize:14,fontWeight:700}}>${m.name}</div>
+                          <div style=${{fontSize:11,color:'#86868B'}}>${m.role_label||''}${m.company?' · '+m.company:''}</div>
+                        </div>
+                      </div>
+                      <div style=${{display:'flex',gap:8}}>
+                        <div style=${{flex:1,padding:'8px',borderRadius:10,background:overdue>0?'#FFF5F5':'#F0F7FF',textAlign:'center'}}>
+                          <div style=${{fontSize:18,fontWeight:800,color:overdue>0?'#FF3B30':'#007AFF'}}>${myTasks.length}</div>
+                          <div style=${{fontSize:9,color:'#86868B'}}>Tareas${overdue>0?' ('+overdue+' vencidas)':''}</div>
+                        </div>
+                        <div style=${{flex:1,padding:'8px',borderRadius:10,background:myRisksCount>0?'#FFF9E6':'#F9F9FB',textAlign:'center'}}>
+                          <div style=${{fontSize:18,fontWeight:800,color:myRisksCount>0?'#FF9500':'#6E6E73'}}>${myRisksCount}</div>
+                          <div style=${{fontSize:9,color:'#86868B'}}>Riesgos</div>
+                        </div>
+                        <div style=${{flex:1,padding:'8px',borderRadius:10,background:'#F9F9FB',textAlign:'center'}}>
+                          <div style=${{fontSize:18,fontWeight:800,color:vacPct>80?'#FF3B30':vacPct>50?'#FF9500':'#34C759'}}>${vacPct}%</div>
+                          <div style=${{fontSize:9,color:'#86868B'}}>Vacaciones</div>
+                        </div>
+                      </div>
+                      ${(m.rooms||[]).length>0&&html`
+                        <div style=${{display:'flex',gap:3,flexWrap:'wrap'}}>
+                          ${(m.rooms||[]).map(slug=>{const rm=rooms.find(r=>r.slug===slug); return rm?html`<span key=${slug} style=${{fontSize:9,padding:'2px 7px',borderRadius:8,background:'#F2F2F7',color:'#6E6E73'}}>${rm.name}</span>`:null;})}
+                        </div>`}
+                    </div>`;
+                })}
+              </div>`;
+            })()}
           </div>`}
 
           ${/* ═══ GOBIERNO (SM only) ═══ */''} 
@@ -1565,33 +1618,78 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             </div>
           </div>`}
 
-          ${section==='mi_trabajo'&&html`<div>
+          ${section==='mi_trabajo'&&html`<div style=${{maxWidth:720}}>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mi trabajo</h1>
-            <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Todas tus tareas asignadas</p>
-            ${myActions.length===0?html`
-              <div style=${{textAlign:'center',padding:'60px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:20}}>
-                <${Icon} name="CheckCircle" size=${44} color="#34C759" />
-                <p style=${{fontSize:14,marginTop:12,color:'#34C759',fontWeight:600}}>¡Todo al día!</p>
-                <p style=${{fontSize:12,marginTop:4}}>Tus accionables aparecerán aquí al visitar los proyectos</p>
-              </div>`:
-            html`<div style=${{display:'flex',flexDirection:'column',gap:7}}>
-              ${myActions.map(a=>{
-                const ov=a.date&&a.date<today&&a.status!=='done'&&a.status!=='discarded';
-                const STS={pending:{c:'#FF9500',bg:'#FFF9E6',l:'Pendiente'},inprogress:{c:'#007AFF',bg:'#EEF5FF',l:'En progreso'},done:{c:'#34C759',bg:'#F0FFF4',l:'Completado'},discarded:{c:'#C7C7CC',bg:'#F9F9F9',l:'Desc.'}};
-                const st=STS[a.status||'pending']||STS.pending;
-                return html`<div key=${a.id||Math.random()} style=${{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderRadius:14,background:'#FFF',border:'1.5px solid '+(ov?'#FF3B3020':'#E5E5EA'),borderLeft:'3px solid '+(ov?'#FF3B30':'#E5E5EA')}}>
-                  <${Icon} name=${a.status==='done'?'CheckCircle2':ov?'AlertCircle':'Clock'} size=${16} color=${a.status==='done'?'#34C759':ov?'#FF3B30':'#86868B'} />
-                  <div style=${{flex:1}}>
-                    <div style=${{fontSize:13,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none',color:a.status==='done'?'#86868B':'#1D1D1F'}}>${a.text}</div>
-                    <div style=${{display:'flex',gap:8,marginTop:2,fontSize:10,color:'#86868B'}}>
-                      ${a.date&&html`<span style=${{color:ov?'#FF3B30':'inherit'}}>📅 ${fd(a.date)}</span>`}
-                      ${a._room&&html`<span>${a._room}</span>`}
-                    </div>
-                  </div>
-                  <span style=${{fontSize:10,fontWeight:600,padding:'3px 9px',borderRadius:20,background:st.bg,color:st.c,flexShrink:0,whiteSpace:'nowrap'}}>${st.l}</span>
-                </div>`;
-              })}
-            </div>`}
+            <p style=${{fontSize:13,color:'#86868B',marginBottom:16}}>Tus tareas organizadas por urgencia</p>
+            ${(()=>{
+              const today=new Date().toISOString().slice(0,10);
+              const endOfWeek=(()=>{const d=new Date();d.setDate(d.getDate()+(7-d.getDay()));return d.toISOString().slice(0,10);})();
+              const all=myActions.filter(a=>a.status!=='cancelled');
+              const overdue=all.filter(a=>a.status!=='done'&&a.date&&a.date<today);
+              const todayTasks=all.filter(a=>a.status!=='done'&&a.date&&a.date===today);
+              const weekTasks=all.filter(a=>a.status!=='done'&&a.date&&a.date>today&&a.date<=endOfWeek);
+              const blocked=all.filter(a=>a.status==='blocked');
+              const done=all.filter(a=>a.status==='done').sort((a,b)=>(b.updatedAt||'')>(a.updatedAt||'')?1:-1).slice(0,15);
+              const tabs=[
+                {id:'hoy',    label:'Hoy',         count:overdue.length+todayTasks.length, items:[...overdue,...todayTasks], color:'#FF3B30', emptyIcon:'CheckCircle2', emptyMsg:'Nada urgente para hoy', emptyTip:'Revisa tu semana o el backlog.'},
+                {id:'semana', label:'Esta semana',  count:weekTasks.length,                 items:weekTasks,                 color:'#007AFF', emptyIcon:'Calendar',     emptyMsg:'Semana despejada',      emptyTip:'Sin tareas esta semana.'},
+                {id:'blocked',label:'Bloqueadas',   count:blocked.length,                   items:blocked,                   color:'#FF3B30', emptyIcon:'Unlock',       emptyMsg:'Sin bloqueos',          emptyTip:'No tienes tareas bloqueadas.'},
+                {id:'done',   label:'Completadas',  count:done.length,                      items:done,                      color:'#34C759', emptyIcon:'Trophy',       emptyMsg:'Aún no hay completadas',emptyTip:'Las tareas completadas aparecerán aquí.'},
+              ];
+              return html`
+                <div style=${{display:'flex',gap:6,marginBottom:16}}>
+                  ${tabs.map(t=>html`
+                    <button key=${t.id} onClick=${()=>setMiTrabajoTab(t.id)}
+                      style=${{display:'flex',alignItems:'center',gap:5,padding:'7px 14px',borderRadius:20,border:'none',
+                        background:miTrabajoTab===t.id?'#1D1D1F':'#F2F2F7',
+                        color:miTrabajoTab===t.id?'#FFF':'#6E6E73',
+                        fontSize:12,fontWeight:miTrabajoTab===t.id?700:500,cursor:'pointer'}}>
+                      ${t.label}${t.count>0?html`<span style=${{background:'rgba(255,255,255,.2)',borderRadius:10,padding:'0 6px',fontSize:10,fontWeight:700}}>${t.count}</span>`:''}
+                    </button>`)}
+                </div>
+                ${(()=>{
+                  const tab=tabs.find(t=>t.id===(miTrabajoTab));
+                  if(!tab||tab.items.length===0) return html`
+                    <div style=${{textAlign:'center',padding:'48px 20px',color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:20}}>
+                      <${Icon} name=${tab?.emptyIcon||'CheckCircle2'} size=${36} color="#34C759" />
+                      <p style=${{fontSize:14,marginTop:12,color:'#34C759',fontWeight:600}}>${tab?.emptyMsg||'Todo al día'}</p>
+                      <p style=${{fontSize:12,color:'#86868B',marginTop:4}}>${tab?.emptyTip||''}</p>
+                    </div>`;
+                  // Group items by project
+                  const byProj={};
+                  tab.items.forEach(a=>{
+                    const proj=a._room||'Sin proyecto';
+                    if(!byProj[proj])byProj[proj]=[];
+                    byProj[proj].push(a);
+                  });
+                  return html`<div style=${{display:'flex',flexDirection:'column',gap:14}}>
+                    ${Object.entries(byProj).map(([proj,items])=>html`
+                      <div key=${proj}>
+                        <div style=${{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                          <${Icon} name="FolderOpen" size=${13} color="#007AFF" />
+                          <span style=${{fontSize:12,fontWeight:700,color:'#1D1D1F'}}>${proj}</span>
+                          <span style=${{fontSize:10,color:'#86868B'}}>${items.length}</span>
+                        </div>
+                        <div style=${{display:'flex',flexDirection:'column',gap:5}}>
+                          ${items.map(a=>{
+                            const tp=ITEM_TYPE_MAP[a.type||'tarea']||ITEM_TYPES[0];
+                            const ov=a.date&&a.date<today&&a.status!=='done';
+                            return html`
+                              <div key=${a.id} style=${{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:11,background:'#FFF',border:'1px solid #E5E5EA',borderLeft:'3px solid '+(ov?'#FF3B30':tp.color)}}>
+                                <span style=${{color:tp.color,fontSize:12,fontWeight:800}}>${tp.icon}</span>
+                                <div style=${{flex:1,minWidth:0}}>
+                                  <div style=${{fontSize:12,fontWeight:600,textDecoration:a.status==='done'?'line-through':'none'}}>${a.text}</div>
+                                  <div style=${{fontSize:10,color:'#86868B',marginTop:1}}>${a.owner||'Sin asignar'}${a.date?' · '+fd(a.date):''}</div>
+                                </div>
+                                ${ov&&html`<span style=${{fontSize:9,fontWeight:700,color:'#FF3B30',background:'#FF3B3010',padding:'2px 6px',borderRadius:4}}>VENCIDA</span>`}
+                              </div>`;
+                          })}
+                        </div>
+                      </div>`)}
+                  </div>`;
+                })()}
+              `;
+            })()}
           </div>`}
 
 
@@ -4511,6 +4609,58 @@ function GlobalConfirm() {
 window.__confirm = (opts) => __confirmState.set && __confirmState.set(opts);
 
 
+/* ═══ CHECKLIST EDITOR — interactive checkboxes in task descriptions ═══ */
+function ChecklistEditor({ value, onChange }) {
+  const lines = (value||'').split('\n');
+  const addItem = () => onChange((value||'') + '\n- [ ] ');
+  const toggleCheck = (idx) => {
+    const updated = lines.map((l,i) => {
+      if (i !== idx) return l;
+      if (l.startsWith('- [x] ')) return '- [ ] ' + l.slice(6);
+      if (l.startsWith('- [ ] ')) return '- [x] ' + l.slice(6);
+      return l;
+    });
+    onChange(updated.join('\n'));
+  };
+  const updateLine = (idx, text) => {
+    const updated = lines.map((l,i) => i===idx ? text : l);
+    onChange(updated.join('\n'));
+  };
+  const isChecklist = lines.some(l => l.startsWith('- [ ] ') || l.startsWith('- [x] '));
+  
+  return html`<div>
+    <div style=${{display:'flex',gap:4,marginBottom:6}}>
+      <button onClick=${addItem} type="button"
+        style=${{padding:'4px 10px',borderRadius:7,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:11,cursor:'pointer',color:'#6E6E73',display:'flex',alignItems:'center',gap:4}}>
+        <${Icon} name="CheckSquare" size=${12} color="#86868B" /> Checklist
+      </button>
+    </div>
+    ${isChecklist ? html`
+      <div style=${{display:'flex',flexDirection:'column',gap:2}}>
+        ${lines.map((line, idx) => {
+          const isCheck = line.startsWith('- [ ] ') || line.startsWith('- [x] ');
+          const checked = line.startsWith('- [x] ');
+          const text = isCheck ? line.slice(6) : line;
+          return isCheck ? html`
+            <div key=${idx} style=${{display:'flex',alignItems:'center',gap:8,padding:'4px 0'}}>
+              <input type="checkbox" checked=${checked} onChange=${()=>toggleCheck(idx)}
+                style=${{accentColor:'#007AFF',cursor:'pointer',width:16,height:16,flexShrink:0}} />
+              <input value=${text} onInput=${e=>updateLine(idx, (checked?'- [x] ':'- [ ] ')+e.target.value)}
+                style=${{flex:1,border:'none',borderBottom:'1px solid #E5E5EA',padding:'4px 0',fontSize:13,fontFamily:'inherit',outline:'none',
+                  textDecoration:checked?'line-through':'none',color:checked?'#86868B':'#1D1D1F'}} />
+            </div>` : html`
+            <textarea key=${idx} value=${line} onInput=${e=>{const updated=[...lines];updated[idx]=e.target.value;onChange(updated.join('\n'));}}
+              style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:8,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:40,boxSizing:'border-box'}} />`;
+        })}
+      </div>` : html`
+      <textarea value=${value||''} onInput=${e=>onChange(e.target.value)}
+        placeholder="Describe la tarea en detalle…"
+        style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:100,boxSizing:'border-box'}} />
+    `}
+  </div>`;
+}
+
+
 /* ═══ TASK DETAIL MODAL — JIRA-style ═══ */
 function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGoToRisk, teamMembers, tags, tagAssignments, onToggleTag }) {
   const [f, setF] = useState({...task});
@@ -4570,9 +4720,7 @@ function TaskDetailModal({ task, onSave, onClose, onDelete, onMitigateRisk, onGo
             <!-- Description -->
             <div>
               ${fieldLabel('Descripción')}
-              <textarea value=${f.description||''} onInput=${e=>setF({...f,description:e.target.value})}
-                placeholder="Describe la tarea en detalle…"
-                style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:100,boxSizing:'border-box'}} />
+              <${ChecklistEditor} value=${f.description||''} onChange=${v=>setF({...f,description:v})} />
             </div>
             <!-- Tags -->
             <div>
