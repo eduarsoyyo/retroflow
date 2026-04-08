@@ -7412,6 +7412,18 @@ function RetroBoard({ user, onLogout }) {
   useEffect(() => {
     sbLoadRetros().then(all => setSbRetroHistory((all||[]).filter(r=>r.sala===SALA)));
   }, []);
+
+  useEffect(() => {
+    if (phase !== 5) return;
+    const autoClose = setTimeout(async () => {
+      if (phase === 5 && state.notes?.length > 0) {
+        await sbCreateRetroArchive(SALA, TIPO, state, user?.id);
+        reset(); advanceToPhase(0); setMainTab('retro'); setTimer(900); setRunning(false); setPhaseTimes({}); phaseStartRef.current=Date.now();
+        showToast('Retro auto-archivada tras 2 horas');
+      }
+    }, 2 * 60 * 60 * 1000);
+    return () => clearTimeout(autoClose);
+  }, [phase]);
   const [toast,   setToast]   = useState(null);
   const globalErr = useErrToast();
   const tRef = useRef(null);
@@ -7545,7 +7557,11 @@ function RetroBoard({ user, onLogout }) {
     if (phase===2) return html`<${P3} notes=${state.notes} sN=${sN} user=${user} />`;
     if (phase===3) return html`<${P5Risks} risks=${state.risks} sR=${sR} notes=${state.notes} user=${user} />`;
     if (phase===4) return html`<${P4} notes=${state.notes} actions=${state.actions} risks=${state.risks} sA=${sA} user=${user} />`;
-    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} phaseTimes=${phaseTimes} />`;
+    if (phase===5) return html`<${P6} notes=${state.notes} actions=${state.actions} risks=${state.risks} users=${online} user=${user} obj=${state.obj} tasks=${state.tasks} phaseTimes=${phaseTimes} onFinalize=${async()=>{
+      await sbCreateRetroArchive(SALA, TIPO, state, user.id);
+      reset(); advanceToPhase(0); setMainTab('retro'); setTimer(900); setRunning(false); setPhaseTimes({}); phaseStartRef.current=Date.now();
+      showToast('Retro finalizada y archivada en Supabase');
+    }} />`;
 
     return null;
   };
@@ -7849,46 +7865,45 @@ function RetroBoard({ user, onLogout }) {
       />`}
 
       ${showGuide && html`
-        <div style=${{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'5vh 16px' }} onClick=${()=>setShowGuide(false)}>
-          <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:22, maxWidth:600, width:'100%', height:'90vh', boxShadow:'0 24px 80px rgba(0,0,0,0.25)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style=${{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'5vh 16px' }}>
+          <div onClick=${()=>setShowGuide(false)} style=${{position:'absolute',inset:0}}></div>
+          <div onClick=${e=>e.stopPropagation()} style=${{ background:'#FFF', borderRadius:22, maxWidth:540, width:'100%', maxHeight:'85vh', boxShadow:'0 24px 80px rgba(0,0,0,0.25)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style=${{ padding:'22px 26px 14px', borderBottom:'1px solid #E5E5EA', flexShrink:0 }}>
               <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <div>
-                  <h2 style=${{ fontSize:20, fontWeight:700 }}>📖 Libro de Hechizos</h2>
-                  <p style=${{ fontSize:12, color:'#86868B' }}>Todo lo que necesitas para dominar revelio</p>
+                <div data-h="1">
+                  <h2 style=${{ fontSize:20, fontWeight:700 }}>Guia rapida</h2>
+                  <p style=${{ fontSize:12, color:'#86868B' }}>Lo justo para no perderte</p>
                 </div>
-                <button onClick=${()=>setShowGuide(false)} style=${{ width:34, height:34, borderRadius:17, border:'none', background:'#F2F2F7', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+                <button onClick=${()=>setShowGuide(false)} style=${{ width:34, height:34, borderRadius:17, border:'none', background:'#F2F2F7', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>x</button>
               </div>
             </div>
-            <div style=${{ flex:1, overflowY:'auto', padding:'20px 26px 28px' }}>
-              <h3 style=${{ fontSize:14, fontWeight:700, color:'#007AFF', marginBottom:12 }}>🧙 Para el equipo</h3>
-              <div style=${{ marginBottom:14 }}>
-                <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>1. Entra con el enlace</h4>
-                <p style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.5 }}>Tu SM te dará una URL tipo <code style=${{ background:'#F2F2F7', padding:'1px 5px', borderRadius:3, fontSize:11 }}>?sala=mi-proyecto</code>. Pon tu nombre, elige patronus y casa. Clic en 🪄 Revelio!</p>
+            <div style=${{ flex:1, overflowY:'auto', padding:'18px 26px 24px' }}>
+              <div style=${{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                ${[
+                  {n:'01',t:'Repaso',d:'Revisa el objetivo y las tareas del sprint. Marca lo completado.',c:'#007AFF'},
+                  {n:'02',t:'Individual',d:'Escribe tus notas en Good/Bad/Start/Stop. Solo tu las ves. Haz clic en una nota para editarla.',c:'#5856D6'},
+                  {n:'03',t:'En comun',d:'Lee las notas de todos. Vota las importantes con el pulgar. Usa emojis para reaccionar.',c:'#FF9500'},
+                  {n:'04',t:'Riesgos',d:'Convierte notas en riesgos o crea nuevos. Vota impacto y probabilidad. El mapa de calor se actualiza en directo.',c:'#FF3B30'},
+                  {n:'05',t:'Accionables',d:'Crea tareas desde las notas mas votadas o los riesgos. Se anaden al backlog del proyecto.',c:'#34C759'},
+                  {n:'06',t:'Resumen',d:'Ranking del equipo, metricas y PDF. Pulsa Finalizar para archivar y limpiar.',c:'#1D1D1F'},
+                ].map(p=>html`<div key=${p.n} style=${{ padding:'10px 12px', borderRadius:10, background:'#F9F9FB', border:'1px solid #E5E5EA', borderLeft:'3px solid '+p.c }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style=${{ fontSize:10, fontWeight:800, color:p.c }}>${p.n}</span>
+                    <span style=${{ fontSize:13, fontWeight:700 }}>${p.t}</span>
+                  </div>
+                  <p style=${{ fontSize:11, color:'#6E6E73', margin:'3px 0 0', lineHeight:1.4 }}>${p.d}</p>
+                </div>`)}
               </div>
-              <div style=${{ marginBottom:14 }}>
-                <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:6 }}>2. Las 6 fases</h4>
-                <div style=${{ display:'flex', flexDirection:'column', gap:5 }}>
-                  ${[
-                    {i:'📋',t:'Repaso Inicial',d:'Revisa objetivo y tareas. Marca las completadas.'},
-                    {i:'✍️',t:'Análisis Individual',d:'Escribe notas en Good/Bad/Start/Stop. Arrastra entre columnas. Las tuyas tienen borde grueso.'},
-                    {i:'💬',t:'Puesta en Común',d:'Filtra por categoría o "Mis notas". Vota con 👍. Reacciona con emojis (🔥💡❤️😂🎯🤯).'},
-                    {i:'⚠️',t:'Riesgos',d:'Crea riesgos o convierte notas Bad/Stop. Vota impacto y probabilidad. Mapa de calor en tiempo real.'},
-                    {i:'🎯',t:'Tareas',d:'Crea acciones o convierte notas/riesgos. Responsable, fecha y prioridad.'},
-                    {i:'📊',t:'Dashboard',d:'Ranking, métricas y descarga del informe PDF.'},
-                  ].map((p,i)=>html`<div key=${i} style=${{ padding:'7px 10px', borderRadius:8, background:'#F9F9FB', border:'1px solid #E5E5EA' }}><span style=${{ fontSize:12, fontWeight:700 }}>${p.i} ${p.t}</span><p style=${{ fontSize:11, color:'#6E6E73', margin:'2px 0 0', lineHeight:1.4 }}>${p.d}</p></div>`)}
+              <div style=${{ padding:'12px 14px', borderRadius:10, background:'#F0F7FF', border:'1px solid #007AFF15', marginBottom:12 }}>
+                <h4 style=${{ fontSize:12, fontWeight:700, color:'#007AFF', marginBottom:6 }}>Tips</h4>
+                <div style=${{ fontSize:11, color:'#6E6E73', lineHeight:1.7 }}>
+                  <p>Haz clic en cualquier tarjeta para editarla o eliminarla</p>
+                  <p>Si cierras el navegador y vuelves, entras automaticamente</p>
+                  <p>El timer se sincroniza entre todos los participantes</p>
+                  <p>Los datos se guardan automaticamente en Supabase cada 5 segundos</p>
                 </div>
               </div>
-              <div style=${{ marginBottom:14 }}>
-                <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>3. Tips rápidos</h4>
-                <div style=${{ fontSize:12, color:'#6E6E73', lineHeight:1.7 }}>
-                  <p>✏️ Edita tus notas con el lápiz, elimina con ✕</p>
-                  <p>🔄 Si cierras y vuelves al enlace, entras automáticamente</p>
-                  <p>👤 Cambia de usuario con el botón de tu nombre (arriba derecha)</p>
-                  <p>⏱️ Timer con presets de 5, 10, 15 y 20 minutos</p>
-                </div>
-              </div>
-              <div style=${{ textAlign:'center', padding:'4px 0', color:'#C7C7CC', fontSize:11 }}>Hecho con ✨ y sin Horcruxes</div>
+              <div style=${{ textAlign:'center', padding:'4px 0', color:'#C7C7CC', fontSize:10 }}>revelio by ALTEN</div>
             </div>
           </div>
         </div>
@@ -8604,106 +8619,106 @@ function P5Risks({ risks, sR, notes, user }) {
   };
   const upd = (id, patch) => sR(risks.map(r=>r.id===id?{...r,...patch}:r));
 
-  const heatData = openRisks.map(r => ({ ...r, impLvl:getRiskLevel(r.impactVotes), probLvl:getRiskLevel(r.probVotes) }));
   const IMPACT_BTNS = [{id:'alto',label:'Alto',color:'#FF3B30'},{id:'medio',label:'Medio',color:'#FF9500'},{id:'bajo',label:'Bajo',color:'#34C759'}];
   const PROB_BTNS = [{id:'alta',label:'Alta',color:'#FF3B30'},{id:'media',label:'Media',color:'#FF9500'},{id:'baja',label:'Baja',color:'#34C759'}];
+  const impMap = {alto:2,medio:1,bajo:0};
+  const probMap = {alta:2,media:1,baja:0};
 
   return html`
-    <div data-p="risks" style=${{ display:'grid', gridTemplateColumns:'260px 1fr 240px', gap:12, maxWidth:'100%' }}>
+    <div data-p="risks" style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, maxWidth:'100%' }}>
 
-      <div data-col="heatmap" style=${{ display:'flex', flexDirection:'column', gap:10 }}>
-        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:14 }}>
-          <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:10 }}>Mapa de calor</h4>
-          <div style=${{ position:'relative', paddingLeft:24 }}>
-            <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:2 }}>
-              ${['alto','medio','bajo'].map(prob =>
+      <div data-col="left" style=${{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:16 }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>Mapa de calor</h4>
+          <div style=${{ position:'relative', paddingLeft:28 }}>
+            <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:3 }}>
+              ${['alta','media','baja'].map(prob =>
                 ['bajo','medio','alto'].map(imp => {
-                  const probLvl = RISK_LEVELS.find(l=>l.id===prob);
-                  const impLvl = RISK_LEVELS.find(l=>l.id===imp);
-                  const color = getHeatColor(impLvl, probLvl);
-                  const inCell = heatData.filter(r => r.impLvl.id===imp && r.probLvl.id===prob);
-                  return html`<div key=${prob+imp} style=${{ background:color+'20', border:'1px solid '+color+'25', borderRadius:6, padding:4, minHeight:42, display:'flex', flexWrap:'wrap', gap:3, alignContent:'flex-start' }}>
+                  const pIdx = prob==='alta'?2:prob==='media'?1:0;
+                  const iIdx = imp==='alto'?2:imp==='medio'?1:0;
+                  const score = (pIdx+1)*(iIdx+1);
+                  const color = score>=6?'#FF3B30':score>=3?'#FF9500':'#34C759';
+                  const inCell = openRisks.filter(r => (r.impact||'medio')===imp && (r.prob||'media')===prob);
+                  return html`<div key=${prob+imp} style=${{ background:color+'18', border:'1px solid '+color+'25', borderRadius:8, padding:6, minHeight:56, display:'flex', flexWrap:'wrap', gap:4, alignContent:'flex-start' }}>
                     ${inCell.map(r => {
                       const rn = openRisks.indexOf(r)+1;
                       const pf = (r.type||'riesgo')==='problema'?'P':(r.type||'riesgo')==='oportunidad'?'O':'R';
                       return html`<div key=${r.id} title=${r.text} onClick=${()=>setDetailRisk({...r})}
-                        style=${{ width:24, height:24, borderRadius:12, background:color, color:'#FFF', fontSize:8, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:'1.5px solid #FFF' }}>${pf}${rn}</div>`;
+                        style=${{ width:28, height:28, borderRadius:14, background:color, color:'#FFF', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:'2px solid #FFF', boxShadow:'0 1px 4px '+color+'40' }}>${pf}${rn}</div>`;
                     })}
                   </div>`;
                 })
               )}
             </div>
-            <div style=${{ display:'flex', justifyContent:'space-between', marginTop:4, fontSize:9, color:'#86868B', fontWeight:600 }}>
+            <div style=${{ display:'flex', justifyContent:'space-between', marginTop:6, fontSize:10, color:'#86868B', fontWeight:600 }}>
               <span>Bajo</span><span>Medio</span><span>Alto</span>
             </div>
-            <div style=${{ position:'absolute', left:0, top:0, bottom:20, display:'flex', flexDirection:'column', justifyContent:'space-between', fontSize:9, color:'#86868B', fontWeight:600 }}>
+            <div style=${{ position:'absolute', left:0, top:0, bottom:22, display:'flex', flexDirection:'column', justifyContent:'space-between', fontSize:10, color:'#86868B', fontWeight:600 }}>
               <span>A</span><span>M</span><span>B</span>
             </div>
-            <div style=${{ textAlign:'center', fontSize:9, color:'#86868B', marginTop:2, fontWeight:600 }}>IMPACTO</div>
+            <div style=${{ textAlign:'center', fontSize:10, color:'#86868B', marginTop:2, fontWeight:600 }}>IMPACTO</div>
+          </div>
+          <div style=${{ display:'flex', gap:12, marginTop:10, fontSize:10, color:'#6E6E73', justifyContent:'center' }}>
+            ${[{c:'#FF3B30',l:'Critico'},{c:'#FF9500',l:'Moderado'},{c:'#34C759',l:'Bajo'}].map(x=>html`
+              <div key=${x.l} style=${{ display:'flex', alignItems:'center', gap:4 }}><div style=${{ width:8, height:8, borderRadius:4, background:x.c }}></div> ${x.l}</div>`)}
           </div>
         </div>
-        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:12 }}>
-          <div style=${{ display:'flex', flexDirection:'column', gap:4, fontSize:10, color:'#6E6E73' }}>
-            ${[{c:'#FF3B30',l:'Critico'},{c:'#FF9500',l:'Moderado'},{c:'#34C759',l:'Bajo'}].map(x=>html`
-              <div key=${x.l} style=${{ display:'flex', alignItems:'center', gap:6 }}><div style=${{ width:10, height:10, borderRadius:5, background:x.c }}></div> ${x.l}</div>`)}
+
+        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:14 }}>
+          <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>Notas de la retro</h4>
+          <p style=${{ fontSize:10, color:'#86868B', marginBottom:8 }}>Clic para convertir en riesgo</p>
+          <div style=${{ display:'flex', flexDirection:'column', gap:4, maxHeight:300, overflowY:'auto' }}>
+            ${allNotes.length===0 && html`<p style=${{ fontSize:11, color:'#C7C7CC', textAlign:'center', padding:16 }}>Sin notas</p>`}
+            ${allNotes.map(n => {
+              const ct = CATS.find(c=>c.id===n.category);
+              const linked = risks.some(r => r.fromNote === n.id);
+              return html`<button key=${n.id} onClick=${()=>addFromNote(n)}
+                style=${{ padding:'7px 9px', borderRadius:8, background:linked?'#1D1D1F':ct?.bg||'#F9F9FB', border:'1px solid '+(linked?'#333':ct?.color+'18'||'#E5E5EA'), textAlign:'left', cursor:'pointer' }}>
+                <p style=${{ fontSize:11, color:linked?'#EEE':'#1D1D1F', lineHeight:1.3, margin:'0 0 3px' }}>${n.text}</p>
+                <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style=${{ fontSize:9 }}>${ct?.emoji||''}</span>
+                  <span style=${{ fontSize:9, color:linked?'#888':'#86868B' }}>${n.userName}</span>
+                  <span style=${{ fontSize:9, color:linked?'#888':'#86868B', marginLeft:'auto' }}>\u{1F44D} ${n.voters?.length||0}</span>
+                  ${linked && html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700 }}>\u2713</span>`}
+                </div>
+              </button>`;
+            })}
           </div>
         </div>
       </div>
 
       <div data-col="register" style=${{ display:'flex', flexDirection:'column', gap:8 }}>
         <div style=${{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <h3 style=${{ fontSize:14, fontWeight:700, margin:0 }}>Registro (${openRisks.length})</h3>
+          <h3 style=${{ fontSize:15, fontWeight:700, margin:0 }}>Registro (${openRisks.length})</h3>
           <button onClick=${()=>setShowNewRisk(true)}
-            style=${{ padding:'7px 14px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>+ Nuevo</button>
+            style=${{ padding:'8px 16px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>+ Nuevo</button>
         </div>
         <div style=${{ display:'flex', flexDirection:'column', gap:6, overflowY:'auto', flex:1 }}>
-          ${openRisks.length===0 && html`<div style=${{ textAlign:'center', padding:24, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:12, fontSize:12 }}>Sin riesgos. Crea uno o convierte una nota.</div>`}
+          ${openRisks.length===0 && html`<div style=${{ textAlign:'center', padding:28, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:12, fontSize:12 }}>Sin riesgos. Crea uno o convierte una nota.</div>`}
           ${openRisks.map((r, idx) => {
             const pf = (r.type||'riesgo')==='problema'?'P':(r.type||'riesgo')==='oportunidad'?'O':'R';
             const hc = (r.type||'riesgo')==='problema'?'#FF3B30':heatColor(r.impact||'medio', r.prob||'media');
             return html`
               <div key=${r.id} onClick=${()=>setDetailRisk({...r})}
-                style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc, padding:'10px 12px', cursor:'pointer' }}>
-                <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-                  <span style=${{ fontSize:12, fontWeight:800, color:hc }}>${pf}${idx+1}</span>
-                  <p style=${{ fontSize:12, fontWeight:600, margin:0, flex:1, lineHeight:1.3 }}>${r.text}</p>
+                style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc, padding:'10px 14px', cursor:'pointer' }}>
+                <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                  <span style=${{ fontSize:13, fontWeight:800, color:hc }}>${pf}${idx+1}</span>
+                  <p style=${{ fontSize:13, fontWeight:600, margin:0, flex:1, lineHeight:1.3 }}>${r.text}</p>
                   ${r.owner && html`<span style=${{ fontSize:10, color:'#007AFF', fontWeight:600, flexShrink:0 }}>${r.owner}</span>`}
                 </div>
-                <div style=${{ display:'flex', gap:6, alignItems:'center' }}>
+                <div style=${{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                   <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
-                    <span style=${{ fontSize:9, color:'#86868B' }}>Imp:</span>
+                    <span style=${{ fontSize:9, color:'#86868B', fontWeight:600 }}>Imp:</span>
                     ${IMPACT_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();upd(r.id,{impact:l.id})}}
-                      style=${{ padding:'1px 5px', borderRadius:4, border:(r.impact||'medio')===l.id?'1.5px solid '+l.color:'1px solid #E5E5EA', background:(r.impact||'medio')===l.id?l.color+'15':'#FFF', fontSize:8, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
+                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.impact||'medio')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.impact||'medio')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
                   </div>
                   ${(r.type||'riesgo')!=='problema' && html`<div style=${{ display:'flex', alignItems:'center', gap:3 }}>
-                    <span style=${{ fontSize:9, color:'#86868B' }}>Prob:</span>
+                    <span style=${{ fontSize:9, color:'#86868B', fontWeight:600 }}>Prob:</span>
                     ${PROB_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();upd(r.id,{prob:l.id})}}
-                      style=${{ padding:'1px 5px', borderRadius:4, border:(r.prob||'media')===l.id?'1.5px solid '+l.color:'1px solid #E5E5EA', background:(r.prob||'media')===l.id?l.color+'15':'#FFF', fontSize:8, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
+                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.prob||'media')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.prob||'media')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
                   </div>`}
                 </div>
               </div>`;
-          })}
-        </div>
-      </div>
-
-      <div data-col="notes" style=${{ display:'flex', flexDirection:'column', gap:6 }}>
-        <h4 style=${{ fontSize:13, fontWeight:700, margin:0 }}>Notas de la retro</h4>
-        <p style=${{ fontSize:10, color:'#86868B' }}>Clic para convertir en riesgo</p>
-        <div style=${{ display:'flex', flexDirection:'column', gap:4, overflowY:'auto', flex:1 }}>
-          ${allNotes.length===0 && html`<p style=${{ fontSize:11, color:'#C7C7CC', textAlign:'center', padding:16 }}>Sin notas</p>`}
-          ${allNotes.map(n => {
-            const ct = CATS.find(c=>c.id===n.category);
-            const linked = risks.some(r => r.fromNote === n.id);
-            return html`<button key=${n.id} onClick=${()=>addFromNote(n)}
-              style=${{ padding:'7px 9px', borderRadius:8, background:linked?'#1D1D1F':ct?.bg||'#F9F9FB', border:'1px solid '+(linked?'#333':ct?.color+'18'||'#E5E5EA'), textAlign:'left', cursor:'pointer' }}>
-              <p style=${{ fontSize:10, color:linked?'#EEE':'#1D1D1F', lineHeight:1.3, margin:'0 0 3px' }}>${n.text}</p>
-              <div style=${{ display:'flex', alignItems:'center', gap:4 }}>
-                <span style=${{ fontSize:9 }}>${ct?.emoji||''}</span>
-                <span style=${{ fontSize:9, color:linked?'#888':'#86868B' }}>${n.userName}</span>
-                <span style=${{ fontSize:9, color:linked?'#888':'#86868B', marginLeft:'auto' }}>👍 ${n.voters?.length||0}</span>
-                ${linked && html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700 }}>✓</span>`}
-              </div>
-            </button>`;
           })}
         </div>
       </div>
@@ -8739,8 +8754,9 @@ function P5Risks({ risks, sR, notes, user }) {
     </div>`;
 }
 
-function P6({ notes, actions, risks, users, user, obj, tasks, phaseTimes }) {
+function P6({ notes, actions, risks, users, user, obj, tasks, phaseTimes, onFinalize }) {
   const [activeTab, setActiveTab] = useState('resumen');
+  const [finalizing, setFinalizing] = useState(false);
 
   // ── derived data ──
   const priO = {high:3,medium:2,low:1};
@@ -8855,6 +8871,9 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
           }}>${t.label}</button>
         `)}
         <button onClick=${exportPDF} style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#007AFF', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>📄 PDF</button>
+        <button onClick=${()=>window.__confirm({icon:'🏁',title:'Finalizar retrospectiva',message:'Se archivara esta retro en Supabase y se limpiara el tablero para la siguiente sesion.',confirmLabel:'Finalizar',confirmColor:'#34C759',onConfirm:async()=>{setFinalizing(true);if(onFinalize)await onFinalize();setFinalizing(false);}})}
+          disabled=${finalizing}
+          style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#34C759', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', opacity:finalizing?.5:1 }}>${finalizing?'Archivando...':'🏁 Finalizar retro'}</button>
       </div>
 
       ${activeTab === 'resumen' && html`
