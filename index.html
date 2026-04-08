@@ -218,6 +218,52 @@ async function sbLoadRetros() {
     return data || [];
   } catch { return []; }
 }
+
+// ── Metrics: persist to retro_metrics table ──
+async function sbSaveMetric(sala, entry) {
+  try {
+    await supabase.from('retro_metrics').insert({
+      sala,
+      date: entry.date || new Date().toISOString(),
+      notes: entry.notes || 0,
+      participants: entry.participants || 0,
+      participant_names: entry.participantNames || [],
+      actions: entry.actions || 0,
+      actions_done: entry.actionsDone || 0,
+      votes: entry.votes || 0,
+      objective: entry.objective || null,
+      tasks_done: entry.tasksDone || 0,
+      tasks_total: entry.tasksTotal || 0,
+    });
+  } catch(e) { console.warn('sbSaveMetric:', e); }
+}
+async function sbLoadMetrics(sala) {
+  try {
+    let q = supabase.from('retro_metrics').select('*').order('date', { ascending: false });
+    if (sala) q = q.eq('sala', sala);
+    const { data } = await q;
+    return data || [];
+  } catch { return []; }
+}
+
+// ── Escalation config: persist to rooms.metadata ──
+async function sbSaveEscalationConfig(cfg) {
+  try {
+    const { data: rooms } = await supabase.from('rooms').select('slug,metadata');
+    if (!rooms) return;
+    for (const room of rooms) {
+      const meta = { ...(room.metadata || {}), escalation_config: cfg };
+      await supabase.from('rooms').update({ metadata: meta }).eq('slug', room.slug);
+    }
+  } catch(e) { console.warn('sbSaveEscalationConfig:', e); }
+}
+async function sbLoadEscalationConfig() {
+  try {
+    const { data } = await supabase.from('rooms').select('metadata').limit(1);
+    if (data?.[0]?.metadata?.escalation_config) return data[0].metadata.escalation_config;
+    return null;
+  } catch { return null; }
+}
 // Debounce helper
 function debounce(fn, ms) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -1877,6 +1923,8 @@ function saveMetricEntry(sala, entry) {
     m[sala].push(entry);
     localStorage.setItem('rf-metrics', JSON.stringify(m));
   } catch {}
+  // Also persist to Supabase
+  sbSaveMetric(sala, entry).catch(() => {});
 }
 
 // ── User identity: persist per sala so you don't duplicate ──
@@ -2072,7 +2120,12 @@ function getEscalationConfig() {
 }
 function saveEscalationConfig(cfg) {
   localStorage.setItem('rf-escalation-config', JSON.stringify(cfg));
+  sbSaveEscalationConfig(cfg).catch(() => {});
 }
+// Load from Supabase on startup and cache locally
+sbLoadEscalationConfig().then(cfg => {
+  if (cfg) localStorage.setItem('rf-escalation-config', JSON.stringify(cfg));
+});
 
 
 /* ═══ ADMIN ROLES ═══ */
