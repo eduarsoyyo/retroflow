@@ -1034,6 +1034,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
 
   useEffect(() => {
     sbLoadTeamMembers().then(members => {
+      window.__allMembers = members||[];
       const uq=(user.username||user.name||'').toLowerCase().trim(), uid=user.id||'';
       const me=(members||[]).find(m=>(uid&&m.id===uid)||(m.username&&m.username.toLowerCase().trim()===uq)||(m.email&&m.email.toLowerCase().trim()===uq)||(m.email&&m.email.split('@')[0].toLowerCase().trim()===uq)||(m.name&&m.name.toLowerCase().trim()===uq));
       setProfile(me||null); setEditProfile(me?{...me}:null); setProfileLoaded(true);
@@ -1064,10 +1065,10 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
       (d.actions||[]).filter(a=>
         (a.owner===user.name||a.createdBy===user.id) &&
         a.status!=='done' && a.status!=='discarded' && a.date && a.date<today
-      ).forEach(a => notifs.push({id:'adl-'+a.id,msg:'📋 Tarea vencida en '+roomName+': '+a.text.slice(0,50),type:'overdue',ts:Date.now()}));
+      ).forEach(a => notifs.push({id:'adl-'+a.id,msg:'Tarea vencida: '+a.text.slice(0,50),room:roomName,type:'overdue',ts:Date.now()}));
       // Escalated risks
       (d.risks||[]).filter(r=>r.escalation&&(r.escalation.memberName===user.name||r.escalation.memberId===user.id||r.owner===user.name)).forEach(r =>
-        notifs.push({id:'esc-'+r.id,msg:'📈 Riesgo escalado en '+roomName+': '+r.text.slice(0,50),type:'escalado',ts:Date.now()})
+        notifs.push({id:'esc-'+r.id,msg:'Riesgo escalado: '+r.text.slice(0,50),room:roomName,type:'escalado',ts:Date.now()})
       );
     });
     if (notifs.length>0) setHomeNotifs(notifs);
@@ -1176,11 +1177,10 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                           <div style=${{padding:'8px 16px',background:'#F9F9FB',fontSize:10,fontWeight:700,color:'#86868B',textTransform:'uppercase',letterSpacing:.3,borderBottom:'1px solid #F2F2F7'}}>
                             ${proj} · ${items.length}
                           </div>
-                          ${items.slice(0,3).map(n=>html`
+                          ${items.map(n=>html`
                             <div key=${n.id} style=${{padding:'10px 16px',borderBottom:'1px solid #F9F9FB'}}>
                               <p style=${{fontSize:12,lineHeight:1.4,color:'#1D1D1F'}}>${n.msg}</p>
                             </div>`)}
-                          ${items.length>3&&html`<div style=${{padding:'6px 16px',fontSize:10,color:'#86868B',textAlign:'center'}}>+ ${items.length-3} más</div>`}
                         </div>`);
                     })()}
                   </div>`}
@@ -1326,14 +1326,18 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             </div>
 
             <!-- Mi equipo hoy -->
-            ${myRooms.length>0 && html`
+            ${html`
               <div style=${{background:'#FFF',borderRadius:14,border:'1.5px solid #E5E5EA',padding:'14px 18px',marginBottom:14}}>
                 <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
                   <span style=${{fontSize:13,fontWeight:700,color:'#1D1D1F'}}>Mi equipo</span>
-                  <button onClick=${()=>setSection('equipo')} style=${{border:'none',background:'none',color:'#007AFF',fontSize:11,cursor:'pointer',fontWeight:600}}>Ver todos →</button>
+                  <button onClick=${()=>setSection(isSM?'personas':'equipo')} style=${{border:'none',background:'none',color:'#007AFF',fontSize:11,cursor:'pointer',fontWeight:600}}>Ver todos →</button>
                 </div>
                 ${(()=>{
-                  const members = (window.__allMembers||[]).filter(m=>myRooms.some(r=>(m.rooms||[]).includes(r.slug)));
+                  const allM = window.__allMembers||[];
+                  const members = allM.length>0 ? allM.filter(m=>myRooms.length===0||myRooms.some(r=>(m.rooms||[]).includes(r.slug))) : [];
+                  if(members.length===0) return html`<div style=${{padding:'12px 0',textAlign:'center'}}>
+                    <p style=${{fontSize:12,color:'#86868B'}}>Cargando equipo...</p>
+                  </div>`;
                   const todayVac = members.filter(m=>(Array.isArray(m.vacations)?m.vacations:[]).some(v=>v.from<=today&&(!v.to||v.to>=today)));
                   const available = members.filter(m=>!todayVac.some(v=>v.id===m.id));
                   return html`
@@ -1356,21 +1360,7 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
                 })()}
               </div>`}
 
-            <!-- Quick access to sections -->
-            <div style=${{display:'flex',gap:8}}>
-              <button onClick=${()=>setSection(isSM?'gobierno':'mi_trabajo')}
-                style=${{flex:1,padding:'10px',borderRadius:12,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer',color:'#6E6E73',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                <${Icon} name="ClipboardList" size=${14} color="#86868B" /> Mi trabajo
-              </button>
-              <button onClick=${()=>setSection('proyectos')}
-                style=${{flex:1,padding:'10px',borderRadius:12,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer',color:'#6E6E73',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                <${Icon} name="FolderOpen" size=${14} color="#86868B" /> Proyectos
-              </button>
-              <button onClick=${()=>setSection('riesgos')}
-                style=${{flex:1,padding:'10px',borderRadius:12,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer',color:'#6E6E73',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-                <${Icon} name="AlertTriangle" size=${14} color="#86868B" /> Riesgos
-              </button>
-            </div>
+
 
           </div>`}
 
@@ -3072,25 +3062,39 @@ function RoomPicker() {
                 ${(()=>{const ov=sbRetros.flatMap(rt=>(rt.data?.actions||[]).filter(a=>a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<new Date().toISOString().slice(0,10))); return ov.length>0?html`<div style=${{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:8,background:'#FF3B30',color:'#FFF',fontSize:9,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>${ov.length>9?'9+':ov.length}</div>`:null;})()}
               </button>
               ${showAdminNotifs&&html`
-                <div style=${{position:'absolute',right:0,top:44,width:320,background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',boxShadow:'0 8px 32px rgba(0,0,0,.12)',zIndex:9999}}>
+                <div style=${{position:'absolute',right:0,top:44,width:340,background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',boxShadow:'0 8px 32px rgba(0,0,0,.12)',zIndex:9999}}>
                   <div style=${{padding:'12px 16px',borderBottom:'1px solid #F2F2F7'}}>
                     <span style=${{fontSize:13,fontWeight:700}}>Notificaciones</span>
                   </div>
                   ${(()=>{
                     const today=new Date().toISOString().slice(0,10);
-                    const allActs=sbRetros.flatMap(rt=>(rt.data?.actions||[]));
-                    const overdue=allActs.filter(a=>a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<today);
-                    const escalated=sbRetros.flatMap(rt=>(rt.data?.risks||[]).filter(r=>r.escalation));
-                    const items=[
-                      ...overdue.slice(0,5).map(a=>({icon:'⏰',msg:'Tarea vencida: '+a.text.slice(0,40),type:'overdue'})),
-                      ...escalated.slice(0,5).map(r=>({icon:'📈',msg:'Riesgo escalado: '+r.text.slice(0,40),type:'escalation'})),
-                    ];
-                    return items.length===0
-                      ?html`<div style=${{padding:'24px 16px',textAlign:'center',color:'#C7C7CC',fontSize:12}}>Sin alertas — todo en orden</div>`
-                      :html`<div style=${{maxHeight:280,overflowY:'auto'}}>
-                        ${items.map((n,i)=>html`
-                          <div key=${i} style=${{padding:'10px 16px',borderBottom:'1px solid #F9F9FB',background:n.type==='overdue'?'#FFF5F5':'#F8F5FF'}}>
-                            <p style=${{fontSize:12,lineHeight:1.4}}>${n.icon} ${n.msg}</p>
+                    // Group by project
+                    const grouped = {};
+                    sbRetros.forEach(rt => {
+                      const roomName = rooms.find(r=>r.slug===rt.sala)?.name || rt.sala;
+                      const overdue = (rt.data?.actions||[]).filter(a=>a.status!=='done'&&a.status!=='cancelled'&&a.date&&a.date<today);
+                      const escalated = (rt.data?.risks||[]).filter(r=>r.escalation);
+                      if(overdue.length===0 && escalated.length===0) return;
+                      if(!grouped[roomName]) grouped[roomName]=[];
+                      overdue.forEach(a=>grouped[roomName].push({msg:'Tarea vencida: '+a.text.slice(0,40),type:'overdue'}));
+                      escalated.forEach(r=>grouped[roomName].push({msg:'Riesgo escalado: '+r.text.slice(0,40),type:'escalation'}));
+                    });
+                    const entries = Object.entries(grouped);
+                    return entries.length===0
+                      ?html`<div style=${{padding:'24px 16px',textAlign:'center',color:'#86868B',fontSize:12}}>
+                        <${Icon} name="CheckCircle2" size=${24} color="#34C759" />
+                        <p style=${{marginTop:8}}>Sin alertas — todo en orden</p>
+                      </div>`
+                      :html`<div style=${{maxHeight:360,overflowY:'auto'}}>
+                        ${entries.map(([proj,items])=>html`
+                          <div key=${proj}>
+                            <div style=${{padding:'8px 16px',background:'#F9F9FB',fontSize:10,fontWeight:700,color:'#86868B',textTransform:'uppercase',letterSpacing:.3,borderBottom:'1px solid #F2F2F7'}}>
+                              ${proj} · ${items.length}
+                            </div>
+                            ${items.map((n,i)=>html`
+                              <div key=${i} style=${{padding:'10px 16px',borderBottom:'1px solid #F9F9FB',background:n.type==='overdue'?'#FFF5F5':'#F8F5FF'}}>
+                                <p style=${{fontSize:12,lineHeight:1.4,color:'#1D1D1F'}}>${n.msg}</p>
+                              </div>`)}
                           </div>`)}
                       </div>`;
                   })()}
@@ -4728,7 +4732,6 @@ function PTrabajo({ actions, sA, risks, user }) {
   // ── State ──
   const [subView, setSubView] = useState('board');
   const [form, setForm] = useState({text:'',description:'',owner:'',date:'',priority:'medium',type:'tarea',demandOrigin:'',storyPoints:null,sprint:'',epicLink:''});
-  const [showForm, setShowForm] = useState(false);
   const [eId, setEId] = useState(null);
   const [eF, setEF] = useState({});
   const [detailTask, setDetailTask] = useState(null); // Task for modal view
@@ -4893,19 +4896,6 @@ function PTrabajo({ actions, sA, risks, user }) {
                 </span>`)}
             </div>
           </div>
-          <!-- Actions -->
-          <div style=${{ display:'flex', gap:2, flexShrink:0, alignItems:'flex-start', flexDirection:'column' }}>
-            <div style=${{ display:'flex', gap:2, flexWrap:'wrap' }}>
-              ${a.status==='backlog'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'pending')}} title="Planificar"
-                style=${{ border:'none', background:'#FF9500', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▷ Pendiente</button>`}
-              ${a.status==='pending'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Iniciar"
-                style=${{ border:'none', background:'#007AFF', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5, whiteSpace:'nowrap' }}>▶ Iniciar</button>`}
-              ${a.status==='blocked'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'inprogress')}} title="Desbloquear"
-                style=${{ border:'none', background:'#FF9500', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>↻ Reanudar</button>`}
-              ${a.status!=='done'&&a.status!=='cancelled'&&html`<button onClick=${(e)=>{e.stopPropagation();upSt(a.id,'done')}} title="Completar"
-                style=${{ border:'none', background:'#34C759', color:'#FFF', fontSize:9, fontWeight:700, cursor:'pointer', padding:'3px 7px', borderRadius:5 }}>✓</button>`}
-            </div>
-          </div>
         </div>
       </div>`;
   };
@@ -4927,7 +4917,12 @@ function PTrabajo({ actions, sA, risks, user }) {
           style=${{ padding:'8px 14px', borderRadius:10, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:'#6E6E73' }}>
           <${Icon} name="Tag" size=${14} color="#86868B" /> Etiquetas
         </button>
-        <button onClick=${()=>setShowForm(!showForm)}
+        <button onClick=${()=>{
+          const newTask = {id:uid(),text:'',description:'',owner:'',date:'',startDate:'',status:'backlog',priority:'medium',type:'tarea',
+            storyPoints:null,sprint:'',epicLink:'',demandOrigin:'',riskId:null,source:'manual',createdBy:user.id,createdAt:new Date().toISOString()};
+          sA([...actions, newTask]);
+          setDetailTask({...newTask});
+        }}
           style=${{ padding:'8px 16px', borderRadius:10, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
           <${Icon} name="Plus" size=${14} color="#FFF" /> Nueva tarea
         </button>
@@ -4972,44 +4967,6 @@ function PTrabajo({ actions, sA, risks, user }) {
           </select>`}
       </div>
 
-      <!-- Creation form (collapsible) -->
-      ${showForm && html`
-        <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #007AFF30', padding:'16px', marginBottom:14, animation:'fadeIn .2s ease' }}>
-          <div style=${{ display:'flex', gap:8, marginBottom:8, flexWrap:'wrap' }}>
-            <select value=${form.type} onChange=${e=>setForm({...form,type:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 10px', fontSize:12, fontFamily:'inherit', outline:'none', background:'#FAFAFA' }}>
-              ${ITEM_TYPES.map(t=>html`<option key=${t.id} value=${t.id}>${t.icon} ${t.label}</option>`)}
-            </select>
-            <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Título de la tarea…"
-              onKeyDown=${e=>e.key==='Enter'&&!e.shiftKey&&addTask()}
-              style=${{ flex:2, minWidth:200, border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 12px', fontSize:13, fontFamily:'inherit', outline:'none', background:'#FAFAFA' }} />
-          </div>
-          <textarea value=${form.description} onInput=${e=>setForm({...form,description:e.target.value})} placeholder="Descripción (opcional)…"
-            style=${{ width:'100%', border:'1.5px solid #E5E5EA', borderRadius:9, padding:'8px 12px', fontSize:12, fontFamily:'inherit', outline:'none', resize:'vertical', minHeight:48, marginBottom:8, background:'#FAFAFA', boxSizing:'border-box' }} />
-          <div style=${{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-            <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', flex:'1 1 140px' }}>
-              <option value="">— Responsable —</option>
-              ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||'👤'} ${m.name}</option>`)}
-            </select>
-            <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:110 }}>
-              ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
-            </select>
-            <input type="date" value=${form.date} onInput=${e=>setForm({...form,date:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:140 }} />
-            <select value=${form.demandOrigin||''} onChange=${e=>setForm({...form,demandOrigin:e.target.value})}
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:140 }}>
-              <option value="">— Origen —</option>
-              ${DEMAND_ORIGINS.map(d=>html`<option key=${d.id} value=${d.id}>${d.label}</option>`)}
-            </select>
-            <input value=${form.storyPoints||''} onInput=${e=>setForm({...form,storyPoints:e.target.value})} placeholder="SP"
-              type="number" min="0" step="1"
-              style=${{ border:'1.5px solid #E5E5EA', borderRadius:8, padding:'7px 10px', fontSize:12, fontFamily:'inherit', outline:'none', width:60 }} />
-            <button onClick=${addTask} style=${{ padding:'8px 18px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>Crear</button>
-            <button onClick=${()=>setShowForm(false)} style=${{ padding:'8px 12px', borderRadius:9, border:'1.5px solid #E5E5EA', background:'#FFF', fontSize:12, cursor:'pointer' }}>Cancelar</button>
-          </div>
-        </div>`}
 
       <!-- ══ BACKLOG VIEW ══ -->
       ${subView==='backlog' && html`
