@@ -37,6 +37,25 @@
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.49.4"
   }
 }
+
+  // Cleanup: remove stray "div" text nodes (htm parser quirk)
+  const _cleanDivText = () => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const toRemove = [];
+    while(walker.nextNode()) {
+      const n = walker.currentNode;
+      if (n.textContent.trim() === 'div' && n.parentElement && n.parentElement.children.length > 0) {
+        toRemove.push(n);
+      }
+    }
+    toRemove.forEach(n => n.remove());
+  };
+  // Run on initial load + observe mutations
+  setTimeout(_cleanDivText, 500);
+  setTimeout(_cleanDivText, 2000);
+  new MutationObserver(() => setTimeout(_cleanDivText, 100))
+    .observe(document.body, {childList:true, subtree:true});
+
 </script>
 <script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -6479,7 +6498,7 @@ const addItem = () => {
   return html`
     <div style=${{ maxWidth:'100%', margin:'0 auto' }}>
 
-      <!-- Sub-tabs FIRST -->
+      
       <div style=${{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         ${[
           {id:'resumen',       icon:'LayoutDashboard', label:'Resumen',      badge:''},
@@ -6503,7 +6522,7 @@ const addItem = () => {
           </button>`)}
       </div>
 
-      <!-- Tag filter bar -->
+      
       ${tags.length>0 && html`
         <div style=${{display:'flex',gap:4,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
           <${Icon} name='Tag' size=${12} color='#86868B' />
@@ -6520,10 +6539,8 @@ const addItem = () => {
             </button>`)}
         </div>`}
 
-      <!-- RESUMEN tab: KPIs + heat map -->
       ${subTab==='resumen' && html`
-        <div style=${{display:'flex',flexDirection:'column',gap:0}}>
-          <!-- KPI row -->
+          <div style=${{display:'flex',flexDirection:'column',gap:0}} data-section="resumen">
           <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:18 }}>
             ${[
               ['AlertTriangle','Riesgos',      riesgos.length,      '#FF9500'],
@@ -6542,7 +6559,7 @@ const addItem = () => {
               </div>`)}
           </div>
 
-      <!-- Heat map 3x3 with dots + hover tooltip -->
+      
       <div style=${{ background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', padding:'16px 18px', marginBottom:16 }}>
         <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:12 }}>🗺️ Mapa de calor de riesgos</h4>
         <div style=${{ display:'flex', gap:16, alignItems:'flex-start' }}>
@@ -6582,7 +6599,7 @@ const addItem = () => {
                               onClick=${()=>setSubTab(targetTab)}>
                               ${prefix}${rn}
                             </div>
-                            <!-- Hover tooltip -->
+                            
                             <div class="rtip" style=${{ display:'none', position:'absolute', bottom:34, left:'50%', transform:'translateX(-50%)',
                               background:'#1D1D1F', color:'#FFF', borderRadius:10, padding:'8px 10px', fontSize:11,
                               zIndex:9999, width:180, boxShadow:'0 4px 16px rgba(0,0,0,.25)', pointerEvents:'none',
@@ -6591,7 +6608,7 @@ const addItem = () => {
                               <div style=${{ marginBottom:4 }}>${r.text}</div>
                               ${r.owner && html`<div style=${{ fontSize:10, color:'#86868B' }}>👤 ${r.owner}</div>`}
                               ${r.mitigation && html`<div style=${{ fontSize:10, color:'#86868B' }}>🛡️ ${r.mitigation}</div>`}
-                              <!-- triangle -->
+                              
                               <div style=${{ position:'absolute', bottom:-5, left:'50%', transform:'translateX(-50%)',
                                 width:0, height:0, borderLeft:'5px solid transparent', borderRight:'5px solid transparent', borderTop:'5px solid #1D1D1F' }}></div>
                             </div>
@@ -6605,7 +6622,7 @@ const addItem = () => {
               </div>
             </div>
           </div>
-          <!-- Legend -->
+          
           <div style=${{ display:'flex', flexDirection:'column', gap:6, minWidth:100 }}>
             <p style=${{ fontSize:11, fontWeight:700, marginBottom:4 }}>Leyenda</p>
             ${[['#FF3B30','Crítico'],['#FF9500','Moderado'],['#34C759','Bajo']].map(([c,l])=>html`
@@ -6624,7 +6641,7 @@ const addItem = () => {
       ${subTab!=='resumen' && html`
       <div style=${{ display:'grid', gridTemplateColumns:'1fr 320px', gap:14, alignItems:'start' }}>
 
-        <!-- Main list -->
+        
         <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
           ${subTab==='escalado' ? html`
             <${EscaladoPanel} risks=${allRisks} upd=${upd} escalForm=${escalForm} setEscalForm=${setEscalForm} />
@@ -6650,7 +6667,7 @@ const addItem = () => {
           `}
         </div>
 
-        <!-- Add button (replaces right panel form) -->
+        
         ${subTab!=='mitigados' && subTab!=='historial' && subTab!=='escalado' && subTab!=='sugeridos' && html`
           <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
             <button onClick=${()=>{setForm({...form,type:subTab==='riesgos'?'riesgo':subTab==='problemas'?'problema':'oportunidad'}); setShowRiskForm(true);}}
