@@ -7541,7 +7541,7 @@ function RetroBoard({ user, onLogout }) {
 
   const content = () => {
     if (phase===0) return html`<${P1} tasks=${state.tasks} sT=${sT} obj=${state.obj} sO=${sO} user=${user} />`;
-    if (phase===1) return html`<${Board} notes=${state.notes} sN=${sN} user=${user} filter="all" hideOthers=${true} />`;
+    if (phase===1) return html`<${Board} notes=${state.notes} sN=${sN} user=${user} filter="all" hideOthers=${true} showReactions=${false} />`;
     if (phase===2) return html`<${P3} notes=${state.notes} sN=${sN} user=${user} />`;
     if (phase===3) return html`<${P5Risks} risks=${state.risks} sR=${sR} notes=${state.notes} user=${user} />`;
     if (phase===4) return html`<${P4} notes=${state.notes} actions=${state.actions} risks=${state.risks} sA=${sA} user=${user} />`;
@@ -8269,7 +8269,7 @@ function P1({ tasks, sT, obj, sO, user }) {
 }
 
 /* ═══ BOARD ═══ */
-function Board({ notes, sN, user, filter, hideOthers }) {
+function Board({ notes, sN, user, filter, hideOthers, showReactions }) {
   // Close any open reaction pickers on click outside
   useEffect(() => {
     const close = () => document.querySelectorAll('[id^="rpick-"]').forEach(x=>x.style.display='none');
@@ -8278,8 +8278,7 @@ function Board({ notes, sN, user, filter, hideOthers }) {
   }, []);
   const [act,      setAct]      = useState(null);
   const [txt,      setTxt]      = useState('');
-  const [eId,      setEId]      = useState(null);
-  const [eVal,     setEVal]     = useState('');
+  const [noteModal, setNoteModal] = useState(null);
   const [dragId,   setDragId]   = useState(null);
   const [overCat,  setOverCat]  = useState(null);
   const [touchInfo,setTouchInfo]= useState(null); // {id, x, y}
@@ -8298,8 +8297,8 @@ function Board({ notes, sN, user, filter, hideOthers }) {
     else r[emoji]=[...r[emoji],user.id];
     return {...n,reactions:r};
   }));
-  const delN = nid => sN(notes.filter(n=>n.id!==nid));
-  const saveE = () => { if(!eVal.trim())delN(eId); else sN(notes.map(n=>n.id===eId?{...n,text:eVal.trim()}:n)); setEId(null); };
+  const delN = nid => window.__confirm({title:'Eliminar nota',message:'¿Eliminar esta nota?',onConfirm:()=>sN(notes.filter(n=>n.id!==nid))});
+  const saveNote = (id, newText) => { if(!newText.trim()) delN(id); else sN(notes.map(n=>n.id===id?{...n,text:newText.trim()}:n)); setNoteModal(null); };
   const drop = (e,c) => { e.preventDefault(); setOverCat(null); if(dragId)sN(notes.map(n=>n.id===dragId?{...n,category:c}:n)); setDragId(null); };
 
   // ── Touch drag ──
@@ -8377,21 +8376,13 @@ function Board({ notes, sN, user, filter, hideOthers }) {
                     onTouchStart=${e=>onTouchStart(e,note.id)}
                     onTouchMove=${onTouchMove}
                     onTouchEnd=${onTouchEnd}
-                    style=${{ background:cat.bg, borderRadius:12, padding:'10px 12px', border:'1px solid '+cat.color+'15', borderLeft:mine?'3px solid '+cat.color:'1px solid '+cat.color+'15', cursor:'grab', touchAction:'none', userSelect:'none', opacity:(dragId===note.id||touchInfo?.id===note.id)?0.4:1 }}>
-                    ${eId===note.id
-                      ? html`<div>
-                          <textarea autofocus value=${eVal} onInput=${e=>setEVal(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveE()}if(e.key==='Escape')setEId(null)}} style=${{ ...iS, height:48, resize:'none', fontSize:12, padding:'8px 10px' }} />
-                          <div style=${{ display:'flex', gap:4, marginTop:4 }}>
-                            <button onClick=${saveE} style=${{ ...bP, padding:'5px 12px', fontSize:11, background:cat.color }}>Guardar</button>
-                            <button onClick=${()=>setEId(null)} style=${{ ...bS, padding:'5px 10px', fontSize:11 }}>Cancelar</button>
-                          </div>
-                        </div>`
-                      : html`
+                    style=${{ background:cat.bg, borderRadius:12, padding:'10px 12px', border:'1px solid '+cat.color+'15', borderLeft:mine?'3px solid '+cat.color:'1px solid '+cat.color+'15', cursor:'pointer', touchAction:'none', userSelect:'none', opacity:(dragId===note.id||touchInfo?.id===note.id)?0.4:1 }}
+                    onClick=${()=>mine&&setNoteModal({...note,_cat:cat})}>
                         <p style=${{ marginBottom:5, fontSize:12, lineHeight:1.4 }}>${note.text}</p>
-                        ${Object.keys(note.reactions||{}).length > 0 && html`
+                        ${showReactions!==false && Object.keys(note.reactions||{}).length > 0 && html`
                           <div style=${{ display:'flex', gap:3, marginBottom:5, flexWrap:'wrap' }}>
                             ${Object.entries(note.reactions||{}).map(([emoji, users]) => users.length > 0 && html`
-                              <span key=${emoji} onClick=${()=>react(note.id, emoji)} style=${{ padding:'1px 5px', borderRadius:6, background:users.includes(user.id)?cat.color+'20':'#F2F2F7', border:users.includes(user.id)?'1px solid '+cat.color+'40':'1px solid transparent', fontSize:10, cursor:'pointer' }}>${emoji} ${users.length}</span>
+                              <span key=${emoji} onClick=${e=>{e.stopPropagation();react(note.id, emoji)}} style=${{ padding:'1px 5px', borderRadius:6, background:users.includes(user.id)?cat.color+'20':'#F2F2F7', border:users.includes(user.id)?'1px solid '+cat.color+'40':'1px solid transparent', fontSize:10, cursor:'pointer' }}>${emoji} ${users.length}</span>
                             `)}
                           </div>
                         `}
@@ -8401,35 +8392,31 @@ function Board({ notes, sN, user, filter, hideOthers }) {
                             <span style=${{ fontSize:10, color:'#86868B' }}>${note.userName}</span>
                           </div>
                           <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
-                            <div style=${{ position:'relative' }}>
-                              <button
-                                onClick=${e=>{ e.stopPropagation(); document.querySelectorAll('[id^="rpick-"]').forEach(x=>{if(x.id!=='rpick-'+note.id)x.style.display='none';}); const d=document.getElementById('rpick-'+note.id); if(d){const r=e.currentTarget.getBoundingClientRect(); d.style.top=(r.top-8)+'px'; d.style.left=r.left+'px'; d.style.display=d.style.display==='flex'?'none':'flex';} }}
-                                style=${{ border:'none', background:'none', fontSize:14, cursor:'pointer', opacity:.55, padding:'2px 4px', borderRadius:6 }}
-                                onMouseOver=${e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background='#F2F2F7'}}
-                                onMouseOut=${e=>{e.currentTarget.style.opacity='.55';e.currentTarget.style.background='none'}}>😊</button>
-                              <div id=${'rpick-'+note.id} style=${{ display:'none', position:'fixed', zIndex:10000, background:'#FFF',
-                                border:'1.5px solid #E5E5EA', borderRadius:12, padding:8, gap:4,
-                                boxShadow:'0 8px 24px rgba(0,0,0,.18)', flexWrap:'wrap', width:164,
-                                transform:'translateY(-100%) translateY(-8px)' }}>
-                                ${REACTIONS.map(emoji => html`
-                                  <button key=${emoji}
-                                    onClick=${e=>{ e.stopPropagation(); react(note.id,emoji); document.getElementById('rpick-'+note.id).style.display='none'; }}
-                                    style=${{ border:'none', background:'none', fontSize:20, cursor:'pointer', padding:'4px', borderRadius:8, lineHeight:1 }}
-                                    onMouseOver=${e=>{e.currentTarget.style.background='#F2F2F7';e.currentTarget.style.transform='scale(1.2)'}}
-                                    onMouseOut=${e=>{e.currentTarget.style.background='none';e.currentTarget.style.transform='scale(1)'}}>
-                                    ${emoji}
-                                  </button>`)}
+                            ${showReactions!==false && html`
+                              <div style=${{ position:'relative' }}>
+                                <button
+                                  onClick=${e=>{ e.stopPropagation(); document.querySelectorAll('[id^="rpick-"]').forEach(x=>{if(x.id!=='rpick-'+note.id)x.style.display='none';}); const d=document.getElementById('rpick-'+note.id); if(d){const r=e.currentTarget.getBoundingClientRect(); d.style.top=(r.top-8)+'px'; d.style.left=r.left+'px'; d.style.display=d.style.display==='flex'?'none':'flex';} }}
+                                  style=${{ border:'none', background:'none', fontSize:14, cursor:'pointer', opacity:.55, padding:'2px 4px', borderRadius:6 }}
+                                  onMouseOver=${e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background='#F2F2F7'}}
+                                  onMouseOut=${e=>{e.currentTarget.style.opacity='.55';e.currentTarget.style.background='none'}}>😊</button>
+                                <div id=${'rpick-'+note.id} style=${{ display:'none', position:'fixed', zIndex:10000, background:'#FFF',
+                                  border:'1.5px solid #E5E5EA', borderRadius:12, padding:8, gap:4,
+                                  boxShadow:'0 8px 24px rgba(0,0,0,.18)', flexWrap:'wrap', width:164,
+                                  transform:'translateY(-100%) translateY(-8px)' }}>
+                                  ${REACTIONS.map(emoji => html`
+                                    <button key=${emoji}
+                                      onClick=${e=>{ e.stopPropagation(); react(note.id,emoji); document.getElementById('rpick-'+note.id).style.display='none'; }}
+                                      style=${{ border:'none', background:'none', fontSize:20, cursor:'pointer', padding:'4px', borderRadius:8, lineHeight:1 }}
+                                      onMouseOver=${e=>{e.currentTarget.style.background='#F2F2F7';e.currentTarget.style.transform='scale(1.2)'}}
+                                      onMouseOut=${e=>{e.currentTarget.style.background='none';e.currentTarget.style.transform='scale(1)'}}>
+                                      ${emoji}
+                                    </button>`)}
+                                </div>
                               </div>
-                            </div>
-                            <button onClick=${()=>vote(note.id)} style=${{ display:'flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:6, border:'none', background:voted?cat.color:cat.color+'12', color:voted?'#FFF':cat.color, fontSize:10, fontWeight:700, marginLeft:3 }}>👍 ${note.voters?.length||0}</button>
-                            ${mine && html`
-                              <button onClick=${()=>{setEId(note.id);setEVal(note.text)}} style=${{ border:'none', background:'none', fontSize:12, cursor:'pointer', color:'#86868B', padding:'2px' }} title="Editar">✏️</button>
-                              <button onClick=${()=>delN(note.id)} style=${{ border:'none', background:'none', fontSize:12, cursor:'pointer', color:'#C7C7CC', padding:'2px' }} title="Eliminar">✕</button>
                             `}
+                            <button onClick=${e=>{e.stopPropagation();vote(note.id)}} style=${{ display:'flex', alignItems:'center', gap:3, padding:'2px 8px', borderRadius:6, border:'none', background:voted?cat.color:cat.color+'12', color:voted?'#FFF':cat.color, fontSize:10, fontWeight:700, marginLeft:3 }}>👍 ${note.voters?.length||0}</button>
                           </div>
                         </div>
-                      `
-                    }
                   </div>`;
               })}
             </div>
@@ -8439,6 +8426,35 @@ function Board({ notes, sN, user, filter, hideOthers }) {
           </div>`;
       })}
     </div>
+
+    ${noteModal && html`
+      <div style=${{position:'fixed',inset:0,zIndex:15000,display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}
+        onClick=${e=>{if(e.target===e.currentTarget)setNoteModal(null)}}>
+        <div style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.18)',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)'}}></div>
+        <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',background:'#FFF',borderRadius:20,width:'100%',maxWidth:480,boxShadow:'0 12px 48px rgba(0,0,0,.12)',animation:'fadeIn .15s ease',overflow:'hidden'}}>
+          <div style=${{padding:'20px 24px 12px',borderBottom:'1px solid #F2F2F7',background:noteModal._cat?.bg||'#FAFAFA',display:'flex',alignItems:'center',gap:10}}>
+            <div style=${{width:8,height:8,borderRadius:4,background:noteModal._cat?.color||'#007AFF'}}></div>
+            <h3 style=${{fontSize:15,fontWeight:700,margin:0,flex:1}}>${noteModal._cat?.label||'Nota'}</h3>
+            <span style=${{fontSize:11,color:'#86868B'}}>${noteModal.userAvatar} ${noteModal.userName}</span>
+            <button onClick=${()=>setNoteModal(null)} style=${{border:'none',background:'#F2F2F7',borderRadius:10,width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14,color:'#86868B'}}>✕</button>
+          </div>
+          <div style=${{padding:'16px 24px'}}>
+            <textarea id="note-edit-area" value=${noteModal.text||''} onInput=${e=>{const nm={...noteModal,text:e.target.value};setNoteModal(nm);}}
+              style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'12px 14px',fontSize:14,fontFamily:'inherit',outline:'none',resize:'vertical',minHeight:100,boxSizing:'border-box'}} />
+          </div>
+          <div style=${{padding:'12px 24px 20px',display:'flex',gap:8,justifyContent:'space-between'}}>
+            <button onClick=${()=>{window.__confirm({title:'Eliminar nota',message:'¿Eliminar esta nota?',confirmColor:'#FF3B30',onConfirm:()=>{sN(notes.filter(n=>n.id!==noteModal.id));setNoteModal(null);}});}}
+              style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #FF3B3015',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>Eliminar</button>
+            <div style=${{display:'flex',gap:8}}>
+              <button onClick=${()=>setNoteModal(null)} style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,color:'#6E6E73',cursor:'pointer'}}>Cancelar</button>
+              <button onClick=${()=>saveNote(noteModal.id, noteModal.text)}
+                style=${{padding:'8px 20px',borderRadius:10,border:'none',background:noteModal._cat?.color||'#007AFF',color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `}
+
     </div>
   `;
 }
@@ -8446,11 +8462,11 @@ function Board({ notes, sN, user, filter, hideOthers }) {
 /* ═══ PHASE 3 ═══ */
 function P3({ notes, sN, user }) {
   const [f, setF] = useState('all');
-  const fi = [{id:'all',label:'📋 Todas',color:'#1D1D1F'},{id:'mine',label:'👤 Mis notas',color:'#5856D6'},...CATS.map(c=>({id:c.id,label:c.emoji+' '+c.label,color:c.color}))];
+  const fi = [{id:'all',label:'Todas',color:'#1D1D1F'},{id:'mine',label:'Mis notas',color:'#5856D6'}];
   return html`
     <div style=${{ display:'flex', flexDirection:'column', gap:10, height:'100%' }}>
       <div style=${{ display:'flex', gap:5, flexWrap:'wrap' }}>${fi.map(x=>html`<button key=${x.id} onClick=${()=>setF(x.id)} style=${{ padding:'7px 12px', borderRadius:9, border:f===x.id?'none':'1.5px solid #E5E5EA', background:f===x.id?x.color:'#FFF', color:f===x.id?'#FFF':'#6E6E73', fontSize:12, fontWeight:600 }}>${x.label}</button>`)}</div>
-      <div style=${{ flex:1 }}><${Board} notes=${notes} sN=${sN} user=${user} filter=${f} /></div>
+      <div style=${{ flex:1 }}><${Board} notes=${notes} sN=${sN} user=${user} filter=${f} showReactions=${true} /></div>
     </div>
   `;
 }
