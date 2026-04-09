@@ -515,19 +515,20 @@ function useRealtime(user) {
   const supabaseSaveTimer = useRef(null);
   stRef.current = state;
 
-  // ── SUPABASE FALLBACK: if localStorage was empty, load latest snapshot ──
+  // ── SUPABASE FALLBACK: if any data is missing, load from snapshot ──
   useEffect(() => {
     const hasActions = (state.actions||[]).length > 0;
     const hasRisks = (state.risks||[]).length > 0;
     const hasNotes = (state.notes||[]).length > 0;
-    if (hasActions || hasRisks || hasNotes) return; // already have data
+    if (hasActions && hasRisks) return; // have both critical datasets
     // Try loading from Supabase
     (async () => {
       try {
         const { data } = await supabase.from('retros')
           .select('data')
           .eq('sala', SALA)
-          .order('created_at', { ascending: false })
+          .eq('status', 'active')
+          .order('updated_at', { ascending: false })
           .limit(1);
         if (data && data[0] && data[0].data) {
           const snap = data[0].data;
