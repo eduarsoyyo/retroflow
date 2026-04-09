@@ -4626,7 +4626,10 @@ function PEquipo() {
 
   // ── Skill Actions & Training CRUD ──
   const saveAction = async (a) => {
-    const saved = await sbSaveSkillAction({...a, sala:SALA});
+    const clean = {...a, sala:SALA};
+    if(!clean.skill_id) delete clean.skill_id; // remove empty string — FK needs null or valid UUID
+    if(!clean.target_date) delete clean.target_date;
+    const saved = await sbSaveSkillAction(clean);
     if(saved) setActions(prev=>prev.find(x=>x.id===saved.id)?prev.map(x=>x.id===saved.id?saved:x):[...prev,saved]);
   };
   const deleteAction = async (id) => { await sbDeleteSkillAction(id); setActions(prev=>prev.filter(x=>x.id!==id)); };
@@ -5148,8 +5151,8 @@ function PEquipo() {
               const rv = lv/4*maxR;
               return [cx+Math.cos(a)*rv,cy+Math.sin(a)*rv];
             });
-            const reqPath = reqPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ')+'Z';
-            const actPath = actPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ')+'Z';
+            const reqPath = reqPts.map(p=>p[0]+','+p[1]).join(' ');
+            const actPath = actPts.map(p=>p[0]+','+p[1]).join(' ');
             const labels = reqs.map((r,i)=>{
               const sk = skills.find(s=>s.id===r.skill_id);
               const a = -Math.PI/2+i*angleStep;
@@ -5206,23 +5209,26 @@ function PEquipo() {
 }
 
 function OrgNode({m, depth, team, org, setManager, orgSaving}) {
+  const [showEdit, setShowEdit] = useState(false);
   const children = team.filter(x=>(org[x.id]||null)===m.id);
   return html`
     <div style=${{display:'flex',flexDirection:'column',alignItems:'center'}}>
-      ${depth>0&&html`<div style=${{width:2,height:16,background:'#E5E5EA'}}></div>`}
-      <div style=${{background:'#FFF',borderRadius:12,border:'1.5px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),padding:'10px 14px',minWidth:120,textAlign:'center',boxShadow:'0 2px 8px rgba(0,0,0,.04)'}}>
-        <div style=${{fontSize:26,marginBottom:4}}>${m.avatar||'👤'}</div>
-        <div style=${{fontSize:11,fontWeight:700}}>${m.name}</div>
-        ${m.role_label&&html`<div style=${{fontSize:9,color:'#86868B',marginBottom:4}}>${m.role_label}</div>`}
-        <select value=${org[m.id]||''} onChange=${e=>setManager(m.id,e.target.value||null)} disabled=${orgSaving}
-          style=${{fontSize:9,border:'1px solid #E5E5EA',borderRadius:5,padding:'2px 4px',width:'100%',color:'#86868B',outline:'none',background:'#FAFAFA'}}>
-          <option value="">Raíz (sin manager)</option>
-          ${team.filter(t=>t.id!==m.id).map(t=>html`<option key=${t.id} value=${t.id}>↑ ${t.name}</option>`)}
-        </select>
+      ${depth>0&&html`<div style=${{width:2,height:18,background:'#E5E5EA'}}></div>`}
+      <div onClick=${()=>setShowEdit(!showEdit)}
+        style=${{background:'#FFF',borderRadius:14,border:'2px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),padding:'14px 16px',minWidth:130,textAlign:'center',boxShadow:depth===0?'0 4px 16px rgba(0,0,0,.08)':'0 2px 8px rgba(0,0,0,.04)',cursor:'pointer',transition:'all .15s'}}>
+        <div style=${{fontSize:30,marginBottom:6}}>${m.avatar||'👤'}</div>
+        <div style=${{fontSize:12,fontWeight:700}}>${m.name}</div>
+        ${m.role_label&&html`<div style=${{fontSize:10,color:'#86868B',marginTop:2}}>${m.role_label}</div>`}
+        ${showEdit&&html`
+          <select value=${org[m.id]||''} onClick=${e=>e.stopPropagation()} onChange=${e=>{setManager(m.id,e.target.value||null);setShowEdit(false)}} disabled=${orgSaving}
+            style=${{fontSize:10,border:'1px solid #E5E5EA',borderRadius:6,padding:'4px',width:'100%',color:'#6E6E73',outline:'none',background:'#FAFAFA',marginTop:6}}>
+            <option value="">Sin manager (raíz)</option>
+            ${team.filter(t=>t.id!==m.id).map(t=>html`<option key=${t.id} value=${t.id}>↑ ${t.name}</option>`)}
+          </select>`}
       </div>
       ${children.length>0&&html`
-        <div><div style=${{width:2,height:16,background:'#E5E5EA',margin:'0 auto'}}></div>
-        <div style=${{display:'flex',gap:12,justifyContent:'center'}}>
+        <div><div style=${{width:2,height:18,background:'#E5E5EA',margin:'0 auto'}}></div>
+        <div style=${{display:'flex',gap:16,justifyContent:'center'}}>
           ${children.map(ch=>html`<${OrgNode} key=${ch.id} m=${ch} depth=${depth+1} team=${team} org=${org} setManager=${setManager} orgSaving=${orgSaving} />`)}
         </div></div>`}
     </div>`;
