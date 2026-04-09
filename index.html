@@ -4465,7 +4465,7 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm, onOpenDetail, acti
                 const hasLinked = (actions||[]).some(a=>a.riskId===r.id);
                 const nextLvl = LEVELS[LEVELS.findIndex(x=>x.id===l.id)+1];
                 const esc = r.escalation||{};
-                const canEdit = isSM || (levelMembers[l.id]||[]).includes(user?.name) || r.owner===user?.name;
+                const canEdit = isSM || (levelMembers[l.id]||[]).includes(user?.name);
                 return html`
                   <div key=${r.id}
                     onClick=${()=>onOpenDetail&&onOpenDetail(r)}
@@ -6452,8 +6452,8 @@ const addItem = () => {
   // rNum: sequential number for display (R1, R2…)
   // Sequential numbers per type
   const riskNum = (r) => {
-    const sameType = allRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo'));
-    return sameType.indexOf(r) + 1;
+    const sameType = allRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')&&x.status!=='mitigated');
+    return sameType.findIndex(x=>x.id===r.id) + 1;
   };
 
   const IMPACT_BTNS = [{id:'alto',label:'Alto',color:'#FF3B30'},{id:'medio',label:'Medio',color:'#FF9500'},{id:'bajo',label:'Bajo',color:'#34C759'}];
@@ -7416,11 +7416,11 @@ function RetroBoard({ user, onLogout }) {
     if (!state.risks && !state.actions) return;
     const today = new Date().toISOString().slice(0,10);
     (state.risks||[]).forEach(r => {
-      if (r.escalation) {
+      if (r.escalation && r.escalation.level && r.escalation.level !== 'equipo') {
         const _lmn = (() => { try{return JSON.parse(localStorage.getItem('rf-level-members-'+SALA)||'{}')}catch{return {}} })();
         const isMyLevel = (_lmn[r.escalation.level]||[]).includes(user.name);
         if (r.escalation.memberName===user.name||r.escalation.memberId===user.id||isMyLevel)
-          addNotif('esc-'+r.id, '📈 Riesgo escalado a ti: '+r.text.slice(0,50), 'escalado');
+          addNotif('esc-'+r.id, '📈 Escalado a '+r.escalation.levelLabel+': '+r.text.slice(0,40), 'escalado');
       }
       if (r.owner===user.name&&r.status!=='mitigated'&&r.deadline&&r.deadline<today)
         addNotif('rdl-'+r.id, '⚠️ Riesgo vencido: '+r.text.slice(0,50), 'overdue');
@@ -8518,20 +8518,21 @@ function P4({ notes, actions, risks, sA, user }) {
       setTeamMembers(filtered.length > 0 ? filtered : data);
     });
   }, []);
+  const [detailAction, setDetailAction] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({text:'',owner:'',date:'',priority:'medium',type:'accion_retro'});
 
   const topN = [...notes].sort((a,b)=>(b.voters?.length||0)-(a.voters?.length||0)).slice(0,15);
   const openRisks = (risks||[]).filter(r => r.status !== 'mitigated');
   const priO = {critical:4,high:3,medium:2,low:1};
+  const STS_MAP = {backlog:{l:'Backlog',c:'#86868B'},todo:{l:'Por hacer',c:'#FF9500'},in_progress:{l:'En curso',c:'#007AFF'},done:{l:'Hecho',c:'#34C759'}};
 
-  const createAction = (text, source, sourceId, priority) => {
-    sA([...actions,{id:uid(),text:text.trim(),owner:'',date:'',status:'backlog',priority:priority||'medium',voteScore:0,createdBy:user.id,fromCategory:null,noteId:sourceId||null,riskId:null,source:source||'manual',type:'accion_retro',createdAt:new Date().toISOString()}]);
+  const createAction = (obj) => {
+    sA([...actions,{id:uid(),text:(obj.text||'').trim(),owner:obj.owner||'',date:obj.date||'',status:'backlog',priority:obj.priority||'medium',voteScore:0,createdBy:user.id,fromCategory:null,noteId:obj.noteId||null,riskId:obj.riskId||null,source:obj.source||'manual',type:obj.type||'accion_retro',createdAt:new Date().toISOString()}]);
   };
-  const createFromRisk = (r) => {
-    const pri = (r.impact||'medio')==='alto'?'high':(r.impact||'medio')==='medio'?'medium':'low';
-    sA([...actions,{id:uid(),text:'Mitigar: '+r.text,owner:r.owner||'',date:'',status:'backlog',priority:pri,voteScore:0,createdBy:user.id,riskId:r.id,source:'risk',type:'tarea',createdAt:new Date().toISOString()}]);
-  };
-  const togNote = n => { const ex=actions.find(a=>a.noteId===n.id); if(ex)sA(actions.filter(a=>a.noteId!==n.id)); else createAction(n.text,'retro',n.id,n.voters?.length>=5?'high':n.voters?.length>=2?'medium':'low'); };
-  const togRisk = r => { const ex=actions.find(a=>a.riskId===r.id); if(ex)sA(actions.filter(a=>a.riskId!==r.id)); else createFromRisk(r); };
+  const togNote = n => { const ex=actions.find(a=>a.noteId===n.id); if(ex)sA(actions.filter(a=>a.noteId!==n.id)); else createAction({text:n.text,source:'retro',noteId:n.id,priority:n.voters?.length>=5?'high':n.voters?.length>=2?'medium':'low'}); };
+  const togRisk = r => { const ex=actions.find(a=>a.riskId===r.id); if(ex)sA(actions.filter(a=>a.riskId!==r.id)); else createAction({text:'Mitigar: '+r.text,owner:r.owner||'',source:'risk',riskId:r.id,priority:(r.impact||'medio')==='alto'?'high':'medium',type:'tarea'}); };
+  const updA = (id, patch) => sA(actions.map(a=>a.id===id?{...a,...patch}:a));
   const delA = id => window.__confirm({title:'Eliminar accionable',message:'Se eliminara de la retro.',onConfirm:()=>sA(actions.filter(a=>a.id!==id))});
 
   return html`
@@ -8540,13 +8541,11 @@ function P4({ notes, actions, risks, sA, user }) {
         <h3 style=${{ fontSize:16, fontWeight:700, margin:0 }}>Accionables</h3>
         <span style=${{ fontSize:11, background:'#007AFF12', color:'#007AFF', padding:'2px 8px', borderRadius:8, fontWeight:600 }}>${actions.filter(a=>a.status!=='done').length} abiertos</span>
         <div style=${{ flex:1 }}></div>
-        <button onClick=${()=>{
-          const text=prompt('Nuevo accionable:');
-          if(text?.trim()) createAction(text,'manual');
-        }} style=${{ padding:'7px 14px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>+ Crear accionable</button>
+        <button onClick=${()=>{setForm({text:'',owner:'',date:'',priority:'medium',type:'accion_retro'});setShowForm(true)}}
+          style=${{ padding:'7px 14px', borderRadius:9, border:'none', background:'#1D1D1F', color:'#FFF', fontSize:12, fontWeight:600, cursor:'pointer' }}>+ Crear accionable</button>
       </div>
 
-      <div style=${{ display:'grid', gridTemplateColumns:'1fr 280px', gap:14, alignItems:'start' }}>
+      <div style=${{ display:'grid', gridTemplateColumns:'1fr 260px', gap:14, alignItems:'start' }}>
         <div data-col="list" style=${{ display:'flex', flexDirection:'column', gap:5 }}>
           ${actions.length===0 && html`<div style=${{ textAlign:'center', padding:32, color:'#C7C7CC', border:'2px dashed #E5E5EA', borderRadius:12 }}>
             <p style=${{ fontSize:13, marginBottom:4 }}>Sin accionables</p>
@@ -8554,66 +8553,137 @@ function P4({ notes, actions, risks, sA, user }) {
           </div>`}
           ${[...actions].sort((a,b)=>(priO[b.priority]||0)-(priO[a.priority]||0)).map(a => {
             const pr = PRIS.find(p=>p.id===a.priority)||PRIS[1];
-            const ct = a.fromCategory?CATS.find(cc=>cc.id===a.fromCategory):null;
+            const st = STS_MAP[a.status]||STS_MAP.backlog;
             return html`
-              <div key=${a.id} style=${{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderRadius:10, background:'#FFF', border:'1.5px solid #E5E5EA', borderLeft:'3px solid '+pr.color }}>
-                <span style=${{ fontSize:14 }}>${pr.icon}</span>
-                ${ct && html`<span style=${{ fontSize:8, color:ct.color, background:ct.color+'10', padding:'1px 5px', borderRadius:4, fontWeight:700, flexShrink:0 }}>${ct.emoji}</span>`}
-                <div style=${{ flex:1, minWidth:0 }}>
-                  <p style=${{ fontSize:12, fontWeight:600, margin:0 }}>${a.text}</p>
-                  <div style=${{ display:'flex', gap:6, marginTop:2, fontSize:10, color:'#86868B' }}>
-                    ${a.owner && html`<span style=${{ color:'#007AFF', fontWeight:600 }}>${a.owner}</span>`}
-                    ${a.source==='retro' && html`<span style=${{ color:'#FF9500' }}>retro</span>`}
-                    ${a.source==='risk' && html`<span style=${{ color:'#FF3B30' }}>riesgo</span>`}
-                  </div>
+              <div key=${a.id} onClick=${()=>setDetailAction({...a})}
+                style=${{ padding:'10px 12px', borderRadius:10, background:'#FFF', border:'1.5px solid #E5E5EA', borderLeft:'3px solid '+pr.color, cursor:'pointer' }}>
+                <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <span style=${{ fontSize:14 }}>${pr.icon}</span>
+                  <p style=${{ fontSize:12, fontWeight:600, margin:0, flex:1 }}>${a.text}</p>
+                  <span style=${{ fontSize:9, padding:'2px 6px', borderRadius:5, background:st.c+'15', color:st.c, fontWeight:700 }}>${st.l}</span>
                 </div>
-                <button onClick=${()=>delA(a.id)} style=${{ border:'none', background:'none', fontSize:11, color:'#C7C7CC', cursor:'pointer' }}>✕</button>
+                <div style=${{ display:'flex', gap:8, alignItems:'center', fontSize:10, color:'#86868B' }}>
+                  ${a.owner && html`<span style=${{ color:'#007AFF', fontWeight:600 }}>${a.owner}</span>`}
+                  ${a.date && html`<span>\uD83D\uDCC5 ${fd(a.date)}</span>`}
+                  ${a.source==='retro' && html`<span style=${{ color:'#FF9500' }}>retro</span>`}
+                  ${a.source==='risk' && html`<span style=${{ color:'#FF3B30' }}>riesgo</span>`}
+                </div>
               </div>`;
           })}
         </div>
 
-        <div data-col="sources" style=${{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:14 }}>
+        <div data-col="sources" style=${{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:12 }}>
             <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:6 }}>Notas mas votadas</h4>
-            <p style=${{ fontSize:10, color:'#86868B', marginBottom:8 }}>Clic para crear accionable</p>
-            <div style=${{ display:'flex', flexDirection:'column', gap:4, maxHeight:240, overflowY:'auto' }}>
+            <div style=${{ display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto' }}>
               ${topN.map(n => {
                 const linked = actions.some(a=>a.noteId===n.id);
                 const ct = CATS.find(cc=>cc.id===n.category);
                 return html`<button key=${n.id} onClick=${()=>togNote(n)}
                   style=${{ padding:'6px 8px', borderRadius:8, border:'1px solid '+(linked?'#34C759':'#E5E5EA'), background:linked?'#F0FFF4':'#FFF', textAlign:'left', cursor:'pointer' }}>
-                  <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
-                    ${ct && html`<span style=${{ fontSize:8 }}>${ct.emoji}</span>`}
-                    <span style=${{ fontSize:9, color:'#86868B' }}>👍 ${n.voters?.length||0}</span>
-                    ${linked && html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700, marginLeft:'auto' }}>✓</span>`}
+                  <p style=${{ fontSize:10, lineHeight:1.3, color:linked?'#86868B':'#1D1D1F', margin:'0 0 2px' }}>${n.text}</p>
+                  <div style=${{ display:'flex', alignItems:'center', gap:4, fontSize:9, color:'#86868B' }}>
+                    ${ct && html`<span>${ct.emoji}</span>`}
+                    <span>\uD83D\uDC4D ${n.voters?.length||0}</span>
+                    ${linked && html`<span style=${{ color:'#34C759', fontWeight:700, marginLeft:'auto' }}>\u2713</span>`}
                   </div>
-                  <p style=${{ fontSize:10, lineHeight:1.3, color:linked?'#86868B':'#1D1D1F', margin:0 }}>${n.text}</p>
                 </button>`;
               })}
             </div>
           </div>
-
           ${openRisks.length>0 && html`
-            <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:14 }}>
+            <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:12 }}>
               <h4 style=${{ fontSize:12, fontWeight:700, marginBottom:6 }}>Riesgos abiertos</h4>
-              <p style=${{ fontSize:10, color:'#86868B', marginBottom:8 }}>Clic para crear mitigacion</p>
-              <div style=${{ display:'flex', flexDirection:'column', gap:4, maxHeight:200, overflowY:'auto' }}>
+              <div style=${{ display:'flex', flexDirection:'column', gap:4, maxHeight:180, overflowY:'auto' }}>
                 ${openRisks.map(r => {
                   const linked = actions.some(a=>a.riskId===r.id);
-                  const hc = heatColor(r.impact||'medio', r.prob||'media');
                   return html`<button key=${r.id} onClick=${()=>togRisk(r)}
-                    style=${{ padding:'6px 8px', borderRadius:8, border:'1px solid '+(linked?'#34C759':hc+'30'), borderLeft:'3px solid '+(linked?'#34C759':hc), background:linked?'#F0FFF4':'#FFF', textAlign:'left', cursor:'pointer' }}>
-                    <div style=${{ display:'flex', alignItems:'center', gap:4, marginBottom:2 }}>
-                      <span style=${{ fontSize:9, fontWeight:700, color:hc }}>\u26A0\uFE0F</span>
-                      ${linked && html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700, marginLeft:'auto' }}>\u2713 Mitigacion</span>`}
-                    </div>
-                    <p style=${{ fontSize:10, lineHeight:1.3, color:linked?'#86868B':'#1D1D1F', margin:0 }}>${r.text}</p>
+                    style=${{ padding:'6px 8px', borderRadius:8, border:'1px solid '+(linked?'#34C759':'#E5E5EA'), background:linked?'#F0FFF4':'#FFF', textAlign:'left', cursor:'pointer' }}>
+                    <p style=${{ fontSize:10, lineHeight:1.3, margin:0 }}>${r.text}</p>
+                    ${linked && html`<span style=${{ fontSize:8, color:'#34C759', fontWeight:700 }}>\u2713</span>`}
                   </button>`;
                 })}
               </div>
             </div>`}
         </div>
       </div>
+
+      ${detailAction && html`
+        <div style=${{position:'fixed',inset:0,zIndex:15000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick=${()=>setDetailAction(null)} style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.18)',backdropFilter:'blur(8px)'}}></div>
+          <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',background:'#FFF',borderRadius:20,width:'100%',maxWidth:500,boxShadow:'0 12px 48px rgba(0,0,0,.12)',padding:24,animation:'fadeIn .15s ease'}}>
+            <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+              <span style=${{fontSize:18}}>${(PRIS.find(p=>p.id===detailAction.priority)||PRIS[1]).icon}</span>
+              <h3 style=${{fontSize:16,fontWeight:700,margin:0,flex:1}}>${detailAction.text}</h3>
+              <button onClick=${()=>setDetailAction(null)} style=${{border:'none',background:'#F2F2F7',borderRadius:10,width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}}>\u2715</button>
+            </div>
+            <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div>
+                <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3}}>Responsable</label>
+                <select value=${detailAction.owner||''} onChange=${e=>{const u={...detailAction,owner:e.target.value};setDetailAction(u);updA(u.id,{owner:u.owner})}}
+                  style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}}>
+                  <option value="">Sin asignar</option>
+                  ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||''} ${m.name}</option>`)}
+                </select>
+              </div>
+              <div>
+                <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3}}>Prioridad</label>
+                <select value=${detailAction.priority||'medium'} onChange=${e=>{const u={...detailAction,priority:e.target.value};setDetailAction(u);updA(u.id,{priority:u.priority})}}
+                  style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}}>
+                  ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
+                </select>
+              </div>
+              <div>
+                <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3}}>Fecha</label>
+                <input type="date" value=${detailAction.date||''} onChange=${e=>{const u={...detailAction,date:e.target.value};setDetailAction(u);updA(u.id,{date:u.date})}}
+                  style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none',boxSizing:'border-box'}} />
+              </div>
+              <div>
+                <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3}}>Estado</label>
+                <select value=${detailAction.status||'backlog'} onChange=${e=>{const u={...detailAction,status:e.target.value};setDetailAction(u);updA(u.id,{status:u.status})}}
+                  style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}}>
+                  ${[['backlog','Backlog'],['todo','Por hacer'],['in_progress','En curso'],['done','Hecho']].map(([id,lb])=>html`<option key=${id} value=${id}>${lb}</option>`)}
+                </select>
+              </div>
+            </div>
+            <div style=${{display:'flex',gap:8,justifyContent:'space-between'}}>
+              <button onClick=${()=>{delA(detailAction.id);setDetailAction(null)}}
+                style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #FF3B3015',background:'#FFF5F5',color:'#FF3B30',fontSize:12,fontWeight:600,cursor:'pointer'}}>Eliminar</button>
+              <button onClick=${()=>setDetailAction(null)}
+                style=${{padding:'8px 20px',borderRadius:10,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Cerrar</button>
+            </div>
+          </div>
+        </div>`}
+
+      ${showForm && html`
+        <div style=${{position:'fixed',inset:0,zIndex:15000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick=${()=>setShowForm(false)} style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.18)',backdropFilter:'blur(8px)'}}></div>
+          <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',background:'#FFF',borderRadius:20,width:'100%',maxWidth:460,boxShadow:'0 12px 48px rgba(0,0,0,.12)',padding:24,animation:'fadeIn .15s ease'}}>
+            <h3 style=${{fontSize:16,fontWeight:700,marginBottom:14}}>Nuevo accionable</h3>
+            <div style=${{display:'flex',flexDirection:'column',gap:10}}>
+              <input value=${form.text} onInput=${e=>setForm({...form,text:e.target.value})} placeholder="Descripcion..."
+                style=${{border:'1.5px solid #E5E5EA',borderRadius:10,padding:'10px 14px',fontSize:13,fontFamily:'inherit',outline:'none'}} />
+              <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <select value=${form.owner} onChange=${e=>setForm({...form,owner:e.target.value})}
+                  style=${{border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}}>
+                  <option value="">Responsable</option>
+                  ${teamMembers.map(m=>html`<option key=${m.id} value=${m.name}>${m.avatar||''} ${m.name}</option>`)}
+                </select>
+                <select value=${form.priority} onChange=${e=>setForm({...form,priority:e.target.value})}
+                  style=${{border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}}>
+                  ${PRIS.map(p=>html`<option key=${p.id} value=${p.id}>${p.icon} ${p.label}</option>`)}
+                </select>
+              </div>
+              <input type="date" value=${form.date} onInput=${e=>setForm({...form,date:e.target.value})}
+                style=${{border:'1.5px solid #E5E5EA',borderRadius:9,padding:'8px',fontSize:12,fontFamily:'inherit',outline:'none'}} />
+              <div style=${{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button onClick=${()=>setShowForm(false)} style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,color:'#6E6E73',cursor:'pointer'}}>Cancelar</button>
+                <button onClick=${()=>{if(form.text?.trim()){createAction(form);setShowForm(false)}}}
+                  style=${{padding:'8px 20px',borderRadius:10,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Crear</button>
+              </div>
+            </div>
+          </div>
+        </div>`}
     </div>`;
 }
 
@@ -8634,7 +8704,7 @@ function P5Risks({ risks, sR, notes, user }) {
 
   const addRisk = (text, type) => {
     if (!text.trim()) return;
-    sR([...risks, { id:uid(), text:text.trim(), type:type||'riesgo', impact:'medio', prob:'media', mitigation:'', owner:'', status:'open', impactVotes:{}, probVotes:{}, createdBy:user.id, createdAt:new Date().toISOString() }]);
+    sR([...risks, { id:uid(), text:text.trim(), type:type||'riesgo', impact:'medio', prob:(type||'riesgo')==='problema'?'alta':'media', mitigation:'', owner:'', status:'open', impactVotes:{}, probVotes:{}, createdBy:user.id, createdAt:new Date().toISOString() }]);
   };
   const addFromNote = (note) => {
     const ex = risks.find(r => r.fromNote === note.id);
@@ -8665,7 +8735,7 @@ function P5Risks({ risks, sR, notes, user }) {
                   const inCell = openRisks.filter(r => (r.impact||'medio')===imp && (r.prob||'media')===prob);
                   return html`<div key=${prob+imp} style=${{ background:color+'18', border:'1px solid '+color+'25', borderRadius:8, padding:6, minHeight:56, display:'flex', flexWrap:'wrap', gap:4, alignContent:'flex-start' }}>
                     ${inCell.map(r => {
-                      const rn = openRisks.indexOf(r)+1;
+                      const rn = openRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1;
                       const pf = (r.type||'riesgo')==='problema'?'P':(r.type||'riesgo')==='oportunidad'?'O':'R';
                       return html`<div key=${r.id} title=${r.text} onClick=${()=>setDetailRisk({...r})}
                         style=${{ width:28, height:28, borderRadius:14, background:color, color:'#FFF', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:'2px solid #FFF', boxShadow:'0 1px 4px '+color+'40' }}>${pf}${rn}</div>`;
@@ -8726,20 +8796,20 @@ function P5Risks({ risks, sR, notes, user }) {
               <div key=${r.id} onClick=${()=>setDetailRisk({...r})}
                 style=${{ background:'#FFF', borderRadius:12, border:'1.5px solid #E5E5EA', borderLeft:'4px solid '+hc, padding:'10px 14px', cursor:'pointer' }}>
                 <div style=${{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                  <span style=${{ fontSize:13, fontWeight:800, color:hc }}>${pf}${idx+1}</span>
+                  <span style=${{ fontSize:13, fontWeight:800, color:hc }}>${pf}${openRisks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')).indexOf(r)+1}</span>
                   <p style=${{ fontSize:13, fontWeight:600, margin:0, flex:1, lineHeight:1.3 }}>${r.text}</p>
                   ${r.owner && html`<span style=${{ fontSize:10, color:'#007AFF', fontWeight:600, flexShrink:0 }}>${r.owner}</span>`}
                 </div>
                 <div style=${{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                   <div style=${{ display:'flex', alignItems:'center', gap:3 }}>
                     <span style=${{ fontSize:9, color:'#86868B', fontWeight:600 }}>Imp:</span>
-                    ${IMPACT_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();upd(r.id,{impact:l.id})}}
-                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.impact||'medio')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.impact||'medio')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
+                    ${IMPACT_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();if(r.createdBy===user.id||r.owner===user.name)upd(r.id,{impact:l.id})}}
+                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.impact||'medio')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.impact||'medio')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:(r.createdBy===user.id||r.owner===user.name)?'pointer':'default', opacity:(r.createdBy===user.id||r.owner===user.name)?1:.5 }}>${l.label}</button>`)}
                   </div>
                   ${(r.type||'riesgo')!=='problema' && html`<div style=${{ display:'flex', alignItems:'center', gap:3 }}>
                     <span style=${{ fontSize:9, color:'#86868B', fontWeight:600 }}>Prob:</span>
-                    ${PROB_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();upd(r.id,{prob:l.id})}}
-                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.prob||'media')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.prob||'media')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:'pointer' }}>${l.label}</button>`)}
+                    ${PROB_BTNS.map(l => html`<button key=${l.id} onClick=${e=>{e.stopPropagation();if(r.createdBy===user.id||r.owner===user.name)upd(r.id,{prob:l.id})}}
+                      style=${{ padding:'2px 7px', borderRadius:5, border:(r.prob||'media')===l.id?'2px solid '+l.color:'1px solid #E5E5EA', background:(r.prob||'media')===l.id?l.color+'15':'#FFF', fontSize:9, fontWeight:700, color:l.color, cursor:(r.createdBy===user.id||r.owner===user.name)?'pointer':'default', opacity:(r.createdBy===user.id||r.owner===user.name)?1:.5 }}>${l.label}</button>`)}
                   </div>`}
                 </div>
               </div>`;
