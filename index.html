@@ -4826,31 +4826,93 @@ function PEquipo({ user }) {
     `}
 
     ${subTab==='matriz' && html`
-      <h3 style=${{fontSize:16,fontWeight:700,marginBottom:12}}>Matriz de competencias</h3>
-      ${skills.length===0||team.length===0 ? html`<p style=${{color:'#86868B',textAlign:'center',padding:32}}>Añade perfiles y habilidades primero</p>` : html`
-        <div style=${{overflowX:'auto'}}>
-          <table style=${{borderCollapse:'collapse',fontSize:11,width:'100%'}}>
-            <thead><tr>
-              <th style=${{padding:'6px 10px',textAlign:'left',borderBottom:'2px solid #E5E5EA',position:'sticky',left:0,background:'#FFF',zIndex:1}}>Persona</th>
-              ${skills.map(s=>html`<th key=${s.id} style=${{padding:'6px 4px',textAlign:'center',borderBottom:'2px solid #E5E5EA',fontSize:9,fontWeight:700,writingMode:'vertical-rl',transform:'rotate(180deg)',maxWidth:30,height:80}}>${s.name}</th>`)}
-            </tr></thead>
-            <tbody>
-              ${team.map(m=>html`<tr key=${m.id}>
-                <td style=${{padding:'6px 10px',borderBottom:'1px solid #F2F2F7',fontWeight:600,whiteSpace:'nowrap',position:'sticky',left:0,background:'#FFF',zIndex:1}}>
-                  <span style=${{fontSize:14,marginRight:4}}>${m.avatar||'👤'}</span>${m.name}
-                </td>
-                ${skills.map(s=>{
-                  const lvl = memberSkillLevel(m.id,s.id);
+      ${skills.length===0||team.length===0 ? html`<div style=${{textAlign:'center',padding:48,color:'#C7C7CC',border:'2px dashed #E5E5EA',borderRadius:16}}>
+        <${Icon} name="BarChart3" size=${36} color="#C7C7CC" />
+        <p style=${{fontSize:14,fontWeight:600,color:'#6E6E73',marginTop:8}}>Matriz vacía</p>
+        <p style=${{fontSize:12,color:'#86868B'}}>Crea perfiles y habilidades en la pestaña Perfiles</p>
+      </div>` : html`
+        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+          <div>
+            <h3 style=${{fontSize:16,fontWeight:700,margin:0}}>Matriz de competencias</h3>
+            <p style=${{fontSize:12,color:'#86868B',marginTop:2}}>${team.length} personas · ${skills.length} habilidades · ${categories.length} categorías</p>
+          </div>
+          <div style=${{display:'flex',gap:8,alignItems:'center'}}>
+            ${[{l:4,c:'#007AFF',t:'Experto'},{l:3,c:'#34C759',t:'Independiente'},{l:2,c:'#FF9500',t:'Asistido'},{l:1,c:'#FF3B30',t:'Introducción'}].map(x=>html`
+              <div key=${x.l} style=${{display:'flex',alignItems:'center',gap:3}}>
+                <div style=${{width:16,height:16,borderRadius:4,background:x.c+'20',border:'2px solid '+x.c,display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:x.c}}>${x.l}</div>
+                <span style=${{fontSize:9,color:'#86868B'}}>${x.t}</span>
+              </div>`)}
+            <div style=${{display:'flex',alignItems:'center',gap:3,marginLeft:8}}>
+              <div style=${{width:16,height:16,borderRadius:4,background:'#FFF',border:'2px dashed #FF3B3060'}}></div>
+              <span style=${{fontSize:9,color:'#86868B'}}>Gap</span>
+            </div>
+          </div>
+        </div>
+        <div style=${{background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',overflow:'hidden'}}>
+          <div style=${{overflowX:'auto'}}>
+            <table style=${{borderCollapse:'separate',borderSpacing:0,fontSize:11,width:'100%',minWidth:skills.length*48+220}}>
+              <thead>
+                <tr>
+                  <th rowspan="2" style=${{padding:'12px 14px',textAlign:'left',background:'#FAFAFA',position:'sticky',left:0,zIndex:3,borderBottom:'2px solid #E5E5EA',borderRight:'2px solid #E5E5EA',minWidth:200}}>
+                    <span style=${{fontSize:12,fontWeight:700,color:'#1D1D1F'}}>Equipo</span>
+                  </th>
+                  ${categories.map(cat => {
+                    const catSkills = skills.filter(s=>s.category===cat);
+                    return html`<th key=${cat} colspan=${catSkills.length}
+                      style=${{padding:'6px 4px',textAlign:'center',background:'#FAFAFA',borderBottom:'1px solid #F2F2F7',fontSize:10,fontWeight:700,color:'#5856D6',textTransform:'capitalize',letterSpacing:.5}}>
+                      ${cat}
+                    </th>`;
+                  })}
+                </tr>
+                <tr>
+                  ${categories.flatMap(cat => skills.filter(s=>s.category===cat).map((s,i,arr) => html`
+                    <th key=${s.id} style=${{padding:'6px 3px',textAlign:'center',background:'#FAFAFA',borderBottom:'2px solid #E5E5EA',borderRight:i===arr.length-1?'2px solid #F2F2F7':'none',fontSize:9,fontWeight:600,color:'#6E6E73',height:70,writingMode:'vertical-rl',transform:'rotate(180deg)',maxWidth:40,lineHeight:1.2}}>
+                      ${s.name}
+                    </th>`))}
+                </tr>
+              </thead>
+              <tbody>
+                ${team.map((m,mi) => {
                   const prof = memberProfile(m.id);
-                  const req = prof?profSkills.find(ps=>ps.profile_id===prof.id&&ps.skill_id===s.id):null;
-                  const isGap = req && lvl < req.required_level;
-                  return html`<td key=${s.id} style=${{padding:'2px',textAlign:'center',borderBottom:'1px solid #F2F2F7',background:lvl?LEVEL_COLORS[lvl]+'15':'transparent',border:isGap?'2px solid #FF3B3040':'1px solid #F2F2F7'}}>
-                    ${lvl?html`<span style=${{fontSize:11,fontWeight:800,color:LEVEL_COLORS[lvl]}}>${lvl}</span>`:html`<span style=${{color:'#E5E5EA'}}>·</span>`}
-                  </td>`;
+                  const fit = memberFit(m.id);
+                  return html`<tr key=${m.id} style=${{background:mi%2===0?'#FFF':'#FAFAFA'}}>
+                    <td style=${{padding:'8px 12px',borderBottom:'1px solid #F2F2F7',borderRight:'2px solid #E5E5EA',position:'sticky',left:0,zIndex:2,background:mi%2===0?'#FFF':'#FAFAFA'}}>
+                      <div style=${{display:'flex',alignItems:'center',gap:8}}>
+                        <div style=${{width:28,height:28,borderRadius:8,background:m.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>${m.avatar||'👤'}</div>
+                        <div style=${{flex:1,minWidth:0}}>
+                          <div style=${{fontSize:11,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${m.name}</div>
+                          ${prof&&html`<div style=${{fontSize:9,color:'#86868B'}}>${prof.icon||''} ${prof.name}</div>`}
+                        </div>
+                        ${fit!==null&&html`<div style=${{fontSize:12,fontWeight:800,color:fitColor(fit),minWidth:32,textAlign:'right'}}>${fit}%</div>`}
+                      </div>
+                    </td>
+                    ${categories.flatMap(cat => skills.filter(s=>s.category===cat).map((s,i,arr) => {
+                      const lvl = memberSkillLevel(m.id,s.id);
+                      const req = prof?profSkills.find(ps=>ps.profile_id===prof.id&&ps.skill_id===s.id):null;
+                      const isGap = req && lvl < req.required_level;
+                      const isOver = req && lvl > req.required_level;
+                      const bgc = lvl ? LEVEL_COLORS[lvl]+'18' : 'transparent';
+                      return html`<td key=${s.id} style=${{
+                        padding:0,textAlign:'center',borderBottom:'1px solid #F2F2F7',
+                        borderRight:i===arr.length-1?'2px solid #F2F2F720':'none',
+                        background:bgc,
+                        boxShadow:isGap?'inset 0 0 0 2px #FF3B3025':'none',
+                        position:'relative',
+                      }}>
+                        ${lvl ? html`<div style=${{
+                          display:'flex',alignItems:'center',justifyContent:'center',
+                          width:'100%',height:36,
+                          fontSize:13,fontWeight:800,color:LEVEL_COLORS[lvl],
+                        }}>${lvl}${req?html`<span style=${{position:'absolute',top:2,right:2,fontSize:7,color:isGap?'#FF3B30':isOver?'#34C759':'#86868B',fontWeight:700}}>${isGap?'▼':isOver?'▲':''}</span>`:''}</div>`
+                        : req ? html`<div style=${{display:'flex',alignItems:'center',justifyContent:'center',width:'100%',height:36,fontSize:10,color:'#E5E5EA'}}>—</div>`
+                        : html`<div style=${{height:36}}></div>`}
+                      </td>`;
+                    }))}
+                  </tr>`;
                 })}
-              </tr>`)}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>`}
     `}
 
