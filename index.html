@@ -408,28 +408,156 @@ function playFinishJingle() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const notes = [
-      {f:523.25,t:0,d:.12},     // C5
-      {f:659.25,t:.13,d:.12},   // E5
-      {f:783.99,t:.26,d:.12},   // G5
-      {f:1046.50,t:.40,d:.25},  // C6 (hold)
-      {f:783.99,t:.70,d:.10},   // G5
-      {f:1046.50,t:.82,d:.35},  // C6 (final)
+      {f:523.25,t:0,d:.12},{f:659.25,t:.13,d:.12},{f:783.99,t:.26,d:.12},
+      {f:1046.50,t:.40,d:.25},{f:783.99,t:.70,d:.10},{f:1046.50,t:.82,d:.35},
     ];
     notes.forEach(({f,t,d}) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      gain.gain.setValueAtTime(0, ctx.currentTime + t);
-      gain.gain.linearRampToValueAtTime(.18, ctx.currentTime + t + .02);
-      gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + t + d);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime + t);
-      osc.stop(ctx.currentTime + t + d + .05);
+      osc.type = 'sine'; osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, ctx.currentTime+t);
+      gain.gain.linearRampToValueAtTime(.18, ctx.currentTime+t+.02);
+      gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime+t+d);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(ctx.currentTime+t); osc.stop(ctx.currentTime+t+d+.05);
     });
     setTimeout(() => ctx.close(), 2000);
   } catch(e) {}
+}
+
+function playCelebration() {
+  playFinishJingle();
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;z-index:99999;pointer-events:none';
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Confetti particles
+  const confetti = Array.from({length:120}, () => ({
+    x: Math.random()*W, y: Math.random()*-H,
+    w: 4+Math.random()*6, h: 6+Math.random()*8,
+    vx: (Math.random()-.5)*3, vy: 2+Math.random()*4,
+    rot: Math.random()*Math.PI*2, vr: (Math.random()-.5)*.15,
+    color: ['#FFD700','#FFC107','#FFB300','#E5A100','#FFE57F','#5856D6','#7C4DFF'][Math.floor(Math.random()*7)],
+    opacity: 1,
+  }));
+
+  // Snitches
+  const snitches = Array.from({length:4}, (_, i) => ({
+    x: W*.2 + Math.random()*W*.6,
+    y: H*.3 + Math.random()*H*.4,
+    angle: Math.random()*Math.PI*2,
+    speed: 1.5+Math.random()*2,
+    wingPhase: Math.random()*Math.PI*2,
+    size: 10+Math.random()*4,
+    trail: [],
+  }));
+
+  // Stars
+  const stars = [];
+  let frame = 0;
+  const maxFrames = 180; // 3 seconds at 60fps
+
+  function drawSnitch(s) {
+    const {x, y, size, wingPhase} = s;
+    // Body (golden ball)
+    const grad = ctx.createRadialGradient(x-2, y-2, 1, x, y, size);
+    grad.addColorStop(0, '#FFF8DC');
+    grad.addColorStop(.4, '#FFD700');
+    grad.addColorStop(1, '#B8860B');
+    ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI*2);
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 1; ctx.stroke();
+    // Shine
+    ctx.beginPath(); ctx.arc(x-size*.3, y-size*.3, size*.25, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fill();
+    // Wings
+    const wf = Math.sin(wingPhase)*12;
+    for (let side of [-1, 1]) {
+      ctx.save(); ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.moveTo(side*size*.6, 0);
+      ctx.quadraticCurveTo(side*(size*1.8+wf*.3), -size*1.2+wf*side, side*(size*2.5+wf*.5), -size*.3+wf*.2);
+      ctx.quadraticCurveTo(side*(size*2+wf*.2), size*.4, side*size*.6, 0);
+      ctx.fillStyle = 'rgba(255,255,255,.45)';
+      ctx.strokeStyle = 'rgba(218,165,32,.4)'; ctx.lineWidth = .5;
+      ctx.fill(); ctx.stroke();
+      // Inner wing detail
+      ctx.beginPath();
+      ctx.moveTo(side*size*.8, -.5);
+      ctx.quadraticCurveTo(side*(size*1.4+wf*.2), -size*.8+wf*side*.6, side*(size*2+wf*.3), -size*.2+wf*.1);
+      ctx.strokeStyle = 'rgba(218,165,32,.25)'; ctx.lineWidth = .5; ctx.stroke();
+      ctx.restore();
+    }
+    // Trail sparkles
+    s.trail.forEach((t, i) => {
+      const a = t.life/15;
+      ctx.beginPath(); ctx.arc(t.x, t.y, 1.5*a, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,215,0,${a*.5})`; ctx.fill();
+    });
+  }
+
+  function drawStar(x, y, r, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#FFD700';
+    ctx.font = Math.round(r)+'px serif';
+    ctx.fillText('✦', x, y);
+    ctx.restore();
+  }
+
+  function animate() {
+    frame++;
+    ctx.clearRect(0, 0, W, H);
+    const fadeOut = frame > maxFrames-30 ? (maxFrames-frame)/30 : 1;
+
+    // Update & draw confetti
+    confetti.forEach(c => {
+      c.x += c.vx; c.y += c.vy; c.rot += c.vr;
+      c.vy += .05;
+      c.opacity = fadeOut;
+      if (c.y > H+20) { c.y = -10; c.x = Math.random()*W; c.vy = 2+Math.random()*3; }
+      ctx.save();
+      ctx.translate(c.x, c.y); ctx.rotate(c.rot);
+      ctx.globalAlpha = c.opacity;
+      ctx.fillStyle = c.color;
+      ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+      ctx.restore();
+    });
+
+    // Update & draw snitches
+    snitches.forEach(s => {
+      s.angle += .03 + Math.sin(frame*.02+s.speed)*.02;
+      s.x += Math.cos(s.angle)*s.speed + Math.sin(frame*.015)*1.5;
+      s.y += Math.sin(s.angle)*s.speed*.7 + Math.cos(frame*.02)*.8;
+      s.wingPhase += .35;
+      // Bounce off edges
+      if (s.x < 40) s.angle = -s.angle+Math.PI;
+      if (s.x > W-40) s.angle = -s.angle+Math.PI;
+      if (s.y < 40) s.angle = -s.angle;
+      if (s.y > H-40) s.angle = -s.angle;
+      s.x = Math.max(20, Math.min(W-20, s.x));
+      s.y = Math.max(20, Math.min(H-20, s.y));
+      // Trail
+      s.trail.push({x:s.x, y:s.y, life:15});
+      s.trail = s.trail.filter(t => { t.life--; return t.life > 0; });
+      ctx.globalAlpha = fadeOut;
+      drawSnitch(s);
+      ctx.globalAlpha = 1;
+    });
+
+    // Spawn stars
+    if (frame % 3 === 0 && frame < maxFrames-30) {
+      stars.push({x:Math.random()*W, y:Math.random()*H, r:8+Math.random()*14, life:20});
+    }
+    stars.forEach(s => { s.life--; drawStar(s.x, s.y, s.r*(s.life/20), fadeOut*s.life/20); });
+    stars.splice(0, stars.length, ...stars.filter(s=>s.life>0));
+
+    if (frame < maxFrames) requestAnimationFrame(animate);
+    else { canvas.remove(); }
+  }
+  requestAnimationFrame(animate);
 }
 const fd = d => { if(!d) return ''; const dt=new Date(d); return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+String(dt.getFullYear()).toString().slice(-2); };
 
@@ -9075,7 +9203,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
           }}>${t.label}</button>
         `)}
         <button onClick=${exportPDF} style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#007AFF', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>📄 PDF</button>
-        <button onClick=${()=>window.__confirm({icon:'🏁',title:'Finalizar retrospectiva',message:'Se archivara esta retro en Supabase y se limpiara el tablero para la siguiente sesion.',confirmLabel:'Finalizar',confirmColor:'#34C759',onConfirm:async()=>{setFinalizing(true);if(onFinalize)await onFinalize();playFinishJingle();setFinalizing(false);}})}
+        <button onClick=${()=>window.__confirm({icon:'🏁',title:'Finalizar retrospectiva',message:'Se archivara esta retro en Supabase y se limpiara el tablero para la siguiente sesion.',confirmLabel:'Finalizar',confirmColor:'#34C759',onConfirm:async()=>{setFinalizing(true);if(onFinalize)await onFinalize();playCelebration();setFinalizing(false);}})}
           disabled=${finalizing}
           style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#34C759', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', opacity:finalizing?.5:1 }}>${finalizing?'Archivando...':'🏁 Finalizar retro'}</button>
       </div>
