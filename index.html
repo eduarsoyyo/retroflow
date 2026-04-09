@@ -6494,8 +6494,8 @@ const addItem = () => {
                 <span style=${{ fontSize:9, color:'#86868B', writingMode:'vertical-rl', transform:'rotate(180deg)', fontWeight:700 }}>IMPACTO ↑</span>
               </div>
               ${['Baja','Media','Alta'].map(p=>html`<div style=${{ textAlign:'center', fontSize:9, fontWeight:700, color:'#86868B', paddingBottom:4 }}>${p}</div>`)}
-              ${['alto','medio','bajo'].map(imp => html`
-                ${['baja','media','alta'].map(prob => {
+              ${['alto','medio','bajo'].flatMap(imp =>
+                ['baja','media','alta'].map(prob => {
                   const hc = (imp==='alto'&&(prob==='alta'||prob==='media'))||(imp==='medio'&&prob==='alta') ? '#FF3B30'
                            : (imp==='alto'&&prob==='baja')||(imp==='medio'&&prob==='media')||(imp==='bajo'&&prob==='alta') ? '#FF9500'
                            : '#34C759';
@@ -6540,8 +6540,8 @@ const addItem = () => {
                           </div>`;
                       })}
                     </div>`;
-                })}
-              `)}
+                })
+              )}
               <div style=${{ gridColumn:'2/5', textAlign:'center', paddingTop:4 }}>
                 <span style=${{ fontSize:9, color:'#86868B', fontWeight:700 }}>PROBABILIDAD →</span>
               </div>
