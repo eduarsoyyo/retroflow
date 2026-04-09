@@ -6434,26 +6434,9 @@ function PRiesgos({ risks, sR, notes, actions, retroHistory, user }) {
     return alerts;
   };
 
-  // Auto-escalation: if stale beyond threshold, escalate to next level
-  useEffect(() => {
-    const LEVELS = ['equipo','jp','sm','dt'];
-    const LABELS = {equipo:'Equipo',jp:'Jefe de Proyecto',sm:'Service Manager',dt:'Direccion Tecnica'};
-    allRisks.forEach(r => {
-      if (r.status==='mitigated') return;
-      const sd = staledays(r);
-      const threshold = staleForRisk(r);
-      if (sd !== null && sd >= threshold) {
-        const curLevel = r.escalation?.level || 'equipo';
-        const idx = LEVELS.indexOf(curLevel);
-        if (idx < LEVELS.length - 1) {
-          const next = LEVELS[idx+1];
-          if (!r._autoEscalated) {
-            upd(r.id, { escalation: { level:next, levelLabel:LABELS[next], escalatedAt:new Date().toISOString() }, _autoEscalated: true });
-          }
-        }
-      }
-    });
-  }, [allRisks]);
+  // Auto-escalation removed: calling upd() inside useEffect(allRisks) caused
+  // infinite update loops that corrupted the auto-save state.
+  // Escalation suggestions appear as badges on cards instead.
 
   // Suggested escalations: risks with alerts and not yet escalated
   const suggestedEscalations = allRisks.filter(r =>
