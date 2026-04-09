@@ -523,7 +523,7 @@ function playCelebration() {
       c.fill();
       // Iris edge glow
       if (irisR > 5) {
-        const eg = c.createRadialGradient(cx, cy, irisR-8, cx, cy, irisR+15);
+        const eg = c.createRadialGradient(cx, cy, Math.max(0,irisR-8), cx, cy, irisR+15);
         eg.addColorStop(0, 'rgba(88,86,214,0)');
         eg.addColorStop(.5, 'rgba(88,86,214,.4)');
         eg.addColorStop(.8, 'rgba(120,100,255,.15)');
@@ -581,7 +581,7 @@ function playCelebration() {
 
       // Edge glow on reveal
       if (revealR < maxR*.95) {
-        const rg = c.createRadialGradient(cx, cy, revealR-10, cx, cy, revealR+25);
+        const rg = c.createRadialGradient(cx, cy, Math.max(0,revealR-10), cx, cy, revealR+25);
         rg.addColorStop(0, 'rgba(88,86,214,0)');
         rg.addColorStop(.4, `rgba(120,100,255,${.3*(1-rEased)})`);
         rg.addColorStop(1, 'rgba(0,0,0,0)');
