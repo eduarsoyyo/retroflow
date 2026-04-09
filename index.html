@@ -4692,7 +4692,7 @@ function PEquipo() {
     ${evalMember && html`
       <div style=${{position:'fixed',inset:0,zIndex:15000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
         <div onClick=${()=>setEvalMember(null)} style=${{position:'absolute',inset:0,background:'rgba(0,0,0,.18)',backdropFilter:'blur(8px)'}}></div>
-        <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',background:'#FFF',borderRadius:20,width:'100%',maxWidth:520,maxHeight:'80vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,.12)',padding:24}}>
+        <div onClick=${e=>e.stopPropagation()} style=${{position:'relative',background:'#FFF',borderRadius:20,width:'100%',maxWidth:720,maxHeight:'85vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,.12)',padding:24}}>
           <div style=${{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
             <div style=${{width:44,height:44,borderRadius:14,background:evalMember.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>${evalMember.avatar||'👤'}</div>
             <div>
@@ -4704,35 +4704,76 @@ function PEquipo() {
             </div>
             <button onClick=${()=>setEvalMember(null)} style=${{border:'none',background:'#F2F2F7',borderRadius:10,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}}>✕</button>
           </div>
-          <div style=${{display:'flex',flexDirection:'column',gap:6}}>
-            ${(()=>{
-              const prof = memberProfile(evalMember.id);
-              const reqs = prof ? profileSkillsFor(prof.id) : [];
-              return reqs.map(r => {
-                const sk = skills.find(s=>s.id===r.skill_id);
-                if(!sk) return null;
-                const cur = memberSkillLevel(evalMember.id,r.skill_id);
-                const gap = r.required_level - cur;
-                return html`<div key=${r.id} style=${{padding:'10px 12px',borderRadius:10,background:'#FAFAFA',border:'1px solid #F2F2F7'}}>
-                  <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                    <span style=${{fontSize:12,fontWeight:700,flex:1}}>${sk.name}</span>
-                    <span style=${{fontSize:9,color:'#86868B'}}>Requerido: ${LEVEL_LABELS[r.required_level]}</span>
-                    <span style=${{fontSize:10,fontWeight:700,color:LEVEL_COLORS[r.required_level]}}>${r.required_level}</span>
+          ${(()=>{
+            const prof = memberProfile(evalMember.id);
+            const reqs = prof ? profileSkillsFor(prof.id) : [];
+            if(!reqs.length) return html`<p style=${{color:'#86868B',textAlign:'center',padding:20}}>Asigna un perfil primero</p>`;
+            const n = reqs.length;
+            const cx=130,cy=130,maxR=105;
+            const angleStep = Math.PI*2/n;
+            const reqPts = reqs.map((r,i)=>{
+              const a = -Math.PI/2+i*angleStep;
+              const rv = r.required_level/4*maxR;
+              return [cx+Math.cos(a)*rv,cy+Math.sin(a)*rv];
+            });
+            const actPts = reqs.map((r,i)=>{
+              const a = -Math.PI/2+i*angleStep;
+              const lv = memberSkillLevel(evalMember.id,r.skill_id);
+              const rv = lv/4*maxR;
+              return [cx+Math.cos(a)*rv,cy+Math.sin(a)*rv];
+            });
+            const reqPath = reqPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ')+'Z';
+            const actPath = actPts.map((p,i)=>(i===0?'M':'L')+p[0]+','+p[1]).join(' ')+'Z';
+            const labels = reqs.map((r,i)=>{
+              const sk = skills.find(s=>s.id===r.skill_id);
+              const a = -Math.PI/2+i*angleStep;
+              const lx = cx+Math.cos(a)*(maxR+18);
+              const ly = cy+Math.sin(a)*(maxR+18);
+              return {name:sk?.name||'?',x:lx,y:ly,anchor:lx<cx-5?'end':lx>cx+5?'start':'middle'};
+            });
+            return html`
+              <div style=${{display:'grid',gridTemplateColumns:'260px 1fr',gap:16,alignItems:'start'}}>
+                <div style=${{background:'#FAFAFA',borderRadius:14,padding:8,textAlign:'center'}}>
+                  <svg viewBox="0 0 260 260" style=${{width:'100%',maxWidth:260}}>
+                    ${[1,2,3,4].map(l=>html`<polygon key=${l} points=${reqs.map((_,i)=>{const a=-Math.PI/2+i*angleStep;return (cx+Math.cos(a)*maxR*l/4)+','+(cy+Math.sin(a)*maxR*l/4)}).join(' ')} fill="none" stroke="#E5E5EA" stroke-width=${l===4?1.5:.5} />`)}
+                    ${reqs.map((_,i)=>{const a=-Math.PI/2+i*angleStep;return html`<line key=${i} x1=${cx} y1=${cy} x2=${cx+Math.cos(a)*maxR} y2=${cy+Math.sin(a)*maxR} stroke="#F2F2F7" stroke-width=".5" />`})}
+                    <polygon points=${reqPath} fill="rgba(0,122,255,.08)" stroke="#007AFF" stroke-width="2" stroke-dasharray="6 3" />
+                    <polygon points=${actPath} fill="rgba(88,86,214,.15)" stroke="#5856D6" stroke-width="2.5" />
+                    ${actPts.map((p,i)=>html`<circle key=${i} cx=${p[0]} cy=${p[1]} r="4" fill="#5856D6" stroke="#FFF" stroke-width="1.5" />`)}
+                    ${labels.map((lb,i)=>html`<text key=${i} x=${lb.x} y=${lb.y} font-size="9" font-weight="600" fill="#6E6E73" text-anchor=${lb.anchor} dominant-baseline="middle">${lb.name}</text>`)}
+                  </svg>
+                  <div style=${{display:'flex',justifyContent:'center',gap:12,fontSize:10,marginTop:4}}>
+                    <span style=${{display:'flex',alignItems:'center',gap:4}}><span style=${{width:12,height:3,background:'#007AFF',borderRadius:2,display:'inline-block'}}></span> Requerido</span>
+                    <span style=${{display:'flex',alignItems:'center',gap:4}}><span style=${{width:12,height:3,background:'#5856D6',borderRadius:2,display:'inline-block'}}></span> Actual</span>
                   </div>
-                  <div style=${{display:'flex',gap:4}}>
-                    ${[1,2,3,4].map(l=>html`<button key=${l} onClick=${async()=>await saveMemSkill(evalMember.id,r.skill_id,l)}
-                      style=${{flex:1,padding:'8px 4px',borderRadius:8,border:cur===l?'2px solid '+LEVEL_COLORS[l]:'1.5px solid #E5E5EA',background:cur===l?LEVEL_COLORS[l]+'15':'#FFF',cursor:'pointer',textAlign:'center'}}>
-                      <div style=${{fontSize:14}}>${LEVEL_ICONS[l]}</div>
-                      <div style=${{fontSize:9,fontWeight:cur===l?700:500,color:cur===l?LEVEL_COLORS[l]:'#86868B'}}>${LEVEL_LABELS[l]}</div>
-                    </button>`)}
-                  </div>
-                  ${gap>0 && html`<div style=${{marginTop:4,fontSize:10,color:gap>=2?'#FF3B30':'#FF9500'}}>
-                    ${gap>=2?'🔴':'🔶'} Gap: ${gap} nivel${gap>1?'es':''} — ${gap>=2?'Formación requerida':'Práctica/mentoring'}
-                  </div>`}
-                </div>`;
-              });
-            })()}
-          </div>
+                </div>
+                <div style=${{display:'flex',flexDirection:'column',gap:5,maxHeight:'60vh',overflowY:'auto'}}>
+                  ${reqs.map(r => {
+                    const sk = skills.find(s=>s.id===r.skill_id);
+                    if(!sk) return null;
+                    const cur = memberSkillLevel(evalMember.id,r.skill_id);
+                    const gap = r.required_level - cur;
+                    return html`<div key=${r.id} style=${{padding:'10px 12px',borderRadius:10,background:'#FAFAFA',border:'1px solid #F2F2F7'}}>
+                      <div style=${{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                        <span style=${{fontSize:12,fontWeight:700,flex:1}}>${sk.name}</span>
+                        <span style=${{fontSize:9,color:'#86868B'}}>Req: ${LEVEL_LABELS[r.required_level]}</span>
+                        <span style=${{fontSize:10,fontWeight:700,color:LEVEL_COLORS[r.required_level]}}>${r.required_level}</span>
+                      </div>
+                      <div style=${{display:'flex',gap:4}}>
+                        ${[1,2,3,4].map(l=>html`<button key=${l} onClick=${async()=>await saveMemSkill(evalMember.id,r.skill_id,l)}
+                          style=${{flex:1,padding:'6px 4px',borderRadius:8,border:cur===l?'2px solid '+LEVEL_COLORS[l]:'1.5px solid #E5E5EA',background:cur===l?LEVEL_COLORS[l]+'15':'#FFF',cursor:'pointer',textAlign:'center'}}>
+                          <div style=${{fontSize:12}}>${LEVEL_ICONS[l]}</div>
+                          <div style=${{fontSize:8,fontWeight:cur===l?700:500,color:cur===l?LEVEL_COLORS[l]:'#86868B'}}>${LEVEL_LABELS[l]}</div>
+                        </button>`)}
+                      </div>
+                      ${gap>0 && html`<div style=${{marginTop:4,fontSize:10,color:gap>=2?'#FF3B30':'#FF9500'}}>
+                        ${gap>=2?'🔴':'🔶'} Gap: ${gap} — ${gap>=2?'Formación requerida':'Práctica/mentoring'}
+                      </div>`}
+                    </div>`;
+                  })}
+                </div>
+              </div>`;
+          })()}
         </div>
       </div>`}
   </div>`;
