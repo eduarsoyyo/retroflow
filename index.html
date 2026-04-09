@@ -6307,7 +6307,7 @@ ${(()=>{const tgs=entityTagList('risk',r.id); return tgs.length>0?html`
       </div>`;
   }
 
-function PRiesgos({ risks, sR, notes, actions, retroHistory }) {
+function PRiesgos({ risks, sR, notes, actions, retroHistory, user }) {
   const [teamMembers, setTeamMembers] = useState([]);
   const [tags, setTags] = useState([]);
   const [tagAssignments, setTagAssignments] = useState([]);
@@ -7779,7 +7779,7 @@ function RetroBoard({ user, onLogout }) {
           ${mainTab==='retro' ? '' : ''}
           ${mainTab==='equipo'     ? html`<${PEquipo} />`  : ''}
           ${mainTab==='trabajo' ? html`<${PTrabajo} actions=${state.actions} sA=${sA} risks=${state.risks} user=${user} />` : ''}
-          ${mainTab==='riesgos'    ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} />` : ''}
+          ${mainTab==='riesgos'    ? html`<${PRiesgos} risks=${state.risks} sR=${sR} notes=${state.notes} actions=${state.actions} retroHistory=${sbRetroHistory} user=${user} />` : ''}
           ${mainTab==='tags'       ? html`<${PTags} teamMembers=${window.__teamLocal||[]} risks=${state.risks} actions=${state.actions} />` : ''}
         </div>
       </div>
