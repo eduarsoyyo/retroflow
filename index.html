@@ -4325,7 +4325,7 @@ function SuggestedEscalations({ risks, allRisks, getAlerts, upd, setSubTab, setE
 
 
 /* ═══ ESCALADO PANEL ═══ */
-function EscaladoPanel({ risks, upd, escalForm, setEscalForm, onOpenDetail, actions, teamMembers, user }) {
+function EscaladoPanel({ risks, upd, escalForm, setEscalForm, onOpenDetail, actions, teamMembers, user, suggestions, getAlerts }) {
   const LEVELS = [
     { id:'equipo', label:'Equipo', color:'#34C759', desc:'Se gestiona internamente' },
     { id:'jp',     label:'Jefe de Proyecto', color:'#FF9500', desc:'Escalar al JP' },
@@ -4495,6 +4495,35 @@ function EscaladoPanel({ risks, upd, escalForm, setEscalForm, onOpenDetail, acti
             </div>`}
           </div>`;
       })}
+
+      ${(suggestions||[]).length>0 && html`
+        <div style=${{ marginTop:12, padding:'14px', background:'#FFF8F0', borderRadius:14, border:'1.5px solid #FF950030' }}>
+          <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+            <span style=${{ fontSize:14 }}>🔔</span>
+            <h4 style=${{ fontSize:13, fontWeight:700, color:'#FF9500', margin:0 }}>Sugerencias de escalado (${suggestions.length})</h4>
+          </div>
+          <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Riesgos que cumplen umbrales de alerta y no estan escalados</p>
+          <div style=${{ display:'flex', flexDirection:'column', gap:5 }}>
+            ${suggestions.map(r => {
+              const alerts = getAlerts?getAlerts(r):[];
+              const rn = risks.filter(x=>(x.type||'riesgo')===(r.type||'riesgo')&&x.status!=='mitigated').indexOf(r)+1;
+              const px = (r.type||'riesgo')==='problema'?'P':(r.type||'riesgo')==='oportunidad'?'O':'R';
+              return html`
+                <div key=${r.id} style=${{ background:'#FFF', borderRadius:10, border:'1px solid #FF950020', padding:'10px 12px' }}>
+                  <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                    <span style=${{ fontSize:12, fontWeight:800, color:'#FF9500' }}>${px}${rn}</span>
+                    <span style=${{ fontSize:12, fontWeight:600, flex:1 }}>${r.text}</span>
+                    <button onClick=${()=>{upd(r.id,{escalation:{level:'jp',levelLabel:'Jefe de Proyecto',escalatedAt:new Date().toISOString()}})}}
+                      style=${{ fontSize:10, fontWeight:600, padding:'4px 10px', borderRadius:7, border:'1px solid #FF950030', background:'#FF950010', color:'#FF9500', cursor:'pointer' }}>Escalar a JP</button>
+                  </div>
+                  <div style=${{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                    ${alerts.map(a => html`<span key=${a.type} style=${{ fontSize:9, fontWeight:700, color:'#FFF', background:a.color, padding:'2px 7px', borderRadius:10 }}>${a.label}</span>`)}
+                  </div>
+                </div>`;
+            })}
+          </div>
+        </div>`}
+
     </div>`;
 }
 
@@ -6485,7 +6514,6 @@ const addItem = () => {
           {id:'oportunidades', icon:'Sparkles',        label:'Oportunidades',badge:oportunidades.length>0?String(oportunidades.length):''},
           {id:'mitigados',     icon:'CheckCircle2',    label:'Resueltos',    badge:mitigados.length>0?String(mitigados.length):''},
           {id:'escalado',      icon:'TrendingUp',      label:'Escalado',     badge:''},
-          {id:'sugeridos',     icon:'Bell',            label:'Sugeridos',    badge:suggestedEscalations.length>0?String(suggestedEscalations.length):''},
           {id:'historial',     icon:'Archive',         label:'Historial',    badge:''},
         ].map(t=>html`
           <button key=${t.id} onClick=${()=>setSubTab(t.id)}
@@ -6602,9 +6630,7 @@ const addItem = () => {
         
         <div style=${{ display:'flex', flexDirection:'column', gap:8 }}>
           ${subTab==='escalado' ? html`
-            <${EscaladoPanel} risks=${allRisks} upd=${upd} escalForm=${escalForm} setEscalForm=${setEscalForm} onOpenDetail=${x=>setDetailRisk({...x})} actions=${actions} teamMembers=${teamMembers} user=${user} />
-          ` : subTab==='sugeridos' ? html`
-            <${SuggestedEscalations} risks=${suggestedEscalations} allRisks=${allRisks} getAlerts=${getAlerts} upd=${upd} setSubTab=${setSubTab} setEscalForm=${setEscalForm} />
+            <${EscaladoPanel} risks=${allRisks} upd=${upd} escalForm=${escalForm} setEscalForm=${setEscalForm} onOpenDetail=${x=>setDetailRisk({...x})} actions=${actions} teamMembers=${teamMembers} user=${user} suggestions=${suggestedEscalations} getAlerts=${getAlerts} />
           ` : subTab==='historial' ? html`
             <h4 style=${{ fontSize:13, fontWeight:700, color:'#86868B', marginBottom:4 }}>📚 Riesgos de retros anteriores (solo lectura)</h4>
             ${histOnly.length===0
