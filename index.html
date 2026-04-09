@@ -1770,7 +1770,6 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
     {id:'dashboard',  label:'Inicio',         icon:'LayoutDashboard'},
     {id:'proyectos',  label:'Proyectos',      icon:'FolderOpen'},
     {id:'personas',   label:'Personas',       icon:'Users'},
-    {id:'maestros',   label:'Maestros',       icon:'BookOpen'},
     {id:'riesgos',    label:'Riesgos',        icon:'AlertTriangle'},
     {id:'gobierno',   label:'Gobierno',       icon:'BarChart3'},
     {id:'perfil',     label:'Mi perfil',      icon:'UserCircle'},
@@ -2224,9 +2223,6 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
               </div>`;
             })()}
           </div>`}
-
-          ${/* ═══ MAESTROS (SM only) ═══ */''} 
-          ${section==='maestros'&&isSM&&html`<${MaestrosPanel} rooms=${rooms} />`}
 
           ${/* ═══ GOBIERNO (SM only) ═══ */''} 
           ${section==='gobierno'&&isSM&&html`<div>
@@ -3903,6 +3899,7 @@ function RoomPicker() {
               {id:'calendarios',    label:'Calendarios', lucide:'Calendar'},
               {id:'convenio',       label:'Convenio',    lucide:'FileText'},
               {id:'escalado_global',label:'Escalado',    lucide:'TrendingUp'},
+              {id:'maestros',       label:'Maestros',    lucide:'BookOpen'},
             ].map(t => html`
               <button key=${t.id} onClick=${()=>setTab(t.id)}
                 style=${{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:11,
@@ -3915,7 +3912,7 @@ function RoomPicker() {
           </aside>
 
           <div style=${{ flex:1, minWidth:0, padding:'20px 24px', overflowY:'auto' }}>
-        ${tab === 'escalado_global' ? html`<${AdminEscaladoGlobal} rooms=${rooms} />` : tab === 'convenio' ? html`<${AdminConvenio} />` : tab === 'roles' ? html`<${AdminRoles} />` : tab === 'calendarios' ? html`<${AdminCalendarios} />` : tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
+        ${tab === 'maestros' ? html`<${MaestrosPanel} rooms=${rooms} />` : tab === 'escalado_global' ? html`<${AdminEscaladoGlobal} rooms=${rooms} />` : tab === 'convenio' ? html`<${AdminConvenio} />` : tab === 'roles' ? html`<${AdminRoles} />` : tab === 'calendarios' ? html`<${AdminCalendarios} />` : tab === 'usuarios' ? html`<${AdminUsuarios} rooms=${rooms} sbRetros=${sbRetros} />` : tab === 'dashboard' ? html`
 
           <div style=${{ display:'flex', alignItems:'center', gap:6, marginBottom:16, flexWrap:'wrap' }}>
             <span style=${{ fontSize:11, color:'#86868B', fontWeight:600 }}>Filtrar:</span>
@@ -5004,7 +5001,15 @@ function PEquipo() {
           </div>
           <div style=${{display:'flex',gap:8,justifyContent:'flex-end',marginTop:14}}>
             <button onClick=${()=>setAddAction(null)} style=${{padding:'8px 16px',borderRadius:10,border:'1.5px solid #E5E5EA',background:'#FFF',fontSize:12,cursor:'pointer',color:'#6E6E73'}}>Cancelar</button>
-            <button onClick=${async()=>{if(addAction.description?.trim()&&addAction.member_id){await saveAction(addAction);setAddAction(null)}}}
+            <button onClick=${async()=>{
+              const a = {...addAction};
+              if(!a.member_id){alert('Selecciona una persona');return;}
+              if(!a.description?.trim()){
+                const sk = skills.find(s=>s.id===a.skill_id);
+                a.description = (a.type==='formacion'?'Formación en ':a.type==='mentoring'?'Mentoring en ':a.type==='certificacion'?'Certificación en ':'Práctica en ')+(sk?.name||'habilidad');
+              }
+              await saveAction(a);setAddAction(null);
+            }}
               style=${{padding:'8px 20px',borderRadius:10,border:'none',background:'#5856D6',color:'#FFF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Crear</button>
           </div>
         </div>
