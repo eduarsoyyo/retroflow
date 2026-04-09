@@ -403,6 +403,34 @@ const BADGES = [
 ];
 
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+function playFinishJingle() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [
+      {f:523.25,t:0,d:.12},     // C5
+      {f:659.25,t:.13,d:.12},   // E5
+      {f:783.99,t:.26,d:.12},   // G5
+      {f:1046.50,t:.40,d:.25},  // C6 (hold)
+      {f:783.99,t:.70,d:.10},   // G5
+      {f:1046.50,t:.82,d:.35},  // C6 (final)
+    ];
+    notes.forEach(({f,t,d}) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, ctx.currentTime + t);
+      gain.gain.linearRampToValueAtTime(.18, ctx.currentTime + t + .02);
+      gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + t + d);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + d + .05);
+    });
+    setTimeout(() => ctx.close(), 2000);
+  } catch(e) {}
+}
 const fd = d => { if(!d) return ''; const dt=new Date(d); return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+String(dt.getFullYear()).toString().slice(-2); };
 
 /* ═══ STYLES ═══ */
@@ -9047,7 +9075,7 @@ ${ranking.map((r,i)=>'<div class="rk"><div style="width:28px;font-size:'+(i<3?18
           }}>${t.label}</button>
         `)}
         <button onClick=${exportPDF} style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#007AFF', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>📄 PDF</button>
-        <button onClick=${()=>window.__confirm({icon:'🏁',title:'Finalizar retrospectiva',message:'Se archivara esta retro en Supabase y se limpiara el tablero para la siguiente sesion.',confirmLabel:'Finalizar',confirmColor:'#34C759',onConfirm:async()=>{setFinalizing(true);if(onFinalize)await onFinalize();setFinalizing(false);}})}
+        <button onClick=${()=>window.__confirm({icon:'🏁',title:'Finalizar retrospectiva',message:'Se archivara esta retro en Supabase y se limpiara el tablero para la siguiente sesion.',confirmLabel:'Finalizar',confirmColor:'#34C759',onConfirm:async()=>{setFinalizing(true);if(onFinalize)await onFinalize();playFinishJingle();setFinalizing(false);}})}
           disabled=${finalizing}
           style=${{ padding:'7px 14px', borderRadius:10, border:'none', background:'#34C759', color:'#FFF', fontSize:11, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', opacity:finalizing?.5:1 }}>${finalizing?'Archivando...':'🏁 Finalizar retro'}</button>
       </div>
