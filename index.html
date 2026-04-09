@@ -5216,28 +5216,35 @@ function PEquipo() {
 function OrgNode({m, depth, team, org, setManager, orgSaving}) {
   const [showEdit, setShowEdit] = useState(false);
   const children = team.filter(x=>(org[x.id]||null)===m.id);
+  const n = children.length;
   return html`
     <div style=${{display:'flex',flexDirection:'column',alignItems:'center'}}>
-      ${depth>0&&html`<div style=${{width:2,height:18,background:'#E5E5EA'}}></div>`}
+      ${depth>0&&html`<div style=${{width:2,height:20,background:'#D1D1D6'}}></div>`}
       <div onClick=${()=>setShowEdit(!showEdit)}
-        style=${{background:'#FFF',borderRadius:14,border:'2px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),padding:'14px 16px',minWidth:130,textAlign:'center',boxShadow:depth===0?'0 4px 16px rgba(0,0,0,.08)':'0 2px 8px rgba(0,0,0,.04)',cursor:'pointer',transition:'all .15s'}}>
-        <div style=${{fontSize:30,marginBottom:6}}>${m.avatar||'👤'}</div>
+        style=${{background:'#FFF',borderRadius:14,border:'2px solid '+(depth===0?'#1D1D1F':'#E5E5EA'),padding:'14px 16px',minWidth:130,textAlign:'center',boxShadow:depth===0?'0 4px 16px rgba(0,0,0,.08)':'0 2px 8px rgba(0,0,0,.04)',cursor:'pointer',zIndex:1}}>
+        <div style=${{fontSize:30,marginBottom:6}}>${m.avatar||'\uD83D\uDC64'}</div>
         <div style=${{fontSize:12,fontWeight:700}}>${m.name}</div>
         ${m.role_label&&html`<div style=${{fontSize:10,color:'#86868B',marginTop:2}}>${m.role_label}</div>`}
         ${showEdit&&html`
           <select value=${org[m.id]||''} onClick=${e=>e.stopPropagation()} onChange=${e=>{setManager(m.id,e.target.value||null);setShowEdit(false)}} disabled=${orgSaving}
             style=${{fontSize:10,border:'1px solid #E5E5EA',borderRadius:6,padding:'4px',width:'100%',color:'#6E6E73',outline:'none',background:'#FAFAFA',marginTop:6}}>
             <option value="">Sin manager (raíz)</option>
-            ${team.filter(t=>t.id!==m.id).map(t=>html`<option key=${t.id} value=${t.id}>↑ ${t.name}</option>`)}
+            ${team.filter(t=>t.id!==m.id).map(t=>html`<option key=${t.id} value=${t.id}>\u2191 ${t.name}</option>`)}
           </select>`}
       </div>
-      ${children.length>0&&html`
-        <div><div style=${{width:2,height:18,background:'#E5E5EA',margin:'0 auto'}}></div>
-        <div style=${{display:'flex',gap:16,justifyContent:'center'}}>
-          ${children.map(ch=>html`<${OrgNode} key=${ch.id} m=${ch} depth=${depth+1} team=${team} org=${org} setManager=${setManager} orgSaving=${orgSaving} />`)}
-        </div></div>`}
+      ${n>0&&html`
+        <div style=${{width:2,height:20,background:'#D1D1D6'}}></div>
+        <div style=${{display:'flex'}}>
+          ${children.map((ch,i)=>html`
+            <div key=${ch.id} style=${{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 8px'}}>
+              ${n>1&&html`<div style=${{alignSelf:'stretch',height:0,borderTop:'2px solid #D1D1D6',marginLeft:i===0?'50%':'0',marginRight:i===n-1?'50%':'0'}}></div>`}
+              ${n>1&&html`<div style=${{width:2,height:20,background:'#D1D1D6'}}></div>`}
+              <${OrgNode} m=${ch} depth=${depth+1} team=${team} org=${org} setManager=${setManager} orgSaving=${orgSaving} />
+            </div>`)}
+        </div>`}
     </div>`;
 }
+
 
 
 function PFTEs({ team, org, orgData: orgDataProp }) {
