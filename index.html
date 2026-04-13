@@ -185,6 +185,7 @@ async function sbSaveOrgNode(sala, memberId, managerId) {
     }
   } catch {}
 }
+async function sbLoadCalendars() {
   try { const {data}=await supabase.from('calendars').select('*').order('name'); return data||[]; } catch { return []; }
 }
 async function sbSaveCalendar(cal) {
@@ -6936,6 +6937,17 @@ function P5Risks({ risks, sR, notes, user }) {
               <h4 style=${{ fontSize:12, fontWeight:700, color:'#34C759', marginBottom:8 }}>✅ Mitigados (${mitigatedRisks.length})</h4>
               <div style=${{ display:'flex', flexDirection:'column', gap:4 }}>
                 ${mitigatedRisks.map((r, i) => html`
+                  <div key=${i} style=${{ padding:'8px 10px', borderRadius:8, background:'#F0FFF4', border:'1px solid #34C75920', display:'flex', alignItems:'center', gap:8 }}>
+                    <span style=${{ color:'#34C759', fontWeight:700, minWidth:24 }}>R${risks.indexOf(r)+1}</span>
+                    <span style=${{ flex:1, color:'#86868B', textDecoration:'line-through' }}>${r.title||r.text}</span>
+                    ${r.mitigation && html`<span style=${{ fontSize:10, color:'#86868B' }}>🛡️ ${r.mitigation}</span>`}
+                    <button onClick=${()=>updateStatus(r.id,'open')} style=${{ border:'none', background:'#FF9500', color:'#FFF', borderRadius:5, padding:'2px 8px', fontSize:10, cursor:'pointer' }}>Reabrir</button>
+                  </div>
+                `)}
+              </div>
+            </div>
+          `}
+        </div>
         <div style=${{ ...cS, padding:'18px' }}>
           <h4 style=${{ fontSize:13, fontWeight:700, marginBottom:4 }}>🔥 Notas Bad / Stop / Start</h4>
           <p style=${{ fontSize:10, color:'#86868B', marginBottom:10 }}>Clic para convertir en riesgo</p>
