@@ -3214,6 +3214,83 @@ function AdminDashboard({ rooms, filterProject, setFilterProject }) {
             <span style=${{fontSize:9,fontWeight:700,color:it.c,background:it.c+'12',padding:'2px 8px',borderRadius:6}}>${it.t==='overdue'?'Vencida':it.t==='escalated'?'Escalado':'Gap'}</span>
           </div>`)}
       </div>`}
+
+    <div style=${{background:'#FFF',borderRadius:16,border:'1.5px solid #E5E5EA',overflow:'hidden',marginTop:14}}>
+      <div style=${{padding:'16px 18px 8px'}}>
+        <h3 style=${{fontSize:14,fontWeight:700}}>Proyectos</h3>
+      </div>
+      <div style=${{overflowX:'auto'}}>
+        <table style=${{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr style=${{background:'#FAFAFA'}}>
+              ${['Proyecto','Tipo','Tareas','Completadas','Vencidas','Riesgos','Problemas','Mitigados','Escalados','Personas','Vacaciones','Encaje'].map(h=>html`
+                <th key=${h} style=${{padding:'8px 12px',textAlign:h==='Proyecto'?'left':'center',fontSize:10,fontWeight:700,color:'#86868B',textTransform:'uppercase',letterSpacing:.3,borderBottom:'2px solid #E5E5EA',whiteSpace:'nowrap'}}>${h}</th>`)}
+            </tr>
+          </thead>
+          <tbody>
+            ${fRooms.map((r,ri) => {
+              const d=fData[r.slug]||{};
+              const acts=(d.actions||[]).filter(a=>a.status!=='discarded'&&a.status!=='cancelled');
+              const done=acts.filter(a=>a.status==='done').length;
+              const over=acts.filter(a=>a.status!=='done'&&a.date&&a.date<today).length;
+              const risks=(d.risks||[]);
+              const rO=risks.filter(x=>x.status!=='mitigated');
+              const rR=rO.filter(x=>(x.type||'riesgo')==='riesgo').length;
+              const rP=rO.filter(x=>(x.type||'riesgo')==='problema').length;
+              const rM=risks.filter(x=>x.status==='mitigated').length;
+              const rE=rO.filter(x=>x.escalation?.level&&x.escalation.level!=='equipo').length;
+              const pctDone=acts.length>0?Math.round(done/acts.length*100):0;
+              const slaMbrs=fMembers.filter(m=>(m.rooms||[]).includes(r.slug));
+              const slaVac=slaMbrs.filter(m=>(Array.isArray(m.vacations)?m.vacations:[]).some(v=>v.from<=today&&(!v.to||v.to>=today))).length;
+              // Profile fit for this project
+              const projProfiles=skP.filter(p=>p.sala===r.slug);
+              const projFits=slaMbrs.map(m=>{
+                const mp=skMP.find(x=>x.member_id===m.id&&projProfiles.some(p=>p.id===x.profile_id));
+                if(!mp)return null;
+                const reqs=skPS.filter(x=>x.profile_id===mp.profile_id);if(!reqs.length)return null;
+                const tR=reqs.reduce((s,x)=>s+x.required_level,0);
+                const tA=reqs.reduce((s,x)=>{const ms=skMS.find(y=>y.member_id===m.id&&y.skill_id===x.skill_id);return s+Math.min(ms?.current_level||0,x.required_level)},0);
+                return Math.round(tA/tR*100);
+              }).filter(Boolean);
+              const projAvgFit=projFits.length?Math.round(projFits.reduce((s,f)=>s+f,0)/projFits.length):null;
+              const TIPO=({'agile':{i:'🔄',l:'Agile'},'waterfall':{i:'📊',l:'Waterfall'},'itil':{i:'📋',l:'ITIL'},'kanban':{i:'📌',l:'Kanban'}})[r.tipo]||{i:'📂',l:r.tipo||'—'};
+              return html`<tr key=${r.slug} style=${{background:ri%2===0?'#FFF':'#FAFAFA',cursor:'pointer',transition:'background .1s'}}
+                onMouseOver=${e=>e.currentTarget.style.background='#F0F7FF'}
+                onMouseOut=${e=>e.currentTarget.style.background=ri%2===0?'#FFF':'#FAFAFA'}>
+                <td style=${{padding:'10px 12px',borderBottom:'1px solid #F2F2F7',fontWeight:700}}>${r.name}</td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}><span style=${{fontSize:10,background:'#F2F2F7',padding:'2px 8px',borderRadius:6}}>${TIPO.i} ${TIPO.l}</span></td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center',fontWeight:700}}>${acts.length||'—'}</td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${acts.length>0?html`<span style=${{fontWeight:700,color:pctDone>=75?'#34C759':pctDone>=40?'#FF9500':'#FF3B30'}}>${pctDone}%</span>`:html`<span style=${{color:'#C7C7CC'}}>—</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${over>0?html`<span style=${{fontWeight:700,color:'#FF3B30'}}>${over}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${rR>0?html`<span style=${{fontWeight:700,color:'#FF9500'}}>${rR}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${rP>0?html`<span style=${{fontWeight:700,color:'#FF3B30'}}>${rP}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${rM>0?html`<span style=${{fontWeight:700,color:'#34C759'}}>${rM}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${rE>0?html`<span style=${{fontWeight:800,color:'#FF3B30',background:'#FF3B3012',padding:'2px 7px',borderRadius:6}}>${rE}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center',fontWeight:600}}>${slaMbrs.length}</td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${slaVac>0?html`<span style=${{fontWeight:700,color:'#FF9500'}}>${slaVac}</span>`:html`<span style=${{color:'#C7C7CC'}}>0</span>`}
+                </td>
+                <td style=${{padding:'10px 6px',borderBottom:'1px solid #F2F2F7',textAlign:'center'}}>
+                  ${projAvgFit!==null?html`<span style=${{fontWeight:700,color:projAvgFit>=90?'#34C759':projAvgFit>=70?'#FF9500':'#FF3B30'}}>${projAvgFit}%</span>`:html`<span style=${{color:'#C7C7CC'}}>—</span>`}
+                </td>
+              </tr>`;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   `;
 }
 
@@ -8561,44 +8638,131 @@ function RetroBoard({ user, onLogout }) {
                 <h2 style=${{ fontSize:20, fontWeight:700 }}>Resumen del proyecto</h2>
                 <span style=${{ fontSize:11, background:'#007AFF10', color:'#007AFF', padding:'3px 10px', borderRadius:8, fontWeight:600 }}>${SALA_DISPLAY}</span>
               </div>
-              <div style=${{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
-                ${[
-                  {l:'Tareas abiertas', v:state.actions.filter(a=>a.status!=='done'&&a.status!=='discarded').length, c:'#007AFF', i:'CheckSquare'},
-                  {l:'Riesgos abiertos', v:(state.risks||[]).filter(r=>r.status!=='mitigated').length, c:'#FF9500', i:'AlertTriangle'},
-                  {l:'Notas en tablero', v:state.notes.length, c:'#34C759', i:'StickyNote'},
-                  {l:'Participantes', v:[...new Set(state.notes.map(n=>n.userName))].length, c:'#5856D6', i:'Users'},
-                ].map((k,i)=>html`
-                  <div key=${'rs'+i} style=${{ background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', padding:'16px', display:'flex', flexDirection:'column', gap:8 }}>
-                    <div style=${{ width:32, height:32, borderRadius:10, background:k.c+'15', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <${Icon} name=${k.i} size=${16} color=${k.c} />
-                    </div>
-                    <div>
-                      <div style=${{ fontSize:22, fontWeight:800, color:k.c, lineHeight:1 }}>${k.v}</div>
-                      <div style=${{ fontSize:10, color:'#86868B', marginTop:3 }}>${k.l}</div>
-                    </div>
-                  </div>`)}
-              </div>
-              <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
 
-                ${[
-                  {tab:'trabajo', icon:'ClipboardList', label:'Seguimiento', desc:state.actions.filter(a=>a.status!=='done'&&a.status!=='discarded').length+' tareas abiertas', c:'#007AFF'},
-                  {tab:'retro', icon:'RotateCcw', label:'Retro', desc:'Fase actual: '+PHASES[phase].label, c:'#34C759'},
-                  {tab:'riesgos', icon:'AlertTriangle', label:'Riesgos', desc:(state.risks||[]).filter(r=>r.status!=='mitigated').length+' riesgos activos', c:'#FF9500'},
-                  {tab:'equipo', icon:'Users', label:'Equipo', desc:'Gestión del equipo del proyecto', c:'#5856D6'},
-                ].map(card=>html`
-                  <button key=${card.tab} onClick=${()=>setMainTab(card.tab)}
-                    style=${{ display:'flex', alignItems:'center', gap:14, padding:'18px', background:'#FFF', borderRadius:16, border:'1.5px solid #E5E5EA', cursor:'pointer', textAlign:'left', transition:'all .15s' }}
-                    onMouseOver=${e=>e.currentTarget.style.borderColor=card.c}
-                    onMouseOut=${e=>e.currentTarget.style.borderColor='#E5E5EA'}>
-                    <div style=${{ width:40, height:40, borderRadius:12, background:card.c+'15', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      <${Icon} name=${card.icon} size=${20} color=${card.c} />
+              ${(()=>{
+                const acts = state.actions.filter(a=>a.status!=='discarded'&&a.status!=='cancelled');
+                const actOpen = acts.filter(a=>a.status!=='done');
+                const actDone = acts.filter(a=>a.status==='done').length;
+                const actOver = actOpen.filter(a=>a.date&&a.date<new Date().toISOString().slice(0,10)).length;
+                const actPct = acts.length>0?Math.round(actDone/acts.length*100):0;
+                const risks = state.risks||[];
+                const rOpen = risks.filter(r=>r.status!=='mitigated');
+                const rMit = risks.filter(r=>r.status==='mitigated').length;
+                const rEsc = rOpen.filter(r=>r.escalation?.level&&r.escalation.level!=='equipo').length;
+                const rR = rOpen.filter(r=>(r.type||'riesgo')==='riesgo').length;
+                const rP = rOpen.filter(r=>(r.type||'riesgo')==='problema').length;
+                const rO = rOpen.filter(r=>(r.type||'riesgo')==='oportunidad').length;
+                const rCrit = rOpen.filter(r=>calculateCriticality(r.prob||'media',r.impact||'medio')==='critical').length;
+                const td = new Date().toISOString().slice(0,10);
+                const teamLocal = window.__teamLocal||[];
+                const allM = window.__allMembers||[];
+                const salaM = allM.filter(m=>(m.rooms||[]).includes(SALA));
+                const onVac = salaM.filter(m=>(Array.isArray(m.vacations)?m.vacations:[]).some(v=>v.from<=td&&(!v.to||v.to>=td)));
+
+                return html`
+                  <div style=${{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:14 }}>
+                    ${[
+                      {l:'Tareas', v:acts.length, c:'#007AFF', i:'CheckSquare'},
+                      {l:'Completadas', v:actPct+'%', c:actPct>=75?'#34C759':actPct>=40?'#FF9500':'#FF3B30', i:'CheckCircle2'},
+                      {l:'Vencidas', v:actOver, c:actOver>0?'#FF3B30':'#34C759', i:'Clock'},
+                      {l:'Riesgos', v:rOpen.length, c:rOpen.length>0?'#FF9500':'#34C759', i:'AlertTriangle'},
+                      {l:'Escalados', v:rEsc, c:rEsc>0?'#FF3B30':'#34C759', i:'TrendingUp'},
+                    ].map((k,i)=>html`
+                      <div key=${'rs'+i} style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px', textAlign:'center' }}>
+                        <div style=${{ width:28, height:28, borderRadius:8, background:k.c+'12', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 6px' }}>
+                          <${Icon} name=${k.i} size=${14} color=${k.c} />
+                        </div>
+                        <div style=${{ fontSize:22, fontWeight:800, color:k.c, lineHeight:1 }}>${k.v}</div>
+                        <div style=${{ fontSize:10, color:'#86868B', marginTop:3 }}>${k.l}</div>
+                      </div>`)}
+                  </div>
+
+                  <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+                    <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px 16px' }}>
+                      <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:10 }}>Riesgos y problemas</h3>
+                      <div style=${{ display:'flex', gap:8, marginBottom:10 }}>
+                        ${[[rR,'Riesgos','#FF9500'],[rP,'Problemas','#FF3B30'],[rO,'Oportunidades','#34C759'],[rMit,'Mitigados','#007AFF']].map(([v,l,c])=>html`
+                          <div key=${l} style=${{ flex:1, textAlign:'center', padding:'8px 4px', borderRadius:10, background:c+'08' }}>
+                            <div style=${{ fontSize:18, fontWeight:800, color:c }}>${v}</div>
+                            <div style=${{ fontSize:9, color:'#86868B' }}>${l}</div>
+                          </div>`)}
+                      </div>
+                      ${rCrit>0&&html`<div style=${{ fontSize:11, color:'#FF3B30', fontWeight:600, padding:'4px 0' }}>⚠️ ${rCrit} en sector crítico</div>`}
+                      ${rEsc>0&&html`<div style=${{ fontSize:11, color:'#FF9500', fontWeight:600, padding:'4px 0' }}>📈 ${rEsc} escalado${rEsc>1?'s':''}</div>`}
+                      ${rOpen.length===0&&html`<div style=${{ fontSize:11, color:'#34C759', fontWeight:600 }}>✅ Sin riesgos activos</div>`}
                     </div>
-                    <div>
-                      <div style=${{ fontSize:14, fontWeight:700 }}>${card.label}</div>
-                      <div style=${{ fontSize:11, color:'#86868B', marginTop:2 }}>${card.desc}</div>
+
+                    <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px 16px' }}>
+                      <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:10 }}>Progreso de tareas</h3>
+                      <div style=${{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
+                        <div style=${{ position:'relative', width:56, height:56, flexShrink:0 }}>
+                          <svg viewBox="0 0 36 36" style=${{ width:56, height:56, transform:'rotate(-90deg)' }}>
+                            <circle cx="18" cy="18" r="15" fill="none" stroke="#F2F2F7" stroke-width="3" />
+                            <circle cx="18" cy="18" r="15" fill="none" stroke=${actPct>=75?'#34C759':actPct>=40?'#FF9500':'#FF3B30'} stroke-width="3" stroke-dasharray=${actPct*0.94+' 94'} stroke-linecap="round" />
+                          </svg>
+                          <div style=${{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:actPct>=75?'#34C759':actPct>=40?'#FF9500':'#FF3B30' }}>${actPct}%</div>
+                        </div>
+                        <div style=${{ flex:1 }}>
+                          ${[['Completadas',actDone,'#34C759'],['En curso',actOpen.filter(a=>a.status==='doing'||a.status==='in_progress').length,'#007AFF'],['Backlog',actOpen.filter(a=>a.status==='backlog'||a.status==='todo').length,'#6E6E73'],['Vencidas',actOver,'#FF3B30']].map(([l,v,c])=>html`
+                            <div key=${l} style=${{ display:'flex', justifyContent:'space-between', padding:'2px 0', fontSize:11 }}>
+                              <span style=${{ color:'#86868B' }}>${l}</span>
+                              <span style=${{ fontWeight:700, color:c }}>${v}</span>
+                            </div>`)}
+                        </div>
+                      </div>
                     </div>
-                  </button>`)}
-              </div>
+                  </div>
+
+                  <div style=${{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:12, marginBottom:14 }}>
+                    <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                      ${[
+                        {tab:'trabajo', icon:'ClipboardList', label:'Seguimiento', desc:actOpen.length+' tareas abiertas', c:'#007AFF'},
+                        {tab:'retro', icon:'RotateCcw', label:'Retro', desc:'Fase: '+PHASES[phase].label, c:'#34C759'},
+                        {tab:'riesgos', icon:'AlertTriangle', label:'Riesgos', desc:rOpen.length+' activos', c:'#FF9500'},
+                        {tab:'equipo', icon:'Users', label:'Equipo', desc:salaM.length+' personas', c:'#5856D6'},
+                      ].map(card=>html`
+                        <button key=${card.tab} onClick=${()=>setMainTab(card.tab)}
+                          style=${{ display:'flex', alignItems:'center', gap:12, padding:'14px', background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', cursor:'pointer', textAlign:'left', transition:'all .15s' }}
+                          onMouseOver=${e=>e.currentTarget.style.borderColor=card.c}
+                          onMouseOut=${e=>e.currentTarget.style.borderColor='#E5E5EA'}>
+                          <div style=${{ width:36, height:36, borderRadius:10, background:card.c+'12', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                            <${Icon} name=${card.icon} size=${18} color=${card.c} />
+                          </div>
+                          <div>
+                            <div style=${{ fontSize:13, fontWeight:700 }}>${card.label}</div>
+                            <div style=${{ fontSize:10, color:'#86868B', marginTop:1 }}>${card.desc}</div>
+                          </div>
+                        </button>`)}
+                    </div>
+
+                    <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #E5E5EA', padding:'14px 16px' }}>
+                      <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8 }}>Equipo</h3>
+                      <div style=${{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
+                        ${salaM.slice(0,8).map(m=>html`
+                          <div key=${m.id} title=${m.name+(m.role_label?' · '+m.role_label:'')}
+                            style=${{ width:30, height:30, borderRadius:8, background:m.color||'#E5E5EA', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, border:'2px solid '+(onVac.some(v=>v.id===m.id)?'#FF9500':'#FFF'), boxShadow:'0 1px 3px rgba(0,0,0,.08)' }}>
+                            ${m.avatar||'👤'}
+                          </div>`)}
+                        ${salaM.length>8&&html`<span style=${{ fontSize:10, color:'#86868B', alignSelf:'center' }}>+${salaM.length-8}</span>`}
+                      </div>
+                      ${onVac.length>0&&html`<div style=${{ fontSize:10, color:'#FF9500', fontWeight:600 }}>🌴 ${onVac.map(m=>m.name.split(' ')[0]).join(', ')}</div>`}
+                      ${onVac.length===0&&html`<div style=${{ fontSize:10, color:'#34C759' }}>Equipo completo disponible</div>`}
+                    </div>
+                  </div>
+
+                  ${actOver>0&&html`
+                    <div style=${{ background:'#FFF', borderRadius:14, border:'1.5px solid #FF3B3015', padding:'14px 16px' }}>
+                      <h3 style=${{ fontSize:13, fontWeight:700, marginBottom:8, color:'#FF3B30' }}>Tareas vencidas</h3>
+                      ${actOpen.filter(a=>a.date&&a.date<td).slice(0,5).map(a=>html`
+                        <div key=${a.id} style=${{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'1px solid #F2F2F7', fontSize:12 }}>
+                          <div style=${{ width:6, height:6, borderRadius:3, background:'#FF3B30', flexShrink:0 }}></div>
+                          <span style=${{ flex:1, fontWeight:600 }}>${a.text}</span>
+                          <span style=${{ fontSize:10, color:'#FF3B30' }}>${a.date?fd(a.date):''}</span>
+                          <span style=${{ fontSize:10, color:'#86868B' }}>${a.owner||''}</span>
+                        </div>`)}
+                    </div>`}
+                `;
+              })()}
             </div>
           ` : mainTab==='docs' ? html`
             <div>
