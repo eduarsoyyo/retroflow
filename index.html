@@ -2080,91 +2080,89 @@ function UserHomePage({ user, onLogout, onSelectProject }) {
             </div>`}
           </div>`}
 
-          ${section==='perfil'&&html`<div style=${{maxWidth:640}}>
+          ${section==='perfil'&&html`<div>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Mi perfil</h1>
             <p style=${{fontSize:13,color:'#86868B',marginBottom:22}}>Información personal, contacto y preferencias</p>
             ${!profileLoaded?html`<div style=${{textAlign:'center',padding:40,color:'#86868B'}}>Cargando…</div>`:html`
-              <div style=${{display:'flex',flexDirection:'column',gap:14}}>
+              <div style=${{display:'grid',gridTemplateColumns:'380px 1fr',gap:16,alignItems:'start'}}>
 
-                <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'24px',display:'flex',flexDirection:'column',gap:12}}>
-                  <div style=${{display:'flex',alignItems:'center',gap:14,paddingBottom:14,borderBottom:'1px solid #F2F2F7'}}>
-                    <div style=${{width:60,height:60,borderRadius:16,background:editProfile?.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>${editProfile?.avatar||'👤'}</div>
-                    <div>
-                      <div style=${{fontSize:17,fontWeight:700}}>${editProfile?.name||user.name}</div>
-                      <div style=${{fontSize:12,color:'#86868B',marginTop:2}}>${editProfile?.role_label||'Sin rol'}${editProfile?.company?' · '+editProfile.company:''}</div>
+                <div style=${{display:'flex',flexDirection:'column',gap:14}}>
+                  <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'24px',display:'flex',flexDirection:'column',gap:12}}>
+                    <div style=${{display:'flex',alignItems:'center',gap:14,paddingBottom:14,borderBottom:'1px solid #F2F2F7'}}>
+                      <div style=${{width:60,height:60,borderRadius:16,background:editProfile?.color||'#E5E5EA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>${editProfile?.avatar||'👤'}</div>
+                      <div>
+                        <div style=${{fontSize:17,fontWeight:700}}>${editProfile?.name||user.name}</div>
+                        <div style=${{fontSize:12,color:'#86868B',marginTop:2}}>${editProfile?.role_label||'Sin rol'}${editProfile?.company?' · '+editProfile.company:''}</div>
+                      </div>
+                    </div>
+                    <div style=${{display:'flex',flexDirection:'column',gap:10}}>
+                      ${[
+                        ['Nombre',        'name',         editProfile?.name||''],
+                        ['Usuario',       'username',     editProfile?.username||''],
+                        ['Email',         'email',        editProfile?.email||''],
+                        ['Empresa',       'company',      editProfile?.company||''],
+                        ['Teléfono',      'phone',        editProfile?.phone||''],
+                      ].map(([label,field,val])=>html`
+                        <div key=${field}>
+                          <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3,fontWeight:700,textTransform:'uppercase',letterSpacing:.4}}>${label}</label>
+                          <input value=${val} onInput=${e=>setEditProfile({...editProfile,[field]:e.target.value})}
+                            style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}} />
+                        </div>`)}
+                      <div>
+                        <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3,fontWeight:700,textTransform:'uppercase',letterSpacing:.4}}>Rol</label>
+                        <select value=${editProfile?.role_label||''} onChange=${e=>setEditProfile({...editProfile,role_label:e.target.value})}
+                          style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}>
+                          <option value="">Sin rol</option>
+                          ${rolesList.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
+                        </select>
+                      </div>
+                    </div>
+                    <button onClick=${async()=>{ setSavingProfile(true); await sbSaveTeamMember(editProfile); setProfile(editProfile); setSavingProfile(false); }}
+                      style=${{padding:'11px',borderRadius:11,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                      ${savingProfile?'Guardando…':'Guardar cambios'}
+                    </button>
+                  </div>
+
+                  <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'20px'}}>
+                    <h3 style=${{fontSize:13,fontWeight:700,marginBottom:3,color:'#86868B',textTransform:'uppercase',letterSpacing:.5}}>Preferencias de notificación</h3>
+                    <p style=${{fontSize:11,color:'#C7C7CC',marginBottom:14}}>¿Cómo y cuándo quieres recibir avisos?</p>
+                    <div style=${{display:'flex',flexDirection:'column',gap:0}}>
+                      ${[
+                        {icon:'Bell',          label:'Notif. in-app',       field:'notif_inapp',      desc:'Campana dentro del proyecto'},
+                        {icon:'AlertTriangle', label:'Riesgos escalados',    field:'notif_escalado',   desc:'Cuando un riesgo se escala a ti'},
+                        {icon:'CheckSquare',   label:'Tareas vencidas',      field:'notif_accionable', desc:'Tareas que superan su fecha límite'},
+                        {icon:'FileText',      label:'Resumen semanal',      field:'notif_resumen',    desc:'Digest de actividad'},
+                      ].map((row,i)=>html`
+                        <div key=${row.field} style=${{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:i<3?'1px solid #F9F9FB':'none'}}>
+                          <div style=${{width:34,height:34,borderRadius:9,background:'#F2F2F7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            <${Icon} name=${row.icon} size=${15} color="#86868B" />
+                          </div>
+                          <div style=${{flex:1}}>
+                            <div style=${{fontSize:12,fontWeight:600}}>${row.label}</div>
+                            <div style=${{fontSize:10,color:'#C7C7CC'}}>${row.desc}</div>
+                          </div>
+                          <div onClick=${()=>{
+                            if(!editProfile) return;
+                            const v=!(editProfile[row.field]??true);
+                            const u={...editProfile,[row.field]:v};
+                            setEditProfile(u); sbSaveTeamMember(u).then(()=>setProfile(u));
+                          }} style=${{width:44,height:24,borderRadius:12,background:((editProfile?.[row.field])??true)?'#34C759':'#E5E5EA',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
+                            <div style=${{width:20,height:20,borderRadius:10,background:'#FFF',position:'absolute',top:2,left:((editProfile?.[row.field])??true)?22:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}></div>
+                          </div>
+                        </div>`)}
                     </div>
                   </div>
-                  <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                    ${[
-                      ['Nombre',        'name',         editProfile?.name||''],
-                      ['Usuario',       'username',     editProfile?.username||''],
-                      ['Email',         'email',        editProfile?.email||''],
-                      ['Empresa',       'company',      editProfile?.company||''],
-                      ['Teléfono',      'phone',        editProfile?.phone||''],
-                    ].map(([label,field,val])=>html`
-                      <div key=${field}>
-                        <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3,fontWeight:700,textTransform:'uppercase',letterSpacing:.4}}>${label}</label>
-                        <input value=${val} onInput=${e=>setEditProfile({...editProfile,[field]:e.target.value})}
-                          style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}
- />
-                      </div>`)}
-
-                    <div>
-                      <label style=${{fontSize:10,color:'#86868B',display:'block',marginBottom:3,fontWeight:700,textTransform:'uppercase',letterSpacing:.4}}>Rol</label>
-                      <select value=${editProfile?.role_label||''} onChange=${e=>setEditProfile({...editProfile,role_label:e.target.value})}
-                        style=${{width:'100%',border:'1.5px solid #E5E5EA',borderRadius:10,padding:'8px 12px',fontSize:13,fontFamily:'inherit',outline:'none',background:'#F9F9FB',boxSizing:'border-box'}}>
-                        <option value="">Sin rol</option>
-                        ${rolesList.map(r=>html`<option key=${r} value=${r}>${r}</option>`)}
-                      </select>
-                    </div>
-                  </div>
-                  <button onClick=${async()=>{ setSavingProfile(true); await sbSaveTeamMember(editProfile); setProfile(editProfile); setSavingProfile(false); }}
-                    style=${{padding:'11px',borderRadius:11,border:'none',background:'#1D1D1F',color:'#FFF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                    ${savingProfile?'Guardando…':'Guardar cambios'}
-                  </button>
                 </div>
 
-                <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'20px'}}>
+                <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'20px',position:'sticky',top:72}}>
                   <h3 style=${{fontSize:15,fontWeight:700,marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
                     <${Icon} name="CalendarDays" size=${18} color="#5856D6" /> Vacaciones y ausencias
                   </h3>
                   <${HomeVacaciones} profile=${profile||{id:user.id,name:user.name,annual_vac_days:22,prev_year_pending:0,vacations:[]}} user=${user} />
                 </div>
 
-                <div style=${{background:'#FFF',borderRadius:20,border:'1.5px solid #E5E5EA',padding:'20px'}}>
-                  <h3 style=${{fontSize:13,fontWeight:700,marginBottom:3,color:'#86868B',textTransform:'uppercase',letterSpacing:.5}}>Preferencias de notificación</h3>
-                  <p style=${{fontSize:11,color:'#C7C7CC',marginBottom:14}}>¿Cómo y cuándo quieres recibir avisos?</p>
-                  <div style=${{display:'flex',flexDirection:'column',gap:0}}>
-                    ${[
-                      {icon:'Bell',          label:'Notif. in-app',       field:'notif_inapp',      desc:'Campana dentro del proyecto'},
-                      {icon:'AlertTriangle', label:'Riesgos escalados',    field:'notif_escalado',   desc:'Cuando un riesgo se escala a ti'},
-                      {icon:'CheckSquare',   label:'Tareas vencidas',      field:'notif_accionable', desc:'Tareas que superan su fecha límite'},
-                      {icon:'FileText',      label:'Resumen semanal',      field:'notif_resumen',    desc:'Digest de actividad'},
-                    ].map((row,i)=>html`
-                      <div key=${row.field} style=${{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:i<6?'1px solid #F9F9FB':'none'}}>
-                        <div style=${{width:34,height:34,borderRadius:9,background:'#F2F2F7',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                          <${Icon} name=${row.icon} size=${15} color="#86868B" />
-                        </div>
-                        <div style=${{flex:1}}>
-                          <div style=${{fontSize:12,fontWeight:600}}>${row.label}</div>
-                          <div style=${{fontSize:10,color:'#C7C7CC'}}>${row.desc}</div>
-                        </div>
-                        <div onClick=${()=>{
-                          if(!editProfile) return;
-                          const v=!(editProfile[row.field]??true);
-                          const u={...editProfile,[row.field]:v};
-                          setEditProfile(u); sbSaveTeamMember(u).then(()=>setProfile(u));
-                        }} style=${{width:44,height:24,borderRadius:12,background:((editProfile?.[row.field])??true)?'#34C759':'#E5E5EA',position:'relative',cursor:'pointer',transition:'background .2s',flexShrink:0}}>
-                          <div style=${{width:20,height:20,borderRadius:10,background:'#FFF',position:'absolute',top:2,left:((editProfile?.[row.field])??true)?22:2,transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}></div>
-                        </div>
-                      </div>`)}
-                  </div>
-                </div>
               </div>`}
           </div>`}
-
-          ${/* Vacaciones is now integrated into Mi perfil section below */''}
-
           ${/* ═══ PERSONAS (SM only) ═══ */''} 
           ${section==='personas'&&isSM&&html`<div>
             <h1 style=${{fontSize:22,fontWeight:700,marginBottom:4}}>Personas</h1>
