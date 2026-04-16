@@ -1,0 +1,14 @@
+export { SkillMatrix } from './SkillMatrix';
+export { TabPerfiles } from './TabPerfiles';
+export { TabPersonas } from './TabPersonas';
+export { TabMatriz } from './TabMatriz';
+export { TabFormacion } from './TabFormacion';
+export { TabFTEs } from './TabFTEs';
+export { TabVacaciones } from './TabVacaciones';
+export { OrgChart } from './OrgChart';
+export { TaskBoard } from './TaskBoard';
+export { TaskCard } from './TaskCard';
+export { TaskDetailModal } from './TaskDetailModal';
+export { TagManager } from './TagManager';
+export { ProjectSummary } from './ProjectSummary';
+export { RiskManager } from './RiskManager';

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>revelio</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
+<meta name="description" content="Ningún proyecto debería moverse en las sombras">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; background: #F5F5F7; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+  /* Card hover lift */
+  .card-hover { transition: transform .15s ease, box-shadow .15s ease; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.07); }
+  /* Button polish */
+  button { transition: opacity .15s ease, transform .1s ease; }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #C7C7CC; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #86868B; }
+  /* Selection */
+  ::selection { background: #007AFF30; }
+  /* Input focus */
+  input:focus, textarea:focus, select:focus { border-color: #007AFF !important; box-shadow: 0 0 0 3px #007AFF15; }
+  /* Progress bar animation */
+  [style*="transition: width"] { transition: width .5s ease; }
+  /* Accessibility: skip-to-content link */
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+  .sr-only:focus { position:static; width:auto; height:auto; margin:0; overflow:visible; clip:auto; background:#FFF; padding:8px 16px; z-index:99999; }
+</style>
+</head>
+<body>
+<a href="#app" class="sr-only">Saltar al contenido</a>
+<div id="app"></div>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
