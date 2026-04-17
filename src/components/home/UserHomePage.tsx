@@ -360,70 +360,71 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
   ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F5F7' }}>
-      {/* ═══ SIDEBAR ═══ */}
-      <aside style={{ width: 220, background: '#FFF', borderRight: '1px solid #E8E8ED', padding: '20px 14px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <h1 style={{ fontFamily: "'Comfortaa',sans-serif", fontSize: 22, fontWeight: 400, letterSpacing: 2, background: 'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 24 }}>revelio</h1>
-        {navItems.map(s => (
-          <button key={s.id} onClick={() => setSection(s.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
-              border: 'none', background: section === s.id ? '#F2F2F7' : 'transparent',
-              color: section === s.id ? '#007AFF' : '#6E6E73', fontSize: 13, fontWeight: section === s.id ? 700 : 500,
-              cursor: 'pointer', marginBottom: 2, width: '100%', textAlign: 'left', transition: 'all .15s',
-            }}>
-            <Icon name={s.icon} size={16} color={section === s.id ? '#007AFF' : '#86868B'} />
-            {s.label}
-            {s.id === 'riesgos' && openRisks.length > 0 && (
-              <span style={{ marginLeft: 'auto', background: '#FF3B30', color: '#FFF', fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 8 }}>{openRisks.length}</span>
-            )}
-          </button>
-        ))}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#F5F5F7' }}>
+
+      {/* ═══ HEADER (full-width) ═══ */}
+      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px', background: '#FFF', borderBottom: '1px solid #E8E8ED', flexShrink: 0, zIndex: 20 }}>
+        <h1 style={{
+          fontFamily: "'Comfortaa',sans-serif", fontSize: 18, fontWeight: 400,
+          background: 'linear-gradient(90deg,#007AFF,#5856D6)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0,
+        }}>revelio</h1>
+        <div style={{ width: 1, height: 20, background: '#E5E5EA', margin: '0 4px' }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>Home</span>
+        <div style={{ flex: 1 }} />
+        <NotificationBell user={user} global />
         {isSM && (
           <button onClick={onOpenAdmin}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: 'none', background: 'transparent', color: '#5856D6', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8, width: '100%', textAlign: 'left' }}>
-            <Icon name="Settings" size={16} color="#5856D6" /> Centro de Control
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#5856D6' }}>
+            <Icon name="LayoutDashboard" size={13} color="#5856D6" /> Centro de control
           </button>
         )}
-        <div style={{ marginTop: 'auto' }} />
-      </aside>
-
-      {/* ═══ CONTENT ═══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        {/* HEADER */}
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 24px', background: '#FFF', borderBottom: '1px solid #F2F2F7', flexShrink: 0 }}>
-          <NotificationBell user={user} global />
-          {isSM && (
-            <button onClick={onOpenAdmin}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#5856D6' }}>
-              <Icon name="Settings" size={13} color="#5856D6" /> Control
-            </button>
+        <div style={{ position: 'relative' }}>
+          <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(!showAvatarMenu); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', cursor: 'pointer' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: user.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>{user.avatar || '👤'}</div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{user.name}</span>
+            <Icon name="ChevronDown" size={12} color="#86868B" />
+          </button>
+          {showAvatarMenu && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#FFF', borderRadius: 12, border: '1px solid #E8E8ED', boxShadow: '0 8px 24px #0002', minWidth: 180, zIndex: 100, overflow: 'hidden' }}>
+              <button onClick={() => { setSection('perfil'); setShowAvatarMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#1D1D1F' }}>
+                <Icon name="User" size={14} color="#007AFF" /> Mi perfil
+              </button>
+              <div style={{ height: 1, background: '#F2F2F7' }} />
+              <button onClick={onLogout}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#FF3B30' }}>
+                <Icon name="LogOut" size={14} color="#FF3B30" /> Cerrar sesión
+              </button>
+            </div>
           )}
-          <div style={{ position: 'relative' }}>
-            <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(!showAvatarMenu); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', cursor: 'pointer' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: user.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>{user.avatar || '👤'}</div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{user.name}</span>
-              <Icon name="ChevronDown" size={12} color="#86868B" />
-            </button>
-            {showAvatarMenu && (
-              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#FFF', borderRadius: 12, border: '1px solid #E8E8ED', boxShadow: '0 8px 24px #0002', minWidth: 180, zIndex: 100, overflow: 'hidden' }}>
-                <button onClick={() => { setSection('perfil'); setShowAvatarMenu(false); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#1D1D1F' }}>
-                  <Icon name="User" size={14} color="#007AFF" /> Mi perfil
-                </button>
-                <div style={{ height: 1, background: '#F2F2F7' }} />
-                <button onClick={onLogout}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#FF3B30' }}>
-                  <Icon name="LogOut" size={14} color="#FF3B30" /> Cerrar sesión
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+        </div>
+      </header>
 
-        {/* MAIN */}
-        <div style={{ flex: 1, padding: '24px 28px' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* ═══ SIDEBAR ═══ */}
+        <aside style={{ width: 220, background: '#FFF', borderRight: '1px solid #E8E8ED', padding: '16px 14px', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
+          {navItems.map(s => (
+            <button key={s.id} onClick={() => setSection(s.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                border: 'none', background: section === s.id ? '#F2F2F7' : 'transparent',
+                color: section === s.id ? '#007AFF' : '#6E6E73', fontSize: 13, fontWeight: section === s.id ? 700 : 500,
+                cursor: 'pointer', marginBottom: 2, width: '100%', textAlign: 'left', transition: 'all .15s',
+              }}>
+              <Icon name={s.icon} size={16} color={section === s.id ? '#007AFF' : '#86868B'} />
+              {s.label}
+              {s.id === 'riesgos' && openRisks.length > 0 && (
+                <span style={{ marginLeft: 'auto', background: '#FF3B30', color: '#FFF', fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 8 }}>{openRisks.length}</span>
+              )}
+            </button>
+          ))}
+          <div style={{ marginTop: 'auto' }} />
+        </aside>
+
+        {/* ═══ CONTENT ═══ */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
 
           {/* ═══ INICIO ═══ */}
           {section === 'dashboard' && (

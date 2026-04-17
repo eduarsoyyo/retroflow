@@ -122,13 +122,13 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* Right: Home + Notifications + Avatar */}
+        {/* Right: Notifications + Home + Avatar */}
+        <NotificationBell user={user} global />
+
         <button onClick={onBackToHome}
           style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#007AFF' }}>
           <Icon name="Home" size={13} color="#007AFF" /> Home
         </button>
-
-        <NotificationBell user={user} global />
 
         <div style={{ position: 'relative' }} data-avatar-menu>
           <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(!showAvatarMenu); }}
