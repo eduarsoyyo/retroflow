@@ -10,7 +10,7 @@ import { Loading } from '@components/common/Feedback';
 import { ProfileEditor } from '@components/common/ProfileEditor';
 import { NotificationBell } from '@components/common/NotificationBell';
 import { VacCalendarModal } from '@components/common/VacCalendarModal';
-import { ANNUAL_VAC_DAYS } from '../../config/absenceTypes';
+import { ANNUAL_VAC_DAYS, getAbsenceType, ABSENCE_TYPES } from '../../config/absenceTypes';
 
 // ─── Types ───
 interface UserHomePageProps {
@@ -36,12 +36,12 @@ const prioColor: Record<string, string> = { critical: '#FF3B30', high: '#FF9500'
 const prioLabel: Record<string, string> = { critical: 'Crítica', high: 'Alta', medium: 'Media', low: 'Baja' };
 
 // ─── SVG Smooth Line Chart — Syncfusion spline-area style ───
-function SmoothLineChart({ data, labels, color = '#007AFF', height = 180, secondaryData, secondaryColor = '#C7C7CC' }: {
+function SmoothLineChart({ data, labels, color = '#007AFF', height = 200, secondaryData, secondaryColor = '#C7C7CC' }: {
   data: number[]; labels: string[]; color?: string; height?: number;
   secondaryData?: number[]; secondaryColor?: string;
 }) {
   if (!data.length) return null;
-  const w = 100, h = 60, padT = 10;
+  const w = 100, h = 60, padT = 8;
   const allVals = [...data, ...(secondaryData || [])];
   const max = Math.max(...allVals) * 1.08 || 1;
   const min = 0;
@@ -94,11 +94,11 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 180, second
         onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="sfGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.55} />
-            <stop offset="40%" stopColor={color} stopOpacity={0.25} />
-            <stop offset="100%" stopColor={color} stopOpacity={0.03} />
+            <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+            <stop offset="50%" stopColor={color} stopOpacity={0.08} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.01} />
           </linearGradient>
-          <filter id="sfGlow"><feGaussianBlur stdDeviation="1.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="sfGlow"><feGaussianBlur stdDeviation="0.8" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
         {/* Dashed grid */}
         {yTicks.map(t => (
@@ -122,9 +122,8 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 180, second
         )}
         {/* Gradient fill */}
         <path d={areaPath} fill="url(#sfGrad)" />
-        {/* Spline line + glow */}
-        <path d={path} fill="none" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" filter="url(#sfGlow)" opacity={0.8} />
-        <path d={path} fill="none" stroke={color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
+        {/* Spline line */}
+        <path d={path} fill="none" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
         {/* Data points + hit areas */}
         {pts.map((p, i) => {
           const isActive = i <= curMonth;
@@ -166,8 +165,8 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 180, second
   );
 }
 
-// ─── SVG Donut Chart ───
-function DonutChart({ segments, size = 120, thickness = 14, centerLabel, centerValue }: {
+// ─── SVG Donut Chart — Professional ───
+function DonutChart({ segments, size = 140, thickness = 18, centerLabel, centerValue }: {
   segments: { value: number; color: string; label: string }[];
   size?: number; thickness?: number;
   centerLabel?: string; centerValue?: string;
@@ -182,7 +181,7 @@ function DonutChart({ segments, size = 120, thickness = 14, centerLabel, centerV
     const pct = seg.value / total;
     const dash = pct * circ;
     const gap = circ - dash;
-    const arc = { ...seg, dasharray: `${dash} ${gap}`, offset: -offset + circ * 0.25 };
+    const arc = { ...seg, pct, dasharray: `${dash} ${gap}`, offset: -offset + circ * 0.25 };
     offset += dash;
     return arc;
   });
@@ -190,27 +189,32 @@ function DonutChart({ segments, size = 120, thickness = 14, centerLabel, centerV
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/* Background ring */}
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F2F2F7" strokeWidth={thickness} />
+        {/* Shadow ring for depth */}
+        <circle cx={cx} cy={cy} r={r - 1} fill="none" stroke="rgba(0,0,0,0.03)" strokeWidth={thickness + 2} />
+        {/* Data arcs */}
         {arcs.map((a, i) => (
           <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-            stroke={a.color} strokeWidth={thickness}
+            stroke={a.color} strokeWidth={thickness - 2}
             strokeDasharray={a.dasharray} strokeDashoffset={a.offset}
             strokeLinecap="round"
-            style={{ transition: 'stroke-dasharray 0.4s ease' }} />
+            style={{ transition: 'stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease' }} />
         ))}
+        {/* Center content */}
         {centerValue && (
-          <text x={cx} y={cy - 4} textAnchor="middle" fontSize={size * 0.18}
-            fontWeight={800} fill="#1D1D1F">{centerValue}</text>
+          <text x={cx} y={cy - 2} textAnchor="middle" dominantBaseline="central"
+            fontSize={size * 0.2} fontWeight={800} fill="#1D1D1F">{centerValue}</text>
         )}
         {centerLabel && (
-          <text x={cx} y={cy + size * 0.1} textAnchor="middle" fontSize={size * 0.09}
-            fill="#86868B">{centerLabel}</text>
+          <text x={cx} y={cy + size * 0.13} textAnchor="middle"
+            fontSize={size * 0.085} fill="#86868B" fontWeight={500}>{centerLabel}</text>
         )}
       </svg>
-      <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
         {segments.filter(s => s.value > 0).map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
             <span style={{ color: '#6E6E73' }}>{s.label}</span>
             <span style={{ fontWeight: 700, color: '#1D1D1F' }}>{s.value}</span>
           </div>
@@ -555,8 +559,8 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                     </div>
                   ))}
                 </div>
-                <div style={{ ...cardS, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-                  <DonutChart segments={healthSegments} size={110} thickness={14}
+                <div style={{ ...cardS, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                  <DonutChart segments={healthSegments} size={140} thickness={18}
                     centerValue={`${myRooms.length}`} centerLabel="proyectos" />
                 </div>
               </div>
@@ -764,7 +768,7 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
             <div style={{ maxWidth: 640 }}>
               <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>Mi perfil</h1>
 
-              {/* Identity — read only */}
+              {/* Identity — full data, read only */}
               <div style={{ ...cardS, padding: 24, marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                   <div style={{ width: 56, height: 56, borderRadius: 16, background: profile.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{profile.avatar || '👤'}</div>
@@ -773,12 +777,29 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                     <div style={{ fontSize: 13, color: '#86868B' }}>{profile.role_label || '—'}{profile.company ? ` · ${profile.company}` : ''}</div>
                   </div>
                 </div>
-                {profile.email && <p style={{ fontSize: 13, color: '#6E6E73', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="Mail" size={13} color="#86868B" /> {profile.email}</p>}
-                {profile.phone && <p style={{ fontSize: 13, color: '#6E6E73', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="Phone" size={13} color="#86868B" /> {profile.phone}</p>}
-                <p style={{ fontSize: 13, color: '#6E6E73', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="FolderOpen" size={13} color="#86868B" /> {(profile.rooms || []).length} proyectos asignados</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  {([
+                    { icon: 'User', label: 'Usuario', value: profile.username || '—' },
+                    { icon: 'Mail', label: 'Email', value: profile.email || '—' },
+                    { icon: 'Phone', label: 'Teléfono', value: profile.phone || '—' },
+                    { icon: 'Briefcase', label: 'Empresa', value: profile.company || '—' },
+                    { icon: 'Shield', label: 'Rol', value: profile.role_label || '—' },
+                    { icon: 'Calendar', label: 'Calendario', value: myCal?.name || 'Sin asignar' },
+                    { icon: 'FolderOpen', label: 'Proyectos', value: `${(profile.rooms || []).length} asignados` },
+                    { icon: 'Hash', label: 'ID', value: profile.id?.slice(0, 8) || '—' },
+                  ] as const).map(f => (
+                    <div key={f.label} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}>
+                      <Icon name={f.icon as string} size={12} color="#86868B" />
+                      <div>
+                        <div style={{ fontSize: 9, color: '#AEAEB2', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>{f.label}</div>
+                        <div style={{ fontSize: 12, color: '#1D1D1F', fontWeight: 500 }}>{f.value}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 <button onClick={() => setShowProfileEditor(true)}
-                  style={{ marginTop: 12, padding: '8px 16px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#007AFF', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="Key" size={13} color="#007AFF" /> Cambiar contraseña
+                  style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#007AFF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="Edit" size={13} color="#007AFF" /> Editar perfil
                 </button>
               </div>
 
@@ -909,6 +930,23 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                         while (d <= to) { if (d.getFullYear() === yr && d.getMonth() === month && d.getDay() !== 0 && d.getDay() !== 6) cnt++; d.setDate(d.getDate() + 1); }
                         return sum + cnt;
                       }, 0);
+                      // Tooltip: list absences per month with type, dates, note
+                      const tooltipMonth = (month: number, isVac: boolean) => {
+                        const entries = myVacs.filter(v => {
+                          const t = v.type || 'vacaciones';
+                          if (isVac ? t !== 'vacaciones' : t === 'vacaciones') return false;
+                          if (!v.from) return false;
+                          const from = new Date(v.from); const to = new Date(v.to || v.from);
+                          return (from.getMonth() === month && from.getFullYear() === yr) || (to.getMonth() === month && to.getFullYear() === yr);
+                        });
+                        if (entries.length === 0) return undefined;
+                        return entries.map(v => {
+                          const at = getAbsenceType(v.type || 'vacaciones');
+                          const fromD = v.from.slice(5).replace('-', '/');
+                          const toD = v.to && v.to !== v.from ? ' → ' + v.to.slice(5).replace('-', '/') : '';
+                          return `${at.initial} ${at.label.replace(/^[^\s]+\s/, '')}: ${fromD}${toD}${v.note ? ' — ' + v.note : ''}`;
+                        }).join('\n');
+                      };
                       const totalAus = Array.from({ length: 12 }, (_, i) => cntMonth(i, false)).reduce((a, b) => a + b, 0);
                       const totalVac = Array.from({ length: 12 }, (_, i) => cntMonth(i, true)).reduce((a, b) => a + b, 0);
                       return (
@@ -930,8 +968,8 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                                 <tr key={m.month} style={{ borderBottom: '1px solid #F2F2F7', background: isCur ? '#007AFF08' : 'transparent' }}>
                                   <td style={{ padding: '4px 6px', fontWeight: isCur ? 700 : 600, color: isCur ? '#007AFF' : '#1D1D1F' }}>{MONTHS[m.month - 1]}</td>
                                   <td style={{ padding: '4px 6px', textAlign: 'center', color: '#6E6E73' }}>{m.days}</td>
-                                  <td style={{ padding: '4px 6px', textAlign: 'center', color: aus > 0 ? '#FF9500' : '#D1D1D6', fontWeight: aus > 0 ? 600 : 400 }}>{aus}</td>
-                                  <td style={{ padding: '4px 6px', textAlign: 'center', color: vac > 0 ? '#5856D6' : '#D1D1D6', fontWeight: vac > 0 ? 600 : 400 }}>{vac}</td>
+                                  <td title={tooltipMonth(i, false)} style={{ padding: '4px 6px', textAlign: 'center', color: aus > 0 ? '#FF9500' : '#D1D1D6', fontWeight: aus > 0 ? 600 : 400, cursor: aus > 0 ? 'help' : 'default' }}>{aus}</td>
+                                  <td title={tooltipMonth(i, true)} style={{ padding: '4px 6px', textAlign: 'center', color: vac > 0 ? '#5856D6' : '#D1D1D6', fontWeight: vac > 0 ? 600 : 400, cursor: vac > 0 ? 'help' : 'default' }}>{vac}</td>
                                   <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, color: '#007AFF' }}>{m.hours}</td>
                                   <td style={{ padding: '4px 6px', textAlign: 'center', color: isCur ? '#007AFF' : '#86868B', fontWeight: isCur ? 700 : 400 }}>{Math.round(acum)}</td>
                                 </tr>

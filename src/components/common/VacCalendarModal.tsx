@@ -45,9 +45,20 @@ export function VacCalendarModal({ profile, onClose, onSaved }: VacCalendarModal
   const toggleDay = (day: number) => {
     if (isWeekend(day) || isHoliday(day)) return;
     const ds = makeDateStr(day);
+    // If day already has an existing vac, don't allow selecting on top
+    if (getExistingVac(ds)) return;
     const next = new Set(selDays);
     if (next.has(ds)) next.delete(ds); else next.add(ds);
     setSelDays(next);
+  };
+
+  const handleDeleteVac = async (vacId: string) => {
+    setSaving(true);
+    const updatedVacs = myVacs.filter(v => v.id !== vacId);
+    const updatedProfile = { ...profile, vacations: updatedVacs };
+    const result = await saveTeamMember(updatedProfile);
+    setSaving(false);
+    onSaved(result.ok ? result.data : updatedProfile);
   };
 
   const prevMonth = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); };
@@ -187,6 +198,51 @@ export function VacCalendarModal({ profile, onClose, onSaved }: VacCalendarModal
               </div>
             ))}
           </div>
+
+          {/* Existing absences for this month — with delete */}
+          {(() => {
+            const monthVacs = myVacs.filter(v => {
+              if (!v.from) return false;
+              const from = new Date(v.from);
+              const to = v.to ? new Date(v.to) : from;
+              return (from.getFullYear() === viewYear && from.getMonth() === viewMonth) ||
+                     (to.getFullYear() === viewYear && to.getMonth() === viewMonth);
+            });
+            if (monthVacs.length === 0) return null;
+            return (
+              <div style={{ marginTop: 10, borderTop: '1px solid #F2F2F7', paddingTop: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.3 }}>
+                  Ausencias en {MONTHS_ES[viewMonth]}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {monthVacs.map(v => {
+                    const t = getAbsenceType(v.type || 'vacaciones');
+                    const fromD = v.from.slice(8, 10);
+                    const toD = v.to && v.to !== v.from ? v.to.slice(8, 10) : null;
+                    return (
+                      <div key={v.id || v.from} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                        borderRadius: 8, background: `${t.color}08`, border: `1px solid ${t.color}15` }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: t.color, width: 16, textAlign: 'center' }}>{t.initial}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: '#1D1D1F' }}>
+                            {t.label.replace(/^[^\s]+\s/, '')}
+                            <span style={{ color: '#86868B', fontWeight: 400 }}> · {fromD}{toD ? `→${toD}` : ''}</span>
+                          </div>
+                          {v.note && <div style={{ fontSize: 9, color: '#86868B' }}>{v.note}</div>}
+                        </div>
+                        <button onClick={() => v.id && handleDeleteVac(v.id)}
+                          disabled={saving}
+                          style={{ width: 22, height: 22, borderRadius: 6, border: 'none', background: '#FF3B3012',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon name="Trash2" size={11} color="#FF3B30" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}
