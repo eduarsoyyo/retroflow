@@ -11,6 +11,7 @@ import { ProfileEditor } from '@components/common/ProfileEditor';
 import { NotificationBell } from '@components/common/NotificationBell';
 import { VacCalendarModal } from '@components/common/VacCalendarModal';
 import { ANNUAL_VAC_DAYS, getAbsenceType, ABSENCE_TYPES } from '../../config/absenceTypes';
+import { setUserPassword } from '../../data/auth';
 
 // ─── Types ───
 interface UserHomePageProps {
@@ -94,11 +95,9 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 200, second
         onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id="sfGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.22} />
-            <stop offset="50%" stopColor={color} stopOpacity={0.08} />
-            <stop offset="100%" stopColor={color} stopOpacity={0.01} />
+            <stop offset="0%" stopColor={color} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.0} />
           </linearGradient>
-          <filter id="sfGlow"><feGaussianBlur stdDeviation="0.8" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
         {/* Dashed grid */}
         {yTicks.map(t => (
@@ -107,14 +106,7 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 200, second
             <text x={-2} y={t.y + 1.2} textAnchor="end" fontSize={2.6} fill="#AEAEB2">{t.val}</text>
           </g>
         ))}
-        <line x1={0} x2={w} y1={h} y2={h} stroke="#E5E5EA" strokeWidth={0.4} />
-        {/* Subtle monthly bars */}
-        {pts.map((p, i) => {
-          const barH = h - p.y;
-          const barW = Math.max(2.5, w / data.length * 0.5);
-          return <rect key={`b${i}`} x={p.x - barW / 2} y={p.y} width={barW} height={barH}
-            rx={0.8} fill={i <= curMonth ? color : '#E5E5EA'} opacity={i <= curMonth ? 0.07 : 0.05} />;
-        })}
+        <line x1={0} x2={w} y1={h} y2={h} stroke="#E8E8ED" strokeWidth={0.3} />
         {/* Secondary line (convenio) */}
         {secPath && (
           <path d={secPath} fill="none" stroke={secondaryColor} strokeWidth={0.6}
@@ -165,8 +157,8 @@ function SmoothLineChart({ data, labels, color = '#007AFF', height = 200, second
   );
 }
 
-// ─── SVG Donut Chart — Professional ───
-function DonutChart({ segments, size = 140, thickness = 18, centerLabel, centerValue }: {
+// ─── SVG Donut Chart ───
+function DonutChart({ segments, size = 160, thickness = 24, centerLabel, centerValue }: {
   segments: { value: number; color: string; label: string }[];
   size?: number; thickness?: number;
   centerLabel?: string; centerValue?: string;
@@ -181,7 +173,7 @@ function DonutChart({ segments, size = 140, thickness = 18, centerLabel, centerV
     const pct = seg.value / total;
     const dash = pct * circ;
     const gap = circ - dash;
-    const arc = { ...seg, pct, dasharray: `${dash} ${gap}`, offset: -offset + circ * 0.25 };
+    const arc = { ...seg, dasharray: `${dash} ${gap}`, offset: -offset + circ * 0.25 };
     offset += dash;
     return arc;
   });
@@ -189,26 +181,20 @@ function DonutChart({ segments, size = 140, thickness = 18, centerLabel, centerV
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* Background ring */}
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F2F2F7" strokeWidth={thickness} />
-        {/* Shadow ring for depth */}
-        <circle cx={cx} cy={cy} r={r - 1} fill="none" stroke="rgba(0,0,0,0.03)" strokeWidth={thickness + 2} />
-        {/* Data arcs */}
         {arcs.map((a, i) => (
           <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-            stroke={a.color} strokeWidth={thickness - 2}
+            stroke={a.color} strokeWidth={thickness}
             strokeDasharray={a.dasharray} strokeDashoffset={a.offset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease' }} />
+            style={{ transition: 'stroke-dasharray 0.5s ease' }} />
         ))}
-        {/* Center content */}
         {centerValue && (
-          <text x={cx} y={cy - 2} textAnchor="middle" dominantBaseline="central"
-            fontSize={size * 0.2} fontWeight={800} fill="#1D1D1F">{centerValue}</text>
+          <text x={cx} y={cy - 2} textAnchor="middle" fontSize={size * 0.2}
+            fontWeight={800} fill="#1D1D1F" dominantBaseline="central">{centerValue}</text>
         )}
         {centerLabel && (
-          <text x={cx} y={cy + size * 0.13} textAnchor="middle"
-            fontSize={size * 0.085} fill="#86868B" fontWeight={500}>{centerLabel}</text>
+          <text x={cx} y={cy + size * 0.12} textAnchor="middle" fontSize={size * 0.09}
+            fill="#86868B" fontWeight={500}>{centerLabel}</text>
         )}
       </svg>
       <div style={{ display: 'flex', gap: 14, marginTop: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -233,6 +219,9 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [showVacModal, setShowVacModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState('');
   const [allData, setAllData] = useState<Record<string, { actions?: Task[]; risks?: Risk[] }>>({});
   const [loading, setLoading] = useState(true);
   const [calendarios, setCalendarios] = useState<Calendario[]>([]);
@@ -560,7 +549,7 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                   ))}
                 </div>
                 <div style={{ ...cardS, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                  <DonutChart segments={healthSegments} size={140} thickness={18}
+                  <DonutChart segments={healthSegments} size={160} thickness={24}
                     centerValue={`${myRooms.length}`} centerLabel="proyectos" />
                 </div>
               </div>
@@ -797,10 +786,36 @@ export function UserHomePage({ user, onLogout, onSelectProject, onOpenAdmin }: U
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setShowProfileEditor(true)}
-                  style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#007AFF', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="Edit" size={13} color="#007AFF" /> Editar perfil
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button onClick={() => setShowProfileEditor(true)}
+                    style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#007AFF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="Edit" size={13} color="#007AFF" /> Editar perfil
+                  </button>
+                </div>
+
+                {/* Cambiar clave */}
+                <div style={{ marginTop: 14, padding: 14, background: '#F9F9FB', borderRadius: 12, border: '1px solid #E5E5EA' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#86868B', marginBottom: 8 }}>Cambiar contraseña</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input type="password" value={newPassword}
+                      onInput={(e: Event) => { setNewPassword((e.target as HTMLInputElement).value); setPwMsg(''); }}
+                      placeholder="Nueva contraseña…"
+                      style={{ flex: 1, border: '1px solid #E5E5EA', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', background: '#FFF' }} />
+                    <button disabled={!newPassword.trim() || pwSaving}
+                      onClick={async () => {
+                        setPwSaving(true);
+                        const ok = await setUserPassword(profile.id, newPassword.trim());
+                        setPwSaving(false);
+                        setPwMsg(ok ? '✅ Actualizada' : '❌ Error');
+                        if (ok) setNewPassword('');
+                        setTimeout(() => setPwMsg(''), 3000);
+                      }}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: newPassword.trim() ? '#1D1D1F' : '#E5E5EA', color: newPassword.trim() ? '#FFF' : '#AEAEB2', fontSize: 11, fontWeight: 600, cursor: newPassword.trim() ? 'pointer' : 'default' }}>
+                      {pwSaving ? '…' : 'Guardar'}
+                    </button>
+                  </div>
+                  {pwMsg && <div style={{ fontSize: 10, marginTop: 4, color: pwMsg.includes('✅') ? '#34C759' : '#FF3B30' }}>{pwMsg}</div>}
+                </div>
               </div>
 
               {/* Notifications */}
