@@ -153,6 +153,7 @@ export const SkillSchema = z.object({
   name: z.string().min(1),
   category: z.string().default('técnica'),
   icon: z.string().default('📘'),
+  description: z.string().default(''),
 });
 
 export type Skill = z.infer<typeof SkillSchema>;

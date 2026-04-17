@@ -36,7 +36,13 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { id: 'dashboard', icon: 'BarChart3', label: 'Dashboard' },
-  { id: 'proyectos', icon: 'FolderOpen', label: 'Proyectos' },
+  {
+    id: 'proyectos-group', icon: 'FolderOpen', label: 'Proyectos',
+    children: [
+      { id: 'proyectos', icon: 'List',           label: 'Lista de proyectos' },
+      { id: 'riesgos',   icon: 'AlertTriangle',  label: 'Riesgos y Escalado' },
+    ],
+  },
   {
     id: 'rrhh', icon: 'Users', label: 'RRHH',
     children: [
@@ -45,14 +51,14 @@ const NAV: NavItem[] = [
       { id: 'calendarios', icon: 'Calendar',   label: 'Calendario / Convenio' },
       { id: 'organigrama', icon: 'GitBranch',  label: 'Organigrama' },
       { id: 'timeline',    icon: 'Clock',      label: 'Consultant Timeline' },
+      { id: 'cross',       icon: 'GitMerge',   label: 'Cross-proyecto' },
     ],
   },
-  { id: 'riesgos', icon: 'AlertTriangle', label: 'Riesgos y Escalado' },
 ];
 
 export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPickerProps) {
   const [tab, setTab] = useState('dashboard');
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['rrhh']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['rrhh', 'proyectos-group']));
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProject, setFilterProject] = useState<string[]>([]);
@@ -269,6 +275,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
             </div>
           )}
           {tab === 'timeline' && <ConsultantTimeline />}
+          {tab === 'cross' && <CrossProject />}
 
           {/* Maestros — legacy, will merge into RRHH later */}
           {tab === 'maestros' && <MaestrosPanel />}

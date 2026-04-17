@@ -5,7 +5,6 @@ import { loadRooms, saveRoom, deleteRoom } from '@data/rooms';
 import { loadTeamMembers } from '@data/team';
 import { loadRetros } from '@data/retros';
 import { loadDashboardData } from '@services/dashboard';
-import { CrossProject } from './CrossProject';
 import { Icon } from '@components/common/Icon';
 import { ANNUAL_VAC_DAYS } from '../../config/absenceTypes';
 
@@ -46,9 +45,6 @@ export function ProjectsPanel({ onGoToRoom }: ProjectsPanelProps) {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [form, setForm] = useState<ProjectForm>({ ...emptyForm });
   const [saving, setSaving] = useState(false);
-
-  // Cross-proyecto visibility
-  const [showCross, setShowCross] = useState(false);
 
   useEffect(() => {
     Promise.all([loadRooms(), loadTeamMembers(), loadRetros(), loadDashboardData()]).then(([roomsR, membersR, retrosR, dashData]) => {
@@ -150,10 +146,6 @@ export function ProjectsPanel({ onGoToRoom }: ProjectsPanelProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700 }}>Proyectos</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowCross(!showCross)}
-            style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #E5E5EA', background: showCross ? '#5856D610' : '#FFF', color: showCross ? '#5856D6' : '#6E6E73', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Icon name="GitBranch" size={13} color={showCross ? '#5856D6' : '#86868B'} /> Cross-proyecto
-          </button>
           <button onClick={openCreate}
             style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
             <Icon name="Plus" size={13} color="#FFF" /> Nuevo proyecto
@@ -229,13 +221,6 @@ export function ProjectsPanel({ onGoToRoom }: ProjectsPanelProps) {
           </table>
         </div>
       </div>
-
-      {/* Cross-proyecto (toggleable) */}
-      {showCross && (
-        <div style={{ marginBottom: 14 }}>
-          <CrossProject />
-        </div>
-      )}
 
       {/* ── Create / Edit Modal ── */}
       {(showCreate || editRoom) && (
