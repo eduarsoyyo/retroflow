@@ -77,3 +77,15 @@ export async function saveTraining(t: Record<string, unknown>): Promise<Result<u
 export async function deleteTraining(id: string): Promise<Result<void>> {
   try { await supabase.from('training_catalog').delete().eq('id', id); return ok(undefined); } catch { return err(new DataError('delete training')); }
 }
+
+export async function saveProfileSkill(ps: { profile_id: string; skill_id: string; required_level: number }): Promise<Result<unknown>> {
+  try { const { data, error } = await supabase.from('profile_skills').upsert(ps, { onConflict: 'profile_id,skill_id' }).select().single(); if (error) return err(new DataError('save profile skill')); return ok(data); } catch { return err(new DataError('save profile skill')); }
+}
+
+export async function deleteProfileSkill(profileId: string, skillId: string): Promise<Result<void>> {
+  try { await supabase.from('profile_skills').delete().eq('profile_id', profileId).eq('skill_id', skillId); return ok(undefined); } catch { return err(new DataError('delete profile skill')); }
+}
+
+export async function loadCatalogSkills(): Promise<Result<Array<{ id: string; name: string; category: string; icon: string; description: string }>>> {
+  try { const { data, error } = await supabase.from('skill_catalog').select('*').order('category,name'); if (error) return err(new DataError('catalog skills')); return ok(data ?? []); } catch { return err(new DataError('catalog skills')); }
+}
