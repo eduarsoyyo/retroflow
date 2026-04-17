@@ -251,7 +251,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
                   );
                 })}
               </div>
-              <AdminDashboard rooms={rooms} filterProject={filterProject} />
+              <AdminDashboard rooms={rooms} filterProject={filterProject} onGoToRoom={onGoToRoom} />
             </>
           )}
 
