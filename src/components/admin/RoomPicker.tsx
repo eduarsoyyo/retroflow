@@ -6,7 +6,8 @@ import type { Room, Member, AppUser } from '@app-types/index';
 import { loadRooms } from '@data/rooms';
 import { loadTeamMembers } from '@data/team';
 import { AdminDashboard } from './AdminDashboard';
-import { AdminRoles, AdminUsuarios, AdminConvenio, AdminCalendarios, AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
+import { AdminRoles, AdminConvenio, AdminCalendarios, AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
+import { UsersPanel } from './UsersPanel';
 import { CrossProject } from './CrossProject';
 import { ConsultantTimeline } from './ConsultantTimeline';
 import { ProjectsPanel } from './ProjectsPanel';
@@ -248,7 +249,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
           {tab === 'proyectos' && <ProjectsPanel onGoToRoom={onGoToRoom} />}
 
           {/* RRHH tabs */}
-          {tab === 'usuarios' && <AdminUsuarios />}
+          {tab === 'usuarios' && <UsersPanel />}
           {tab === 'roles' && <AdminRoles />}
           {tab === 'calendarios' && (
             <div>
