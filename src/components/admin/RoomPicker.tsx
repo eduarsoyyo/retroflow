@@ -3,12 +3,13 @@
 
 import { useState, useEffect } from 'preact/hooks';
 import type { Room, Member, AppUser } from '@app-types/index';
-import { loadRooms, saveRoom } from '@data/rooms';
+import { loadRooms } from '@data/rooms';
 import { loadTeamMembers } from '@data/team';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminRoles, AdminUsuarios, AdminConvenio, AdminCalendarios, AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
 import { CrossProject } from './CrossProject';
 import { ConsultantTimeline } from './ConsultantTimeline';
+import { ProjectsPanel } from './ProjectsPanel';
 import { Icon } from '@components/common/Icon';
 import { Loading } from '@components/common/Feedback';
 import { ProfileEditor } from '@components/common/ProfileEditor';
@@ -55,11 +56,6 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
   const [showProfile, setShowProfile] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
 
-  // New room form
-  const [newName, setNewName] = useState('');
-  const [newSlug, setNewSlug] = useState('');
-  const [newTipo, setNewTipo] = useState('agile');
-
   useEffect(() => {
     loadRooms().then(result => {
       if (result.ok) setRooms(result.data);
@@ -87,13 +83,6 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
-
-  const handleCreateRoom = async () => {
-    if (!newName.trim() || !newSlug.trim()) return;
-    await saveRoom({ slug: newSlug.trim(), name: newName.trim(), tipo: newTipo });
-    setRooms(prev => [...prev, { slug: newSlug.trim(), name: newName.trim(), tipo: newTipo, metadata: {} }]);
-    setNewName(''); setNewSlug(''); setNewTipo('agile');
   };
 
   const isActive = (id: string) => tab === id;
@@ -256,50 +245,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
           )}
 
           {/* Proyectos */}
-          {tab === 'proyectos' && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700 }}>Proyectos</h2>
-              </div>
-              {/* Create form */}
-              <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, marginBottom: 14 }}>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <input value={newName} onInput={e => { setNewName((e.target as HTMLInputElement).value); if (!newSlug) setNewSlug((e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')); }}
-                    placeholder="Nombre del proyecto"
-                    style={{ flex: 2, minWidth: 160, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
-                  <input value={newSlug} onInput={e => setNewSlug((e.target as HTMLInputElement).value)}
-                    placeholder="slug" style={{ flex: 1, minWidth: 100, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
-                  <button onClick={handleCreateRoom} disabled={!newName.trim() || !newSlug.trim()}
-                    style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (!newName.trim() || !newSlug.trim()) ? 0.4 : 1 }}>
-                    + Crear
-                  </button>
-                </div>
-              </div>
-              {/* Room list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {rooms.map(r => (
-                  <div key={r.slug} onClick={() => onGoToRoom(r.slug, r.tipo)}
-                    style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
-                    onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor = '#007AFF'; }}
-                    onMouseOut={e => { (e.currentTarget as HTMLElement).style.borderColor = '#E5E5EA'; }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</div>
-                      <div style={{ fontSize: 11, color: '#86868B' }}>{r.tipo} · {r.slug}</div>
-                    </div>
-                    <Icon name="ChevronRight" size={16} color="#C7C7CC" />
-                  </div>
-                ))}
-              </div>
-              {/* Cross-proyecto section */}
-              <div style={{ marginTop: 24 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="GitBranch" size={15} color="#5856D6" /> Asignación cross-proyecto
-                </h3>
-                <CrossProject />
-              </div>
-            </div>
-          )}
+          {tab === 'proyectos' && <ProjectsPanel onGoToRoom={onGoToRoom} />}
 
           {/* RRHH tabs */}
           {tab === 'usuarios' && <AdminUsuarios />}

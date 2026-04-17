@@ -22,6 +22,14 @@ export async function saveRoom(room: Partial<Room>): Promise<Result<void>> {
   } catch { return err(new DataError('Network error')); }
 }
 
+export async function deleteRoom(slug: string): Promise<Result<void>> {
+  try {
+    const { error } = await supabase.from('rooms').delete().eq('slug', slug);
+    if (error) return err(new DataError('Failed to delete room'));
+    return ok(undefined);
+  } catch { return err(new DataError('Network error')); }
+}
+
 // ── Tags ──
 
 export async function loadTags(sala: string): Promise<any[]> {
