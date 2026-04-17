@@ -6,8 +6,10 @@ import type { Room, Member, AppUser } from '@app-types/index';
 import { loadRooms } from '@data/rooms';
 import { loadTeamMembers } from '@data/team';
 import { AdminDashboard } from './AdminDashboard';
-import { AdminRoles, AdminConvenio, AdminCalendarios, AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
+import { AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
 import { UsersPanel } from './UsersPanel';
+import { RolesPanel } from './RolesPanel';
+import { CalendarPanel } from './CalendarPanel';
 import { CrossProject } from './CrossProject';
 import { ConsultantTimeline } from './ConsultantTimeline';
 import { ProjectsPanel } from './ProjectsPanel';
@@ -250,14 +252,8 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
 
           {/* RRHH tabs */}
           {tab === 'usuarios' && <UsersPanel />}
-          {tab === 'roles' && <AdminRoles />}
-          {tab === 'calendarios' && (
-            <div>
-              <AdminConvenio />
-              <div style={{ marginTop: 24 }} />
-              <AdminCalendarios />
-            </div>
-          )}
+          {tab === 'roles' && <RolesPanel />}
+          {tab === 'calendarios' && <CalendarPanel />}
           {tab === 'organigrama' && (
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -20,6 +20,7 @@ export function ConsultantTimeline() {
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const [zoom, setZoom] = useState<'month' | 'quarter'>('month');
+  const [filterManager, setFilterManager] = useState<string>('');
 
   useEffect(() => {
     Promise.all([loadTeamMembers(), loadRooms(), loadCalendarios()]).then(async ([mR, rR, cals]) => {
@@ -74,7 +75,10 @@ export function ConsultantTimeline() {
 
   // Build per-member allocation data
   const memberData = useMemo(() => {
-    return members.map(m => {
+    const filtered = filterManager
+      ? members.filter(m => (m as Record<string, unknown>).manager_id === filterManager)
+      : members;
+    return filtered.map(m => {
       const memberOrg = orgEntries.filter(e => e.member_id === m.id);
       const vacDays = new Set<string>();
       (m.vacations || []).forEach(v => {
@@ -115,7 +119,7 @@ export function ConsultantTimeline() {
 
       return { member: m, totalDed, totalAvailable, assigned, unassigned, vacCount, holidayCount, days };
     });
-  }, [members, orgEntries, holidays, minDate, viewDays]);
+  }, [members, orgEntries, holidays, minDate, viewDays, filterManager]);
 
   const labelW = 260;
   const ROW_H = 36;
@@ -124,16 +128,28 @@ export function ConsultantTimeline() {
 
   const monthLabel = new Date(minDate).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
+  // Identify managers (anyone who is someone else's manager_id)
+  const managers = useMemo(() => {
+    const mgrIds = new Set(members.map(m => (m as Record<string, unknown>).manager_id as string).filter(Boolean));
+    return members.filter(m => mgrIds.has(m.id));
+  }, [members]);
+
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#86868B' }}>Cargando equipo...</div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Timeline de consultores</h3>
-          <p style={{ fontSize: 12, color: '#86868B' }}>{members.length} personas · {rooms.length} proyectos · {monthLabel}</p>
+          <p style={{ fontSize: 12, color: '#86868B' }}>{memberData.length} personas · {rooms.length} proyectos · {monthLabel}</p>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Manager filter */}
+          <select value={filterManager} onChange={e => setFilterManager((e.target as HTMLSelectElement).value)}
+            style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E5E5EA', fontSize: 11, outline: 'none', background: filterManager ? '#5856D608' : '#FFF', color: filterManager ? '#5856D6' : '#6E6E73', fontWeight: filterManager ? 600 : 400 }}>
+            <option value="">Todos los responsables</option>
+            {managers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
           <button onClick={() => setOffset(o => o - 1)} style={{ width: 28, height: 28, borderRadius: 8, border: '1.5px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="ChevronLeft" size={14} color="#86868B" />
           </button>
