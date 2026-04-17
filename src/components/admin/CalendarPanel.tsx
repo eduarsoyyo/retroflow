@@ -11,6 +11,9 @@ const cardS = { background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5
 const inputS = { padding: '8px 12px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' as const, fontFamily: 'inherit', background: '#F9F9FB' };
 const labelS = { fontSize: 9, fontWeight: 700 as number, color: '#86868B', display: 'block', marginBottom: 2, textTransform: 'uppercase' as const };
 const fmtDD = (iso: string) => { const p = iso.slice(5).split('-'); return `${p[1]}/${p[0]}`; };
+// MM-DD ↔ DD/MM converters for intensive fields
+const mmddToDdmm = (v: string) => { if (!v) return ''; const p = v.split('-'); return p.length === 2 ? `${p[1]}/${p[0]}` : v; };
+const ddmmToMmdd = (v: string) => { if (!v) return ''; const p = v.replace(/\//g, '-').split('-'); return p.length === 2 ? `${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}` : v; };
 
 export function CalendarPanel() {
   const [calendarios, setCalendarios] = useState<Calendario[]>([]);
@@ -193,11 +196,11 @@ export function CalendarPanel() {
               </div>
               <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:8 }}>
                 <div><label style={labelS}>Intensiva desde (dd/mm)</label>
-                  <input value={editCal.intensive_start||'01-08'} onInput={e=>{const u={...editCal,intensive_start:(e.target as HTMLInputElement).value};setEditCal(u);updateCal(u);}}
-                    placeholder="01-08" style={{width:'100%',padding:'4px 6px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none'}}/></div>
+                  <input value={mmddToDdmm(editCal.intensive_start||'08-01')} onInput={e=>{const u={...editCal,intensive_start:ddmmToMmdd((e.target as HTMLInputElement).value)};setEditCal(u);updateCal(u);}}
+                    placeholder="01/08" style={{width:'100%',padding:'4px 6px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none'}}/></div>
                 <div><label style={labelS}>Intensiva hasta (dd/mm)</label>
-                  <input value={editCal.intensive_end||'31-08'} onInput={e=>{const u={...editCal,intensive_end:(e.target as HTMLInputElement).value};setEditCal(u);updateCal(u);}}
-                    placeholder="31-08" style={{width:'100%',padding:'4px 6px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none'}}/></div>
+                  <input value={mmddToDdmm(editCal.intensive_end||'08-31')} onInput={e=>{const u={...editCal,intensive_end:ddmmToMmdd((e.target as HTMLInputElement).value)};setEditCal(u);updateCal(u);}}
+                    placeholder="31/08" style={{width:'100%',padding:'4px 6px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none'}}/></div>
               </div>
             </div>
 
