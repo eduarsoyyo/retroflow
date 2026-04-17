@@ -1,10 +1,9 @@
 // ═══ ROOM PICKER — Centro de Control shell ═══
-// Manages rooms/projects and hosts admin tabs (Dashboard, Maestros, Roles, etc.)
+// Header + Sidebar (4 secciones) + Content panels
 
 import { useState, useEffect } from 'preact/hooks';
 import type { Room, Member, AppUser } from '@app-types/index';
 import { loadRooms, saveRoom } from '@data/rooms';
-import { loadRetros } from '@data/retros';
 import { loadTeamMembers } from '@data/team';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminRoles, AdminUsuarios, AdminConvenio, AdminCalendarios, AdminEscaladoGlobal, MaestrosPanel } from './AdminPanels';
@@ -22,25 +21,39 @@ interface RoomPickerProps {
   onBackToHome: () => void;
 }
 
-const ADMIN_TABS = [
-  { id: 'dashboard',       icon: 'BarChart3',    label: 'Dashboard' },
-  { id: 'cross_proyecto',  icon: 'GitBranch',    label: 'Cross-proyecto' },
-  { id: 'proyectos',       icon: 'FolderOpen',   label: 'Proyectos' },
-  { id: 'maestros',        icon: 'Database',     label: 'Maestros' },
-  { id: 'escalado_global', icon: 'TrendingUp',   label: 'Escalado' },
-  { id: 'usuarios',        icon: 'Users',        label: 'Usuarios' },
-  { id: 'roles',           icon: 'Shield',       label: 'Roles' },
-  { id: 'convenio',        icon: 'FileText',     label: 'Convenio' },
-  { id: 'calendarios',     icon: 'Calendar',     label: 'Calendarios' },
-] as const;
+// ─── Navigation structure ───
+interface NavItem {
+  id: string;
+  icon: string;
+  label: string;
+  children?: { id: string; icon: string; label: string }[];
+}
+
+const NAV: NavItem[] = [
+  { id: 'dashboard', icon: 'BarChart3', label: 'Dashboard' },
+  { id: 'proyectos', icon: 'FolderOpen', label: 'Proyectos' },
+  {
+    id: 'rrhh', icon: 'Users', label: 'RRHH',
+    children: [
+      { id: 'usuarios',    icon: 'UserCheck',  label: 'Usuarios' },
+      { id: 'roles',       icon: 'Shield',     label: 'Roles y Habilidades' },
+      { id: 'calendarios', icon: 'Calendar',   label: 'Calendario / Convenio' },
+      { id: 'organigrama', icon: 'GitBranch',  label: 'Organigrama' },
+      { id: 'timeline',    icon: 'Clock',      label: 'Consultant Timeline' },
+    ],
+  },
+  { id: 'riesgos', icon: 'AlertTriangle', label: 'Riesgos y Escalado' },
+];
 
 export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPickerProps) {
   const [tab, setTab] = useState('dashboard');
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['rrhh']));
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProject, setFilterProject] = useState<string[]>([]);
   const [userProfile, setUserProfile] = useState<Member | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
 
   // New room form
   const [newName, setNewName] = useState('');
@@ -60,6 +73,22 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
     });
   }, []);
 
+  // Close avatar menu on outside click
+  useEffect(() => {
+    if (!showAvatarMenu) return;
+    const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('[data-avatar-menu]')) setShowAvatarMenu(false); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showAvatarMenu]);
+
+  const toggleSection = (id: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const handleCreateRoom = async () => {
     if (!newName.trim() || !newSlug.trim()) return;
     await saveRoom({ slug: newSlug.trim(), name: newName.trim(), tipo: newTipo });
@@ -67,122 +96,245 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
     setNewName(''); setNewSlug(''); setNewTipo('agile');
   };
 
+  const isActive = (id: string) => tab === id;
+  const navBtnStyle = (active: boolean) => ({
+    display: 'flex' as const, alignItems: 'center' as const, gap: 8,
+    padding: '8px 10px', borderRadius: 8, border: 'none',
+    background: active ? '#F2F2F7' : 'transparent',
+    color: active ? '#007AFF' : '#6E6E73',
+    fontSize: 12, fontWeight: (active ? 700 : 500) as number,
+    cursor: 'pointer' as const, marginBottom: 1, width: '100%', textAlign: 'left' as const,
+    transition: 'all .12s',
+  });
+
   if (loading) return <Loading />;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F5F7' }}>
-      {/* Sidebar */}
-      <aside style={{ width: 200, background: '#FFF', borderRight: '1px solid #E5E5EA', padding: '20px 10px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, padding: '0 6px' }}>
-          <h2 style={{ fontFamily: "'Comfortaa',sans-serif", fontSize: 18, fontWeight: 400, background: 'linear-gradient(90deg,#007AFF,#5856D6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>revelio</h2>
-          <span style={{ fontSize: 9, background: '#5856D610', color: '#5856D6', padding: '2px 6px', borderRadius: 5, fontWeight: 700 }}>Admin</span>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#F5F5F7' }}>
 
-        {ADMIN_TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
-              border: 'none', background: tab === t.id ? '#F2F2F7' : 'transparent',
-              color: tab === t.id ? '#007AFF' : '#6E6E73', fontSize: 12, fontWeight: tab === t.id ? 700 : 500,
-              cursor: 'pointer', marginBottom: 1, width: '100%', textAlign: 'left',
-            }}>
-            <Icon name={t.icon} size={14} color={tab === t.id ? '#007AFF' : '#86868B'} />
-            {t.label}
-          </button>
-        ))}
+      {/* ═══ HEADER ═══ */}
+      <header style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px',
+        background: '#FFF', borderBottom: '1px solid #E8E8ED', flexShrink: 0, zIndex: 20,
+      }}>
+        {/* Left: logo + title */}
+        <h1 style={{
+          fontFamily: "'Comfortaa',sans-serif", fontSize: 18, fontWeight: 400,
+          background: 'linear-gradient(90deg,#007AFF,#5856D6)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0,
+        }}>revelio</h1>
+        <div style={{ width: 1, height: 20, background: '#E5E5EA', margin: '0 4px' }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>Centro de control</span>
 
-        <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #F2F2F7' }}>
-          <button onClick={onBackToHome}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', border: 'none', background: 'none', color: '#007AFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
-            <Icon name="ArrowLeft" size={12} color="#007AFF" /> Volver al inicio
-          </button>
-          {/* User avatar - click to edit profile */}
-          <div onClick={() => setShowProfile(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', marginTop: 4, borderTop: '1px solid #F2F2F7', cursor: 'pointer' }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: user.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Right: Home + Notifications + Avatar */}
+        <button onClick={onBackToHome}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: '1px solid #E8E8ED', background: '#FFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#007AFF' }}>
+          <Icon name="Home" size={13} color="#007AFF" /> Home
+        </button>
+
+        <NotificationBell user={user} global />
+
+        <div style={{ position: 'relative' }} data-avatar-menu>
+          <button onClick={(e) => { e.stopPropagation(); setShowAvatarMenu(!showAvatarMenu); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 10, border: '1px solid #E8E8ED', background: '#FFF', cursor: 'pointer' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: user.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
               {user.avatar || '👤'}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
-            </div>
-            <Icon name="Settings" size={12} color="#C7C7CC" />
-          </div>
-        </div>
-      </aside>
-
-      {/* Content */}
-      <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 16, right: 20, zIndex: 10 }}>
-          <NotificationBell user={user} global />
-        </div>
-        {tab === 'dashboard' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: '#86868B', fontWeight: 600 }}>Filtrar:</span>
-              <button onClick={() => setFilterProject([])}
-                style={{ padding: '5px 12px', borderRadius: 8, border: filterProject.length === 0 ? 'none' : '1.5px solid #E5E5EA', background: filterProject.length === 0 ? '#1D1D1F' : '#FFF', color: filterProject.length === 0 ? '#FFF' : '#6E6E73', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                Todos
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{user.name}</span>
+            <Icon name="ChevronDown" size={12} color="#86868B" />
+          </button>
+          {showAvatarMenu && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#FFF', borderRadius: 12, border: '1px solid #E8E8ED', boxShadow: '0 8px 24px #0002', minWidth: 180, zIndex: 100, overflow: 'hidden' }}>
+              <button onClick={() => { setShowProfile(true); setShowAvatarMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#1D1D1F' }}>
+                <Icon name="User" size={14} color="#007AFF" /> Mi perfil
               </button>
-              {rooms.map(r => {
-                const active = filterProject.includes(r.slug);
-                return (
-                  <button key={r.slug} onClick={() => setFilterProject(prev => active ? prev.filter(s => s !== r.slug) : [...prev, r.slug])}
-                    style={{ padding: '5px 12px', borderRadius: 8, border: active ? 'none' : '1.5px solid #E5E5EA', background: active ? '#007AFF' : '#FFF', color: active ? '#FFF' : '#6E6E73', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                    {r.name}
-                  </button>
-                );
-              })}
+              <div style={{ height: 1, background: '#F2F2F7' }} />
+              <button onClick={onLogout}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', background: 'none', width: '100%', textAlign: 'left', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#FF3B30' }}>
+                <Icon name="LogOut" size={14} color="#FF3B30" /> Cerrar sesión
+              </button>
             </div>
-            <AdminDashboard rooms={rooms} filterProject={filterProject} />
-          </>
-        )}
+          )}
+        </div>
+      </header>
 
-        {tab === 'cross_proyecto' && <CrossProject />}
-
-        {tab === 'proyectos' && (
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14 }}>Proyectos</h2>
-            {/* Create form */}
-            <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, marginBottom: 14 }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input value={newName} onInput={e => { setNewName((e.target as HTMLInputElement).value); if (!newSlug) setNewSlug((e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')); }}
-                  placeholder="Nombre del proyecto"
-                  style={{ flex: 2, minWidth: 160, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
-                <input value={newSlug} onInput={e => setNewSlug((e.target as HTMLInputElement).value)}
-                  placeholder="slug" style={{ flex: 1, minWidth: 100, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
-                <button onClick={handleCreateRoom} disabled={!newName.trim() || !newSlug.trim()}
-                  style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (!newName.trim() || !newSlug.trim()) ? 0.4 : 1 }}>
-                  + Crear
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* ═══ SIDEBAR ═══ */}
+        <aside style={{
+          width: 210, background: '#FFF', borderRight: '1px solid #E8E8ED',
+          padding: '16px 10px', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto',
+        }}>
+          {NAV.map(item => {
+            if (!item.children) {
+              // Simple nav item
+              return (
+                <button key={item.id} onClick={() => setTab(item.id)} style={navBtnStyle(isActive(item.id))}>
+                  <Icon name={item.icon} size={14} color={isActive(item.id) ? '#007AFF' : '#86868B'} />
+                  {item.label}
                 </button>
+              );
+            }
+            // Section with children
+            const expanded = expandedSections.has(item.id);
+            const childActive = item.children.some(c => isActive(c.id));
+            return (
+              <div key={item.id} style={{ marginBottom: 2 }}>
+                <button onClick={() => toggleSection(item.id)}
+                  style={{
+                    ...navBtnStyle(childActive),
+                    justifyContent: 'space-between',
+                    color: childActive ? '#007AFF' : '#6E6E73',
+                    fontWeight: childActive || expanded ? 700 : 500,
+                  }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon name={item.icon} size={14} color={childActive ? '#007AFF' : '#86868B'} />
+                    {item.label}
+                  </span>
+                  <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={11} color="#C7C7CC" />
+                </button>
+                {expanded && (
+                  <div style={{ paddingLeft: 14, marginTop: 2 }}>
+                    {item.children.map(child => (
+                      <button key={child.id} onClick={() => setTab(child.id)}
+                        style={{
+                          ...navBtnStyle(isActive(child.id)),
+                          fontSize: 11, padding: '6px 10px',
+                        }}>
+                        <Icon name={child.icon} size={12} color={isActive(child.id) ? '#007AFF' : '#AEAEB2'} />
+                        {child.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Bottom: avatar */}
+          <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #F2F2F7' }}>
+            <div onClick={() => setShowProfile(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', cursor: 'pointer', borderRadius: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: user.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+                {user.avatar || '👤'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
+                <div style={{ fontSize: 9, color: '#86868B' }}>{user.role || 'Admin'}</div>
               </div>
             </div>
-            {/* Room list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {rooms.map(r => (
-                <div key={r.slug} onClick={() => onGoToRoom(r.slug, r.tipo)}
-                  style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
-                  onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor = '#007AFF'; }}
-                  onMouseOut={e => { (e.currentTarget as HTMLElement).style.borderColor = '#E5E5EA'; }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</div>
-                    <div style={{ fontSize: 11, color: '#86868B' }}>{r.tipo} · {r.slug}</div>
-                  </div>
-                  <Icon name="ChevronRight" size={16} color="#C7C7CC" />
-                </div>
-              ))}
-            </div>
           </div>
-        )}
+        </aside>
 
-        {tab === 'maestros' && <MaestrosPanel />}
-        {tab === 'escalado_global' && <AdminEscaladoGlobal />}
-        {tab === 'usuarios' && <AdminUsuarios />}
-        {tab === 'roles' && <AdminRoles />}
-        {tab === 'convenio' && <AdminConvenio />}
-        {tab === 'calendarios' && <AdminCalendarios />}
+        {/* ═══ CONTENT ═══ */}
+        <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
+
+          {/* Dashboard */}
+          {tab === 'dashboard' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: '#86868B', fontWeight: 600 }}>Filtrar:</span>
+                <button onClick={() => setFilterProject([])}
+                  style={{ padding: '5px 12px', borderRadius: 8, border: filterProject.length === 0 ? 'none' : '1.5px solid #E5E5EA', background: filterProject.length === 0 ? '#1D1D1F' : '#FFF', color: filterProject.length === 0 ? '#FFF' : '#6E6E73', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                  Todos
+                </button>
+                {rooms.map(r => {
+                  const active = filterProject.includes(r.slug);
+                  return (
+                    <button key={r.slug} onClick={() => setFilterProject(prev => active ? prev.filter(s => s !== r.slug) : [...prev, r.slug])}
+                      style={{ padding: '5px 12px', borderRadius: 8, border: active ? 'none' : '1.5px solid #E5E5EA', background: active ? '#007AFF' : '#FFF', color: active ? '#FFF' : '#6E6E73', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      {r.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <AdminDashboard rooms={rooms} filterProject={filterProject} />
+            </>
+          )}
+
+          {/* Proyectos */}
+          {tab === 'proyectos' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700 }}>Proyectos</h2>
+              </div>
+              {/* Create form */}
+              <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, marginBottom: 14 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input value={newName} onInput={e => { setNewName((e.target as HTMLInputElement).value); if (!newSlug) setNewSlug((e.target as HTMLInputElement).value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')); }}
+                    placeholder="Nombre del proyecto"
+                    style={{ flex: 2, minWidth: 160, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
+                  <input value={newSlug} onInput={e => setNewSlug((e.target as HTMLInputElement).value)}
+                    placeholder="slug" style={{ flex: 1, minWidth: 100, padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none' }} />
+                  <button onClick={handleCreateRoom} disabled={!newName.trim() || !newSlug.trim()}
+                    style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (!newName.trim() || !newSlug.trim()) ? 0.4 : 1 }}>
+                    + Crear
+                  </button>
+                </div>
+              </div>
+              {/* Room list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {rooms.map(r => (
+                  <div key={r.slug} onClick={() => onGoToRoom(r.slug, r.tipo)}
+                    style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
+                    onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor = '#007AFF'; }}
+                    onMouseOut={e => { (e.currentTarget as HTMLElement).style.borderColor = '#E5E5EA'; }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</div>
+                      <div style={{ fontSize: 11, color: '#86868B' }}>{r.tipo} · {r.slug}</div>
+                    </div>
+                    <Icon name="ChevronRight" size={16} color="#C7C7CC" />
+                  </div>
+                ))}
+              </div>
+              {/* Cross-proyecto section */}
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="GitBranch" size={15} color="#5856D6" /> Asignación cross-proyecto
+                </h3>
+                <CrossProject />
+              </div>
+            </div>
+          )}
+
+          {/* RRHH tabs */}
+          {tab === 'usuarios' && <AdminUsuarios />}
+          {tab === 'roles' && <AdminRoles />}
+          {tab === 'calendarios' && (
+            <div>
+              <AdminConvenio />
+              <div style={{ marginTop: 24 }} />
+              <AdminCalendarios />
+            </div>
+          )}
+          {tab === 'organigrama' && (
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="GitBranch" size={18} color="#5856D6" /> Organigrama
+              </h2>
+              <p style={{ fontSize: 13, color: '#86868B', marginBottom: 16 }}>Estructura jerárquica del equipo (por proyecto, seleccionable desde cada proyecto).</p>
+              {/* Placeholder — will be populated in Iter 6 */}
+              <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 40, textAlign: 'center', color: '#C7C7CC' }}>
+                <Icon name="GitBranch" size={40} color="#E5E5EA" />
+                <p style={{ fontSize: 13, marginTop: 8 }}>Organigrama global — disponible próximamente</p>
+              </div>
+            </div>
+          )}
+          {tab === 'timeline' && <ConsultantTimeline />}
+
+          {/* Maestros — legacy, will merge into RRHH later */}
+          {tab === 'maestros' && <MaestrosPanel />}
+
+          {/* Riesgos y Escalado */}
+          {tab === 'riesgos' && <AdminEscaladoGlobal />}
+        </div>
       </div>
 
+      {/* Profile editor modal */}
       {showProfile && userProfile && (
         <ProfileEditor user={user} profile={userProfile}
           onClose={() => setShowProfile(false)}
