@@ -11,8 +11,15 @@ interface ProfileEditorProps {
   onSave: (updated: Member) => void;
 }
 
-const AVATARS = ['🦊','🐻','🐼','🦁','🦉','🐍','🦡','🦅','🐉','🦄','🧙','⚡','🔮','🏰','🪄','🐺','🦋','🐝'];
-const COLORS = ['#007AFF','#5856D6','#34C759','#FF9500','#FF3B30','#AF52DE','#FF2D55','#00C7BE','#5AC8FA','#FF6482','#30B0C7','#1D1D1F'];
+const AVATARS = ['🦊','🐻','🐼','🦁','🦉','🐍','🦡','🦅','🐉','🦄','🧙','⚡','🔮','🏰','🪄','🐺','🦋','🐝','🌙','🔥','💎','🎯','🍀','🦚'];
+const COLORS = [
+  // Row 1: vivid
+  '#007AFF','#5856D6','#AF52DE','#FF2D55','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7',
+  // Row 2: dark / deep
+  '#1D1D1F','#3A3A3C','#0E1A40','#2A623D','#8B4513','#4A0E4E','#1B3A4B','#6B2D2D',
+  // Row 3: light / pastel
+  '#FFFFFF','#F0F0F5','#FFE5EC','#FFF3CD','#D4EDDA','#CCE5FF','#E8DAEF','#FDEBD0','#D5F5E3','#D6EAF8',
+];
 const HOUSES = [
   { id: 'gryffindor', emoji: '🦁', name: 'Gryffindor', color: '#AE0001' },
   { id: 'slytherin',  emoji: '🐍', name: 'Slytherin',  color: '#2A623D' },
@@ -22,6 +29,11 @@ const HOUSES = [
 
 const labelS = { fontSize: 10, color: '#86868B', display: 'block', marginBottom: 3, fontWeight: 700 as number, textTransform: 'uppercase' as const, letterSpacing: 0.4 };
 const inputS = { width: '100%', border: '1.5px solid #E5E5EA', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#F9F9FB', boxSizing: 'border-box' as const };
+const isLight = (hex: string) => {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16), g = parseInt(c.substring(2, 4), 16), b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 180;
+};
 
 export function ProfileEditor({ user, profile, onClose, onSave }: ProfileEditorProps) {
   const [f, setF] = useState({ ...profile });
@@ -57,7 +69,7 @@ export function ProfileEditor({ user, profile, onClose, onSave }: ProfileEditorP
 
         {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 16, borderBottom: '1px solid #F2F2F7', marginBottom: 16 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 16, background: f.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 16, background: f.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, border: isLight(f.color || '#E5E5EA') ? '2px solid #E5E5EA' : 'none' }}>
             {f.avatar || '👤'}
           </div>
           <div style={{ flex: 1 }}>
@@ -88,7 +100,7 @@ export function ProfileEditor({ user, profile, onClose, onSave }: ProfileEditorP
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {COLORS.map(c => (
               <div key={c} onClick={() => setF({ ...f, color: c })}
-                style={{ width: 28, height: 28, borderRadius: 14, background: c, cursor: 'pointer', outline: f.color === c ? '2px solid #1D1D1F' : 'none', outlineOffset: 2 }} />
+                style={{ width: 28, height: 28, borderRadius: 14, background: c, cursor: 'pointer', border: isLight(c) ? '1.5px solid #D1D1D6' : '1.5px solid transparent', outline: f.color === c ? '2px solid #1D1D1F' : 'none', outlineOffset: 2 }} />
             ))}
           </div>
         </div>
