@@ -23,7 +23,7 @@ export function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 1.
     if (!ref.current || !window.lucide) return;
     while (ref.current.firstChild) ref.current.removeChild(ref.current.firstChild);
 
-    const iconFn = window.lucide[name] || window.lucide['HelpCircle'];
+    const iconFn = window.lucide[name];
     if (!iconFn) return;
 
     const svg = window.lucide.createElement(iconFn);

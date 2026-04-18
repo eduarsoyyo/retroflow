@@ -12,8 +12,12 @@ const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','D
 const MO_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DY = ['L','M','X','J','V','S','D'];
 type ViewMode = 'anual' | 'mensual' | 'semanal';
-// Spanish formatting: 1.234,5
-const f1 = (n: number) => n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// Formato español: 1.234,5
+const f1 = (n: number): string => {
+  const [int, dec] = n.toFixed(1).split('.');
+  const withDots = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${withDots},${dec}`;
+};
 
 export function TabFTEs({ team, sala }: TabFTEsProps) {
   const [orgData, setOrgData] = useState<any[]>([]);

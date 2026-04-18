@@ -123,15 +123,15 @@ export function RiskManager({
       {/* KPIs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
-          { v: openRisks.length, l: 'Abiertos', c: '#FF9500' },
-          { v: riesgos, l: 'Riesgos', c: '#FF9500' },
-          { v: problemas, l: 'Problemas', c: '#FF3B30' },
-          { v: oportunidades, l: 'Oportunidades', c: '#34C759' },
-          { v: mitigated, l: 'Mitigados', c: '#34C759' },
-          { v: escalated, l: 'Escalados', c: escalated > 0 ? '#FF3B30' : '#6E6E73' },
-          { v: critical, l: 'Críticos', c: critical > 0 ? '#FF3B30' : '#6E6E73' },
+          { v: openRisks.length, l: 'Abiertos', c: '#FF9500', icon: '📂', tip: 'Riesgos, problemas y oportunidades activos' },
+          { v: riesgos, l: 'Riesgos', c: '#FF9500', icon: '⚠️', tip: 'Eventos inciertos que pueden afectar al proyecto' },
+          { v: problemas, l: 'Problemas', c: '#FF3B30', icon: '🔴', tip: 'Riesgos materializados que requieren acción inmediata' },
+          { v: oportunidades, l: 'Oportunidades', c: '#34C759', icon: '🟢', tip: 'Eventos positivos que podrían beneficiar al proyecto' },
+          { v: mitigated, l: 'Mitigados', c: '#34C759', icon: '✅', tip: 'Riesgos cerrados o cuya mitigación fue efectiva' },
+          { v: escalated, l: 'Escalados', c: escalated > 0 ? '#FF3B30' : '#6E6E73', icon: '⬆️', tip: 'Riesgos escalados a JP, SM o Dirección Técnica' },
+          { v: critical, l: 'Críticos', c: critical > 0 ? '#FF3B30' : '#6E6E73', icon: '🔥', tip: 'Prob. alta + Impacto alto → requieren atención urgente' },
         ].map(k => (
-          <div key={k.l} style={{ padding: '8px 12px', background: '#FFF', borderRadius: 10, border: '1.5px solid #E5E5EA', textAlign: 'center', minWidth: 60 }}>
+          <div key={k.l} title={k.tip} style={{ padding: '8px 12px', background: '#FFF', borderRadius: 10, border: '1.5px solid #E5E5EA', textAlign: 'center', minWidth: 60, cursor: 'default' }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: k.c }}>{k.v}</div>
             <div style={{ fontSize: 9, color: '#86868B' }}>{k.l}</div>
           </div>

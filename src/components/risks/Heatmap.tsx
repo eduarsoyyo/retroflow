@@ -22,23 +22,33 @@ export function Heatmap({ risks, onClickRisk }: HeatmapProps) {
   const getCell = (prob: string, impact: string) =>
     openRisks.filter(r => (r.prob || 'media') === prob && (r.impact || 'medio') === impact);
 
+  const ROW_LABELS: Record<string, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' };
+
   return (
     <div>
       <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Mapa de calor de riesgos</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(3, 1fr)', gap: 3 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '24px 36px repeat(3, 1fr)', gap: 3 }}>
         {/* Y-axis label */}
         <div style={{ gridColumn: '1', gridRow: '1 / 5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ fontSize: 9, color: '#86868B', writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontWeight: 700 }}>PROBABILIDAD</span>
         </div>
 
-        {/* Column headers */}
+        {/* Empty top-left corner */}
+        <div style={{ gridColumn: '2', gridRow: '1' }} />
+
+        {/* Column headers (Impacto) */}
         {['Bajo', 'Medio', 'Alto'].map(h => (
           <div key={h} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', paddingBottom: 4 }}>{h}</div>
         ))}
 
-        {/* Cells */}
-        {PROBS.flatMap(prob =>
-          IMPACTS.map(impact => {
+        {/* Cells with row labels */}
+        {PROBS.flatMap((prob, pi) => [
+          /* Row label */
+          <div key={`label-${prob}`} style={{ gridColumn: '2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: prob === 'alta' ? '#FF3B30' : prob === 'media' ? '#FF9500' : '#34C759' }}>{ROW_LABELS[prob]}</span>
+          </div>,
+          /* 3 cells for this probability row */
+          ...IMPACTS.map(impact => {
             const sector = calculateCriticality(prob, impact);
             const hc = CRIT_COLORS[sector];
             const cellRisks = getCell(prob, impact);
@@ -59,7 +69,6 @@ export function Heatmap({ risks, onClickRisk }: HeatmapProps) {
                     <div key={r.id} style={{ position: 'relative' }}
                       onMouseEnter={() => setHoverId(r.id)}
                       onMouseLeave={() => setHoverId(null)}>
-                      {/* Bubble */}
                       <div onClick={() => onClickRisk?.({ ...r })}
                         style={{
                           width: 30, height: 30, borderRadius: '50%', background: dc, color: '#FFF',
@@ -69,8 +78,6 @@ export function Heatmap({ risks, onClickRisk }: HeatmapProps) {
                         }}>
                         {prefix}{rn}
                       </div>
-
-                      {/* Tooltip */}
                       {isHovered && (
                         <div style={{
                           position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)',
@@ -88,7 +95,6 @@ export function Heatmap({ risks, onClickRisk }: HeatmapProps) {
                           {r.owner && r.owner !== 'Sin asignar' && <div style={{ fontSize: 10, color: '#007AFF' }}>👤 {r.owner}</div>}
                           {hasMit && <div style={{ fontSize: 10, color: '#34C759' }}>🛡️ Mitigación definida</div>}
                           {r.escalation?.levelLabel && <div style={{ fontSize: 10, color: '#FF9500' }}>↑ Escalado: {r.escalation.levelLabel}</div>}
-                          {/* Arrow */}
                           <div style={{ position: 'absolute', bottom: -6, left: '50%', width: 12, height: 12, background: '#FFF', borderRadius: 2, transform: 'translateX(-50%) rotate(45deg)', boxShadow: '2px 2px 4px rgba(0,0,0,.05)' }} />
                         </div>
                       )}
@@ -97,11 +103,11 @@ export function Heatmap({ risks, onClickRisk }: HeatmapProps) {
                 })}
               </div>
             );
-          })
-        )}
+          }),
+        ])}
 
         {/* X-axis label */}
-        <div style={{ gridColumn: '2 / 5', textAlign: 'center', paddingTop: 4 }}>
+        <div style={{ gridColumn: '3 / 6', textAlign: 'center', paddingTop: 4 }}>
           <span style={{ fontSize: 9, color: '#86868B', fontWeight: 700 }}>IMPACTO</span>
         </div>
       </div>
