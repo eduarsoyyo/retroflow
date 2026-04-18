@@ -53,19 +53,13 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
     return mmdd >= start && mmdd <= end;
   };
 
-  // Hours for a specific date for a member (respects convenio + dedication)
-  const hoursForDay = (m: Member, ds: string): number => {
+  // Base hours for a date (ignores absences — for totals where vac/aus count as worked)
+  const baseHoursForDay = (m: Member, ds: string): number => {
     const d = new Date(ds);
     if (isWk(d)) return 0;
     const cal = getCal(m);
     const org = getOrg(m.id);
     const ded = org.dedication ?? 1;
-
-    // Check absence
-    const abs = (m.vacations || []).find(v => v.from <= ds && (!v.to || v.to >= ds));
-    if (abs) return 0;
-
-    // Check active in project
     const start = org.start_date || '2000-01-01';
     const end = org.end_date || '2099-12-31';
     if (ds < start || ds > end) return 0;
@@ -75,11 +69,18 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
       if (isIntensive(cal, ds)) {
         baseH = cal.daily_hours_intensive || 7;
       } else {
-        const dow = d.getDay(); // 0=Sun..6=Sat
+        const dow = d.getDay();
         baseH = (dow >= 1 && dow <= 4) ? (cal.daily_hours_lj || 8) : (cal.daily_hours_v || 8);
       }
     }
     return baseH * ded;
+  };
+
+  // Actual worked hours (0 if absent — for cell display)
+  const hoursForDay = (m: Member, ds: string): number => {
+    const abs = (m.vacations || []).find(v => v.from <= ds && (!v.to || v.to >= ds));
+    if (abs) return 0;
+    return baseHoursForDay(m, ds);
   };
 
   // Get absence for a date
@@ -106,7 +107,7 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
     });
   }, [team, yr]);
 
-  // Monthly hours per member for anual view
+  // Monthly hours per member (vac+aus count as worked hours)
   const monthlyHours = useMemo(() => {
     const result: Record<string, number[]> = {};
     team.forEach(m => {
@@ -116,7 +117,7 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
         let h = 0;
         for (let d = 1; d <= daysN; d++) {
           const ds = `${yr}-${String(mi + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          h += hoursForDay(m, ds);
+          h += baseHoursForDay(m, ds);
         }
         months.push(Math.round(h * 10) / 10);
       }
@@ -264,7 +265,8 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                             const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
                             if (abs && !wk) { if ((abs.type || 'vacaciones') === 'vacaciones') vacD++; else ausD++; }
                             const h = hoursForDay(m, ds);
-                            if (!abs && !wk) totalH += h;
+                            const bh = baseHoursForDay(m, ds);
+                            totalH += bh;
                             return (
                               <td key={d} title={at ? at.label : h > 0 ? `${h.toFixed(1)}h` : undefined}
                                 style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', borderLeft: '1px solid #F9F9FB', padding: 0, background: wk ? '#F9F9FB' : abs ? (at?.color || '#FF950020') : 'transparent', fontSize: 7 }}>
@@ -338,7 +340,7 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                             const abs = getAbsence(m.id, ds);
                             const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
                             const h = hoursForDay(m, ds);
-                            if (h > 0) totalH += h;
+                            totalH += baseHoursForDay(m, ds);
                             return (
                               <td key={ds} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #F2F2F7', background: wk ? '#F9F9FB' : abs ? (at?.color || '#FF950020') : 'transparent' }}>
                                 {wk ? <span style={{ color: '#E5E5EA' }}>—</span> : abs ? (
