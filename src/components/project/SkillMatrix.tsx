@@ -11,7 +11,6 @@ import { TabPersonas } from './TabPersonas';
 import { TabMatriz } from './TabMatriz';
 import { TabFormacion } from './TabFormacion';
 import { TabFTEs } from './TabFTEs';
-import { TabVacaciones } from './TabVacaciones';
 import { OrgChart } from './OrgChart';
 
 // ── Tab definitions ──
@@ -28,8 +27,7 @@ const ALL_TABS: TabDef[] = [
   { id: 'personas',    icon: 'Users',         label: 'Personas',    smOnly: true },
   { id: 'matriz',      icon: 'BarChart3',     label: 'Matriz',      smOnly: true },
   { id: 'formacion',   icon: 'GraduationCap', label: 'Formación',   smOnly: true },
-  { id: 'ftes',        icon: 'Calendar',      label: 'FTEs',        smOnly: true },
-  { id: 'vacaciones',  icon: 'Sun',           label: 'Vacaciones',  smOnly: false },
+  { id: 'ftes',        icon: 'Calendar',      label: 'FTEs',        smOnly: false },
   { id: 'organigrama', icon: 'GitBranch',     label: 'Organigrama', smOnly: false },
 ];
 
@@ -45,7 +43,7 @@ interface SkillMatrixProps {
 export function SkillMatrix({ user, sala }: SkillMatrixProps) {
   const isSM = user?._isAdmin || user?.isSuperuser;
   const tabs = isSM ? ALL_TABS : ALL_TABS.filter(t => !t.smOnly);
-  const [activeTab, setActiveTab] = useState(isSM ? 'perfiles' : 'vacaciones');
+  const [activeTab, setActiveTab] = useState(isSM ? 'perfiles' : 'ftes');
 
   // Data
   const [data, setData] = useState<SkillMatrixData | null>(null);
@@ -150,9 +148,6 @@ export function SkillMatrix({ user, sala }: SkillMatrixProps) {
       )}
       {activeTab === 'ftes' && (
         <TabFTEs team={data.team} sala={sala} />
-      )}
-      {activeTab === 'vacaciones' && (
-        <TabVacaciones team={data.team} sala={sala} onRefresh={refresh} />
       )}
       {activeTab === 'organigrama' && (
         <OrgChart

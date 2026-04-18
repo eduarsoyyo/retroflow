@@ -1,228 +1,282 @@
-// ═══ TAB FTEs — Annual FTE calendar + dedication configuration ═══
-import { useState, useEffect } from 'preact/hooks';
-import type { Member, Vacation, OrgChartRow } from '../../types/index';
-import { loadOrgChart, updateOrgField } from '../../data/team';
+// ═══ TAB FTEs — Unified: FTEs + Vacaciones + Ausencias (annual/monthly/weekly) ═══
+import { useState, useEffect, useMemo } from 'preact/hooks';
+import type { Member } from '@app-types/index';
+import { loadOrgChart } from '@data/team';
+import { Icon } from '@components/common/Icon';
+import { ANNUAL_VAC_DAYS, ABSENCE_TYPES, getAbsenceType } from '../../config/absenceTypes';
 
-interface TabFTEsProps {
-  team: Member[];
-  sala: string;
-}
+interface TabFTEsProps { team: Member[]; sala: string; }
 
-const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MO_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DY = ['L','M','X','J','V','S','D'];
+
+type ViewMode = 'anual' | 'mensual' | 'semanal';
 
 export function TabFTEs({ team, sala }: TabFTEsProps) {
   const [orgData, setOrgData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const todayStr = today.toISOString().slice(0, 10);
-
-  useEffect(() => {
-    loadOrgChart(sala).then(result => {
-      if (result.ok) setOrgData(result.data);
-      setLoading(false);
-    });
-  }, [sala]);
-
-  const isWeekend = (d: number) => { const w = new Date(viewYear, viewMonth, d).getDay(); return w === 0 || w === 6; };
-  const isOnVac = (memberId: string, d: number) => {
-    const m = team.find(x => x.id === memberId); if (!m) return false;
-    const ds = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    return (m.vacations || []).some((v: Vacation) => v.from <= ds && (!v.to || v.to >= ds));
-  };
-  const isActive = (row: OrgChartRow, d: number) => {
-    const ds = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    return ds >= (row.start_date || '2000-01-01') && ds <= (row.end_date || '2099-12-31');
-  };
-  const fteDay = (d: number) => isWeekend(d) ? 0 : orgData.reduce((s, r) => {
-    if (!isActive(r, d) || isOnVac(r.member_id, d)) return s;
-    return s + (r.dedication ?? 1);
-  }, 0);
-  const maxFTE = Math.max(1, ...days.map(d => fteDay(d)));
-
-  const handleUpdateOrgField = async (memberId: string, managerId: string | null, field: string, val: unknown) => {
-    await updateOrgField(sala, memberId, managerId, field, val);
-    setOrgData(prev => {
-      const exists = prev.some(r => r.member_id === memberId);
-      if (exists) return prev.map(r => r.member_id === memberId ? { ...r, [field]: val } : r);
-      return [...prev, { sala, member_id: memberId, manager_id: managerId, [field]: val }];
-    });
-  };
-
-  // Annual months: -3 to +12
-  const annualMonths = Array.from({ length: 16 }, (_, i) => {
-    const d = new Date(today.getFullYear(), today.getMonth() - 3 + i, 1);
-    return { year: d.getFullYear(), month: d.getMonth() };
+  const [view, setView] = useState<ViewMode>('anual');
+  const now = new Date();
+  const [yr, setYr] = useState(now.getFullYear());
+  const [mo, setMo] = useState(now.getMonth());
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - d.getDay() + 1); return d.toISOString().slice(0, 10);
   });
+
+  useEffect(() => { loadOrgChart(sala).then(r => { if (r.ok) setOrgData(r.data); setLoading(false); }); }, [sala]);
+
+  // Helpers
+  const getOrg = (mid: string) => orgData.find(r => r.member_id === mid) || {};
+  const isWk = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+  const fmtD = (d: string) => new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+
+  // Vacation stats per member for a year
+  const vacStats = useMemo(() => {
+    return team.map(m => {
+      const vacs = m.vacations || [];
+      let usedVac = 0, ausCount = 0;
+      vacs.forEach(v => {
+        if (!v.from) return;
+        const isVac = (v.type || 'vacaciones') === 'vacaciones';
+        let d = new Date(v.from); const to = new Date(v.to || v.from);
+        while (d <= to) {
+          if (d.getFullYear() === yr && !isWk(d)) { if (isVac) usedVac++; else ausCount++; }
+          d.setDate(d.getDate() + 1);
+        }
+      });
+      const annual = m.annual_vac_days || ANNUAL_VAC_DAYS;
+      const prev = m.prev_year_pending || 0;
+      const total = annual + prev;
+      return { id: m.id, annual, prev, total, used: usedVac, remaining: Math.max(0, total - usedVac), ausencias: ausCount };
+    });
+  }, [team, yr]);
+
+  // Get absence for a specific date
+  const getAbsence = (mid: string, ds: string) => {
+    const m = team.find(x => x.id === mid); if (!m) return null;
+    return (m.vacations || []).find(v => v.from <= ds && (!v.to || v.to >= ds)) || null;
+  };
+
+  // Hours per day for a member (from org dedication * 8h standard)
+  const hoursDay = (mid: string) => { const o = getOrg(mid); return (o.dedication ?? 1) * 8; };
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#86868B' }}>Cargando…</div>;
 
   return (
     <div>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>📊 FTEs del proyecto</h3>
-      <p style={{ fontSize: 11, color: '#86868B', marginBottom: 12 }}>Vista anual + configuración de dedicación</p>
-
-      {/* Daily FTE bar chart */}
-      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, marginBottom: 16 }}>
-        <h4 style={{ fontSize: 11, fontWeight: 700, color: '#86868B', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          FTEs totales · {MONTH_NAMES[viewMonth]}
-        </h4>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 72 }}>
-          {days.map(d => {
-            const wknd = isWeekend(d);
-            const fte = fteDay(d);
-            const isT = todayStr === `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const h = wknd ? 3 : Math.max(3, Math.round((fte / maxFTE) * 64));
-            return (
-              <div key={d} title={wknd ? 'Fin semana' : `${fte.toFixed(2)} FTEs`}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, flex: 1, minWidth: 12 }}>
-                {!wknd && fte > 0 && <span style={{ fontSize: 6, color: '#86868B' }}>{fte.toFixed(1)}</span>}
-                <div style={{
-                  width: '80%', height: `${h}px`, borderRadius: '3px 3px 0 0',
-                  background: wknd ? '#E5E5EA' : isT ? '#007AFF' : fte > 0 ? '#34C759' : '#F2F2F7',
-                }} />
-                <span style={{ fontSize: 6, color: isT ? '#007AFF' : '#C7C7CC' }}>{d}</span>
-              </div>
-            );
-          })}
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>FTEs, Vacaciones y Ausencias</h3>
+          <p style={{ fontSize: 12, color: '#86868B', marginTop: 2 }}>{team.length} personas · Cada persona gestiona sus vacaciones desde Mi Perfil</p>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['anual', 'mensual', 'semanal'] as ViewMode[]).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: view === v ? '#1D1D1F' : '#F2F2F7', color: view === v ? '#FFF' : '#6E6E73', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Annual table */}
-      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', overflow: 'auto', marginBottom: 16 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
-          <thead>
-            <tr style={{ background: '#F9F9FB', borderBottom: '2px solid #E5E5EA' }}>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#86868B', minWidth: 130, position: 'sticky', left: 0, background: '#F9F9FB', zIndex: 2 }}>Miembro</th>
-              {annualMonths.map(({ year, month }) => {
-                const isNow = year === today.getFullYear() && month === today.getMonth();
-                return (
-                  <th key={`${year}-${month}`} style={{
-                    padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: 700,
-                    color: isNow ? '#007AFF' : '#86868B', background: isNow ? '#EEF5FF' : '#F9F9FB',
-                    minWidth: 52, borderBottom: isNow ? '2px solid #007AFF' : 'none',
-                  }}>
-                    {MONTH_NAMES[month].slice(0, 3)}<br /><span style={{ fontSize: 9, fontWeight: 400 }}>{year}</span>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {team.map((m, mi) => {
-              const row = orgData.find(r => r.member_id === m.id) || {};
-              return (
-                <tr key={m.id} style={{ borderBottom: '1px solid #F2F2F7', background: mi % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
-                  <td style={{ padding: '8px 14px', position: 'sticky', left: 0, background: mi % 2 === 0 ? '#FFF' : '#FAFAFA', zIndex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 16 }}>{m.avatar || '👤'}</span>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600 }}>{m.name}</div>
-                        {m.role_label && <div style={{ fontSize: 9, color: '#86868B' }}>{m.role_label}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  {annualMonths.map(({ year, month }) => {
-                    const start = row.start_date || '2000-01-01';
-                    const end = row.end_date || '2099-12-31';
-                    const ms = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-                    const me = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`;
-                    const active = me >= start && ms <= end;
-                    const ded = row.dedication ?? 1;
-                    const isNow = year === today.getFullYear() && month === today.getMonth();
-                    return (
-                      <td key={`${year}-${month}`} style={{ padding: '6px', textAlign: 'center', background: isNow ? (active ? '#EEF5FF' : '#F8FAFF') : (active ? '#FFF' : '#F9F9FB') }}>
-                        {active ? (
-                          <div style={{
-                            padding: '3px 4px', borderRadius: 6,
-                            background: isNow ? '#007AFF' : ded >= 1 ? '#34C75920' : '#FF950015',
-                            border: `1px solid ${isNow ? 'transparent' : ded >= 1 ? '#34C75930' : '#FF950030'}`,
-                          }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: isNow ? '#FFF' : ded >= 1 ? '#34C759' : '#FF9500' }}>{ded}</div>
-                            <div style={{ fontSize: 8, color: isNow ? 'rgba(255,255,255,.8)' : '#86868B' }}>FTE</div>
-                          </div>
-                        ) : <span style={{ color: '#E5E5EA', fontSize: 10 }}>—</span>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-            {/* Total row */}
-            <tr style={{ background: '#F0F7FF', borderTop: '2px solid #007AFF20' }}>
-              <td style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#007AFF', position: 'sticky', left: 0, background: '#F0F7FF' }}>Total FTEs</td>
-              {annualMonths.map(({ year, month }) => {
-                const total = team.reduce((sum, m) => {
-                  const row = orgData.find(r => r.member_id === m.id) || {};
-                  const start = row.start_date || '2000-01-01';
-                  const end = row.end_date || '2099-12-31';
-                  const ms = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-                  const me = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`;
-                  return me >= start && ms <= end ? sum + (row.dedication ?? 1) : sum;
-                }, 0);
-                return (
-                  <td key={`${year}-${month}`} style={{ padding: '8px 6px', textAlign: 'center' }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: total > 0 ? '#007AFF' : '#C7C7CC' }}>{total > 0 ? total.toFixed(1) : '—'}</span>
-                  </td>
-                );
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {/* ═══ VISTA ANUAL ═══ */}
+      {view === 'anual' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => setYr(y => y - 1)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronLeft" size={13} color="#6E6E73" /></button>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{yr}</span>
+            <button onClick={() => setYr(y => y + 1)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronRight" size={13} color="#6E6E73" /></button>
+          </div>
 
-      {/* Configuration table */}
-      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-          <thead>
-            <tr style={{ background: '#F9F9FB', borderBottom: '2px solid #E5E5EA' }}>
-              {['Miembro', 'Inicio', 'Fin', 'Dedicación', 'FTE·días'].map(h => (
-                <th key={h} style={{ padding: '10px', textAlign: h === 'Miembro' ? 'left' : 'center', fontSize: 11, fontWeight: 700, color: '#86868B' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {team.map((m, mi) => {
-              const row = orgData.find(r => r.member_id === m.id) || { member_id: m.id };
-              const workdays = days.filter(d => !isWeekend(d) && isActive(row, d) && !isOnVac(m.id, d)).length;
-              const mFTE = (workdays * (row.dedication ?? 1)).toFixed(1);
-              return (
-                <tr key={m.id} style={{ borderBottom: '1px solid #F2F2F7', background: mi % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
-                  <td style={{ padding: '8px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 8, background: m.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{m.avatar || '👤'}</div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>{m.name}</div>
-                        {m.role_label && <div style={{ fontSize: 9, color: '#86868B' }}>{m.role_label}</div>}
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                    <input type="date" value={row.start_date || ''} onInput={e => handleUpdateOrgField(m.id, row.manager_id, 'start_date', (e.target as HTMLInputElement).value || null)}
-                      style={{ border: '1px solid #E5E5EA', borderRadius: 6, padding: '3px 5px', fontSize: 10, outline: 'none', width: 110 }} />
-                  </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                    <input type="date" value={row.end_date || ''} onInput={e => handleUpdateOrgField(m.id, row.manager_id, 'end_date', (e.target as HTMLInputElement).value || null)}
-                      style={{ border: '1px solid #E5E5EA', borderRadius: 6, padding: '3px 5px', fontSize: 10, outline: 'none', width: 110 }} />
-                  </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                    <input type="number" min="0.1" max="1" step="0.1" value={row.dedication ?? 1}
-                      onInput={e => handleUpdateOrgField(m.id, row.manager_id, 'dedication', parseFloat((e.target as HTMLInputElement).value) || 1)}
-                      style={{ width: 44, border: '1px solid #E5E5EA', borderRadius: 6, padding: '3px 6px', fontSize: 12, fontWeight: 700, textAlign: 'center', outline: 'none' }} />
-                  </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: parseFloat(mFTE) > 0 ? '#34C759' : '#C7C7CC' }}>{mFTE}</span>
-                    <span style={{ fontSize: 9, color: '#86868B', display: 'block' }}>{workdays}d</span>
-                  </td>
+          <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: '#FAFAFA' }}>
+                  <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#86868B', position: 'sticky', left: 0, background: '#FAFAFA', zIndex: 2, minWidth: 160, borderRight: '2px solid #E5E5EA' }}>Persona</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Días/año</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Año ant.</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Total</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Consum.</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Restantes</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Ausencias</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>FTE</th>
+                  <th style={{ padding: '6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>H/día</th>
                 </tr>
+              </thead>
+              <tbody>
+                {team.map((m, i) => {
+                  const vs = vacStats.find(v => v.id === m.id)!;
+                  const org = getOrg(m.id);
+                  const ded = org.dedication ?? 1;
+                  const hd = (ded * 8).toFixed(1);
+                  return (
+                    <tr key={m.id} style={{ background: i % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
+                      <td style={{ padding: '8px 10px', position: 'sticky', left: 0, background: i % 2 === 0 ? '#FFF' : '#FAFAFA', zIndex: 1, borderRight: '2px solid #E5E5EA' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: 7, background: m.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{m.avatar || '👤'}</div>
+                          <div><div style={{ fontSize: 11, fontWeight: 600 }}>{m.name}</div>{m.role_label && <div style={{ fontSize: 8, color: '#86868B' }}>{m.role_label}</div>}</div>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 600 }}>{vs.annual}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', color: vs.prev > 0 ? '#007AFF' : '#D1D1D6' }}>{vs.prev}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 700 }}>{vs.total}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 600, color: '#FF9500' }}>{vs.used}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: vs.remaining <= 5 ? '#FF3B30' : vs.remaining <= 10 ? '#FF9500' : '#34C759' }}>{vs.remaining}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', color: vs.ausencias > 0 ? '#FF9500' : '#D1D1D6' }}>{vs.ausencias}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: '#007AFF' }}>{ded}</td>
+                      <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', color: '#6E6E73' }}>{hd}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VISTA MENSUAL ═══ */}
+      {view === 'mensual' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => { if (mo === 0) { setMo(11); setYr(y => y - 1); } else setMo(m => m - 1); }} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronLeft" size={13} color="#6E6E73" /></button>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{MO_FULL[mo]} {yr}</span>
+            <button onClick={() => { if (mo === 11) { setMo(0); setYr(y => y + 1); } else setMo(m => m + 1); }} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronRight" size={13} color="#6E6E73" /></button>
+          </div>
+
+          <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', overflow: 'auto' }}>
+            {(() => {
+              const daysN = new Date(yr, mo + 1, 0).getDate();
+              const days = Array.from({ length: daysN }, (_, i) => i + 1);
+              const todayS = now.toISOString().slice(0, 10);
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                  <thead>
+                    <tr style={{ background: '#FAFAFA' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#86868B', position: 'sticky', left: 0, background: '#FAFAFA', zIndex: 2, minWidth: 140, borderRight: '2px solid #E5E5EA' }}>Persona</th>
+                      {days.map(d => {
+                        const ds = `${yr}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const wk = isWk(new Date(yr, mo, d));
+                        const td = ds === todayS;
+                        return <th key={d} style={{ padding: '4px 1px', textAlign: 'center', fontSize: 8, fontWeight: td ? 800 : 500, color: wk ? '#D1D1D6' : td ? '#007AFF' : '#86868B', background: td ? '#007AFF10' : wk ? '#F9F9FB' : '#FAFAFA', borderBottom: '2px solid #E5E5EA', minWidth: 18 }}>{d}</th>;
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {team.map((m, i) => (
+                      <tr key={m.id} style={{ background: i % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
+                        <td style={{ padding: '5px 8px', position: 'sticky', left: 0, background: i % 2 === 0 ? '#FFF' : '#FAFAFA', zIndex: 1, borderRight: '2px solid #E5E5EA' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ fontSize: 12 }}>{m.avatar || '👤'}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600 }}>{m.name.split(' ')[0]}</span>
+                          </div>
+                        </td>
+                        {days.map(d => {
+                          const ds = `${yr}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                          const wk = isWk(new Date(yr, mo, d));
+                          const abs = getAbsence(m.id, ds);
+                          const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
+                          return (
+                            <td key={d} title={at ? `${at.label}${abs?.note ? ': ' + abs.note : ''}` : undefined}
+                              style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', borderLeft: '1px solid #F9F9FB', padding: 0, background: wk ? '#F9F9FB' : abs ? (at?.color || '#FF950020') : 'transparent' }}>
+                              {abs && !wk && <span style={{ fontSize: 8, fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               );
-            })}
-          </tbody>
-        </table>
-      </div>
+            })()}
+          </div>
+
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', fontSize: 9, color: '#86868B' }}>
+            {ABSENCE_TYPES.slice(0, 8).map(at => (
+              <span key={at.id} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: at.color }} />
+                {at.initial} {at.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VISTA SEMANAL ═══ */}
+      {view === 'semanal' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d.toISOString().slice(0, 10)); }} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronLeft" size={13} color="#6E6E73" /></button>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Semana del {fmtD(weekStart)}</span>
+            <button onClick={() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d.toISOString().slice(0, 10)); }} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="ChevronRight" size={13} color="#6E6E73" /></button>
+            <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - d.getDay() + 1); setWeekStart(d.toISOString().slice(0, 10)); }}
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 10, fontWeight: 600, cursor: 'pointer', color: '#007AFF' }}>Hoy</button>
+          </div>
+
+          <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', overflow: 'auto' }}>
+            {(() => {
+              const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+              const todayS = now.toISOString().slice(0, 10);
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ background: '#FAFAFA' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#86868B', position: 'sticky', left: 0, background: '#FAFAFA', zIndex: 2, minWidth: 150, borderRight: '2px solid #E5E5EA' }}>Persona</th>
+                      {weekDays.map(d => {
+                        const ds = d.toISOString().slice(0, 10);
+                        const wk = isWk(d);
+                        const td = ds === todayS;
+                        return (
+                          <th key={ds} style={{ padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: td ? 800 : 600, color: wk ? '#D1D1D6' : td ? '#007AFF' : '#6E6E73', background: td ? '#007AFF08' : wk ? '#F9F9FB' : '#FAFAFA', borderBottom: '2px solid #E5E5EA', minWidth: 70 }}>
+                            {DY[d.getDay() === 0 ? 6 : d.getDay() - 1]} {d.getDate()}/{d.getMonth() + 1}
+                          </th>
+                        );
+                      })}
+                      <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#86868B', borderBottom: '2px solid #E5E5EA' }}>Total h</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {team.map((m, i) => {
+                      const hd = hoursDay(m.id);
+                      let totalH = 0;
+                      return (
+                        <tr key={m.id} style={{ background: i % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
+                          <td style={{ padding: '6px 10px', position: 'sticky', left: 0, background: i % 2 === 0 ? '#FFF' : '#FAFAFA', zIndex: 1, borderRight: '2px solid #E5E5EA' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ width: 22, height: 22, borderRadius: 6, background: m.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{m.avatar || '👤'}</div>
+                              <div style={{ fontSize: 11, fontWeight: 600 }}>{m.name.split(' ')[0]}</div>
+                            </div>
+                          </td>
+                          {weekDays.map(d => {
+                            const ds = d.toISOString().slice(0, 10);
+                            const wk = isWk(d);
+                            const abs = getAbsence(m.id, ds);
+                            const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
+                            const h = wk ? 0 : abs ? 0 : hd;
+                            if (!wk && !abs) totalH += hd;
+                            return (
+                              <td key={ds} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #F2F2F7', background: wk ? '#F9F9FB' : abs ? (at?.color || '#FF950020') : 'transparent' }}>
+                                {wk ? <span style={{ color: '#E5E5EA' }}>—</span> : abs ? (
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span>
+                                ) : (
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#34C759' }}>{h.toFixed(1)}</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: '#007AFF' }}>{totalH.toFixed(1)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
