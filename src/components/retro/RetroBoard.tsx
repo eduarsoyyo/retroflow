@@ -349,8 +349,8 @@ export function RetroBoard({ user, sala, tipo, salaDisplay, onLogout, onBackToHo
               {phase === 0 && <P1Review tasks={state.tasks} onUpdateTasks={t => upd('tasks', t)} objective={((state.obj as Record<string, string> | undefined))?.text || ''} onUpdateObjective={t => upd('obj', { ...(state.obj as Record<string, string> || {}), text: t })} objectiveStatus={((state.obj as Record<string, string> | undefined))?.status || ''} onUpdateObjectiveStatus={s => upd('obj', { ...(state.obj as Record<string, string> || {}), status: s })} user={user} tipo={tipo} />}
               {phase === 1 && <P2Individual notes={state.notes} onUpdateNotes={n => upd('notes', n)} user={user} />}
               {phase === 2 && <P3Discuss notes={state.notes} onUpdateNotes={n => upd('notes', n)} user={user} />}
-              {phase === 3 && <P4Actions notes={state.notes} actions={state.actions as Task[]} onUpdateActions={a => upd('actions', a)} user={user} />}
-              {phase === 4 && <P5Risks risks={state.risks as Risk[]} onUpdateRisks={r => upd('risks', r)} notes={state.notes} user={user} />}
+              {phase === 3 && <P5Risks risks={state.risks as Risk[]} onUpdateRisks={r => upd('risks', r)} notes={state.notes} user={user} />}
+              {phase === 4 && <P4Actions notes={state.notes} actions={state.actions as Task[]} risks={state.risks as Risk[]} onUpdateActions={a => upd('actions', a)} user={user} />}
               {phase === 5 && <P6Summary notes={state.notes} actions={state.actions as Task[]} risks={state.risks as Risk[]} phaseTimes={phaseTimes} objective={((state.obj as Record<string, string> | undefined))?.text || ''} user={user} onFinalize={handleFinalize} finalizing={finalizing} />}
             </div>
           </div>

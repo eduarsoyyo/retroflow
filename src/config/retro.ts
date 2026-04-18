@@ -5,8 +5,8 @@ export const PHASES = [
   { id: 'review',     label: 'Repaso',      num: '01', guide: 'Revisa el objetivo de la iteración y las tareas comprometidas. Marca las completadas y evalúa el cumplimiento.' },
   { id: 'individual', label: 'Individual',  num: '02', guide: 'Cada persona escribe notas en privado (Good/Bad/Start/Stop). Sin hablar — enfoque individual. 5-8 min.' },
   { id: 'discuss',    label: 'En común',    num: '03', guide: 'Se comparten las notas por categoría. Vota las más relevantes. Debate breve — no resolver, solo entender.' },
-  { id: 'actions',    label: 'Accionables', num: '04', guide: 'Convierte las notas más votadas en tareas concretas con responsable y fecha. Cada acción debe ser accionable.' },
-  { id: 'risks',      label: 'Riesgos',     num: '05', guide: 'Identifica riesgos y problemas surgidos. Asigna impacto y probabilidad. Escala los críticos.' },
+  { id: 'risks',      label: 'Riesgos',     num: '04', guide: 'Identifica riesgos y problemas surgidos. Asigna impacto y probabilidad. Escala los críticos.' },
+  { id: 'actions',    label: 'Accionables', num: '05', guide: 'Convierte notas y riesgos en tareas concretas con responsable y fecha. Cada acción debe ser accionable.' },
   { id: 'session',    label: 'Resumen',     num: '06', guide: 'Revisa lo decidido: accionables, riesgos, compromisos. Finalizar archiva la retro y lanza la celebración.' },
 ] as const;
 
