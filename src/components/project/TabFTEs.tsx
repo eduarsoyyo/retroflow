@@ -12,7 +12,8 @@ const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','D
 const MO_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DY = ['L','M','X','J','V','S','D'];
 type ViewMode = 'anual' | 'mensual' | 'semanal';
-const f1 = (n: number) => n.toFixed(1);
+// Spanish formatting: 1.234,5
+const f1 = (n: number) => n.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 export function TabFTEs({ team, sala }: TabFTEsProps) {
   const [orgData, setOrgData] = useState<any[]>([]);
@@ -42,7 +43,16 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
   // Get member's calendario
   const getCal = (m: Member): Calendario | null => {
     const cid = (m as Record<string, unknown>).calendario_id as string;
-    return cid ? calendarios.find(c => c.id === cid) || null : calendarios[0] || null;
+    return cid ? calendarios.find(c => c.id === cid) || null : null;
+  };
+  const hasCal = (m: Member): boolean => getCal(m) !== null;
+
+  // Get holiday name for a date
+  const getHolidayName = (m: Member, ds: string): string | null => {
+    const cal = getCal(m);
+    if (!cal) return null;
+    const h = (cal.holidays || []).find(h => h.date === ds);
+    return h ? h.name : null;
   };
 
   // Is date in intensive period?
@@ -190,12 +200,16 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                   const totalH = mh.reduce((s, h) => s + h, 0);
                   const org = getOrg(m.id);
                   const ded = org.dedication ?? 1;
+                  const noCal = !hasCal(m);
                   return (
                     <tr key={m.id} style={{ background: ri % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
                       <td style={{ padding: '5px 8px', position: 'sticky', left: 0, background: ri % 2 === 0 ? '#FFF' : '#FAFAFA', zIndex: 1, borderRight: '2px solid #E5E5EA', borderBottom: '1px solid #F2F2F7' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <div style={{ width: 22, height: 22, borderRadius: 6, background: m.color || '#E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{m.avatar || '👤'}</div>
-                          <div><div style={{ fontSize: 10, fontWeight: 600 }}>{m.name}</div>{m.role_label && <div style={{ fontSize: 7, color: '#86868B' }}>{m.role_label}</div>}</div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 600 }}>{m.name}</div>
+                            {noCal ? <div style={{ fontSize: 7, color: '#FF3B30', fontWeight: 600 }}>⚠ Sin calendario</div> : m.role_label && <div style={{ fontSize: 7, color: '#86868B' }}>{m.role_label}</div>}
+                          </div>
                         </div>
                       </td>
                       <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: '#5856D6', fontSize: 10 }}>{Math.round(ded * 100)}%</td>
@@ -251,7 +265,8 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                         const wk = isWk(new Date(yr, mo, d));
                         const td = ds === todayS;
                         const hol = calendarios.length > 0 && (calendarios[0].holidays || []).some(h => h.date === ds);
-                        return <th key={d} style={{ padding: '3px 1px', textAlign: 'center', fontSize: 7, fontWeight: td ? 800 : hol ? 700 : 500, color: wk ? '#D1D1D6' : hol ? '#FF3B30' : td ? '#007AFF' : '#86868B', background: td ? '#007AFF08' : wk ? '#F9F9FB' : hol ? '#FF3B3008' : '#FAFAFA', borderBottom: '2px solid #E5E5EA', minWidth: 16 }}>{d}</th>;
+                        const holTip = hol ? (calendarios[0].holidays || []).find(h => h.date === ds)?.name : undefined;
+                        return <th key={d} title={holTip} style={{ padding: '3px 1px', textAlign: 'center', fontSize: 7, fontWeight: td ? 800 : hol ? 700 : 500, color: wk ? '#D1D1D6' : hol ? '#FF3B30' : td ? '#007AFF' : '#86868B', background: td ? '#007AFF08' : wk ? '#F9F9FB' : hol ? '#FF3B3008' : '#FAFAFA', borderBottom: '2px solid #E5E5EA', minWidth: 16 }}>{d}</th>;
                       })}
                       <th style={{ padding: '3px 4px', textAlign: 'center', fontSize: 8, fontWeight: 700, color: '#007AFF', borderBottom: '2px solid #E5E5EA', minWidth: 32 }}>Horas</th>
                       <th style={{ padding: '3px 4px', textAlign: 'center', fontSize: 8, fontWeight: 700, color: '#34C759', borderBottom: '2px solid #E5E5EA', minWidth: 22 }}>Vac</th>
@@ -273,14 +288,16 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                             const ds = `${yr}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                             const wk = isWk(new Date(yr, mo, d));
                             const hol = isHoliday(m, ds);
+                            const holName = hol ? getHolidayName(m, ds) : null;
                             const abs = getAbsence(m.id, ds);
                             const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
                             if (abs && !wk && !hol) { if ((abs.type || 'vacaciones') === 'vacaciones') vacD++; else ausD++; }
                             const bh = baseHoursForDay(m, ds);
                             const h = hoursForDay(m, ds);
                             totalH += bh;
+                            const tip = hol ? (holName || 'Festivo') : abs ? `${at?.label || ''}${abs.note ? ': ' + abs.note : ''}` : h > 0 ? `${f1(h)}h` : undefined;
                             return (
-                              <td key={d} title={hol ? 'Festivo' : at ? at.label : h > 0 ? `${h.toFixed(1)}h` : undefined}
+                              <td key={d} title={tip}
                                 style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', borderLeft: '1px solid #F9F9FB', padding: 0, background: wk ? '#F9F9FB' : hol ? '#FF3B3012' : abs ? (at?.color || '#FF950020') : 'transparent', fontSize: 7 }}>
                                 {wk ? null : hol ? <span style={{ fontWeight: 700, color: '#FF3B30' }}>F</span> : abs ? <span style={{ fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span> : h > 0 ? <span style={{ color: '#6E6E73' }}>{f1(h)}</span> : null}
                               </td>
@@ -351,22 +368,18 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                             const ds = d.toISOString().slice(0, 10);
                             const wk = isWk(d);
                             const hol = isHoliday(m, ds);
+                            const holName = hol ? getHolidayName(m, ds) : null;
                             const abs = getAbsence(m.id, ds);
                             const at = abs ? getAbsenceType(abs.type || 'vacaciones') : null;
                             const h = hoursForDay(m, ds);
                             totalH += baseHoursForDay(m, ds);
+                            const tip = hol ? (holName || 'Festivo') : abs ? `${at?.label || ''}${abs.note ? ': ' + abs.note : ''}` : h > 0 ? `${f1(h)}h` : undefined;
                             return (
-                              <td key={ds} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #F2F2F7', background: wk ? '#F9F9FB' : hol ? '#FF3B3010' : abs ? (at?.color || '#FF950020') : 'transparent' }}>
+                              <td key={ds} title={tip} style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #F2F2F7', background: wk ? '#F9F9FB' : hol ? '#FF3B3010' : abs ? (at?.color || '#FF950020') : 'transparent' }}>
                                 {wk ? <span style={{ color: '#E5E5EA' }}>—</span> : hol ? (
-                                  <div>
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#FF3B30' }}>F</span>
-                                    <div style={{ fontSize: 7, color: '#FF3B30', opacity: 0.7 }}>Festivo</div>
-                                  </div>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#FF3B30' }}>F</span>
                                 ) : abs ? (
-                                  <div>
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span>
-                                    <div style={{ fontSize: 7, color: '#FFF', opacity: 0.8 }}>{at?.label}</div>
-                                  </div>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span>
                                 ) : h > 0 ? (
                                   <span style={{ fontSize: 13, fontWeight: 700, color: '#34C759' }}>{f1(h)}</span>
                                 ) : <span style={{ color: '#E5E5EA' }}>—</span>}
