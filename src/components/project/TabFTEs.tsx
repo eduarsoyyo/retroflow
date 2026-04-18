@@ -12,6 +12,7 @@ const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','D
 const MO_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DY = ['L','M','X','J','V','S','D'];
 type ViewMode = 'anual' | 'mensual' | 'semanal';
+const f1 = (n: number) => n.toFixed(1);
 
 export function TabFTEs({ team, sala }: TabFTEsProps) {
   const [orgData, setOrgData] = useState<any[]>([]);
@@ -197,9 +198,9 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                       <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', color: vs.ausencias > 0 ? '#FF9500' : '#D1D1D6' }}>{vs.ausencias}</td>
                       {mh.map((h, mi) => {
                         const isCur = yr === now.getFullYear() && mi === now.getMonth();
-                        return <td key={mi} style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', padding: '3px 1px', background: isCur ? '#007AFF06' : 'transparent', fontWeight: h > 0 ? 600 : 400, color: h > 0 ? '#1D1D1F' : '#E5E5EA', fontSize: 9 }}>{h > 0 ? Math.round(h) : '—'}</td>;
+                        return <td key={mi} style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', padding: '3px 1px', background: isCur ? '#007AFF06' : 'transparent', fontWeight: h > 0 ? 600 : 400, color: h > 0 ? '#1D1D1F' : '#E5E5EA', fontSize: 9 }}>{h > 0 ? f1(h) : '—'}</td>;
                       })}
-                      <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: '#007AFF', fontSize: 11 }}>{Math.round(totalH)}</td>
+                      <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: '#007AFF', fontSize: 11 }}>{f1(totalH)}</td>
                     </tr>
                   );
                 })}
@@ -208,9 +209,9 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                   <td colSpan={8} style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#007AFF', position: 'sticky', left: 0, background: '#F0F7FF', borderRight: '2px solid #E5E5EA' }}>Total</td>
                   {Array.from({ length: 12 }, (_, mi) => {
                     const total = team.reduce((s, m) => s + (monthlyHours[m.id]?.[mi] || 0), 0);
-                    return <td key={mi} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: total > 0 ? '#007AFF' : '#D1D1D6' }}>{total > 0 ? Math.round(total) : '—'}</td>;
+                    return <td key={mi} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: total > 0 ? '#007AFF' : '#D1D1D6' }}>{total > 0 ? f1(total) : '—'}</td>;
                   })}
-                  <td style={{ textAlign: 'center', fontSize: 11, fontWeight: 800, color: '#007AFF' }}>{Math.round(team.reduce((s, m) => s + (monthlyHours[m.id] || []).reduce((a, b) => a + b, 0), 0))}</td>
+                  <td style={{ textAlign: 'center', fontSize: 11, fontWeight: 800, color: '#007AFF' }}>{f1(team.reduce((s, m) => s + (monthlyHours[m.id] || []).reduce((a, b) => a + b, 0), 0))}</td>
                 </tr>
               </tbody>
             </table>
@@ -270,11 +271,11 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                             return (
                               <td key={d} title={at ? at.label : h > 0 ? `${h.toFixed(1)}h` : undefined}
                                 style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', borderLeft: '1px solid #F9F9FB', padding: 0, background: wk ? '#F9F9FB' : abs ? (at?.color || '#FF950020') : 'transparent', fontSize: 7 }}>
-                                {abs && !wk ? <span style={{ fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span> : (!wk && h > 0) ? <span style={{ color: '#6E6E73' }}>{h < 8 ? h.toFixed(1) : Math.round(h)}</span> : null}
+                                {abs && !wk ? <span style={{ fontWeight: 700, color: '#FFF' }}>{at?.initial || 'V'}</span> : (!wk && h > 0) ? <span style={{ color: '#6E6E73' }}>{f1(h)}</span> : null}
                               </td>
                             );
                           })}
-                          <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: '#007AFF', fontSize: 9 }}>{Math.round(totalH)}</td>
+                          <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 700, color: '#007AFF', fontSize: 9 }}>{f1(totalH)}</td>
                           <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 600, color: vacD > 0 ? '#34C759' : '#E5E5EA', fontSize: 9 }}>{vacD || '—'}</td>
                           <td style={{ textAlign: 'center', borderBottom: '1px solid #F2F2F7', fontWeight: 600, color: ausD > 0 ? '#FF9500' : '#E5E5EA', fontSize: 9 }}>{ausD || '—'}</td>
                         </tr>
@@ -349,12 +350,12 @@ export function TabFTEs({ team, sala }: TabFTEsProps) {
                                     <div style={{ fontSize: 7, color: '#FFF', opacity: 0.8 }}>{at?.label}</div>
                                   </div>
                                 ) : h > 0 ? (
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#34C759' }}>{h % 1 === 0 ? h : h.toFixed(1)}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#34C759' }}>{f1(h)}</span>
                                 ) : <span style={{ color: '#E5E5EA' }}>—</span>}
                               </td>
                             );
                           })}
-                          <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: '#007AFF', fontSize: 12 }}>{totalH % 1 === 0 ? totalH : totalH.toFixed(1)}</td>
+                          <td style={{ textAlign: 'center', padding: '6px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: '#007AFF', fontSize: 12 }}>{f1(totalH)}</td>
                         </tr>
                       );
                     })}

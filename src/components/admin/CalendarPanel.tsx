@@ -190,7 +190,7 @@ export function CalendarPanel() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, fontSize: 11 }}>
                 {([['H. convenio','convenio_hours',1800],['Vacaciones','vacation_days',22],['H/sem','weekly_hours_normal',40],['H/día int.','daily_hours_intensive',7],['H/día L-J','daily_hours_lj',8],['H/día V','daily_hours_v',8],['Ajuste días','adjustment_days',0],['Libre disp.','free_days',0]] as const).map(([l,f,d])=>(
                   <div key={f}><label style={labelS}>{l}</label>
-                    <input type="number" step="0.5" value={(editCal as Record<string,unknown>)[f] as number ?? d}
+                    <input type="number" step="0.01" value={(editCal as Record<string,unknown>)[f] as number ?? d}
                       onInput={e=>{const u={...editCal,[f]:parseFloat((e.target as HTMLInputElement).value)||d};setEditCal(u);updateCal(u);}}
                       style={{ width:'100%',padding:'4px 6px',borderRadius:6,border:'1px solid #E5E5EA',fontSize:11,outline:'none' }}/></div>))}
               </div>
