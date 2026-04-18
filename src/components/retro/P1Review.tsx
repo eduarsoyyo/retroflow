@@ -18,9 +18,9 @@ interface P1ReviewProps {
 }
 
 const STATUS_OPTIONS = [
-  { id: 'cumplido', label: 'Cumplido', color: '#34C759', icon: '✅' },
-  { id: 'parcial',  label: 'Parcial',  color: '#FF9500', icon: '⚠️' },
-  { id: 'no_cumplido', label: 'No cumplido', color: '#FF3B30', icon: '❌' },
+  { id: 'cumplido', label: 'Cumplido', color: '#34C759', lucide: 'CheckCircle' },
+  { id: 'parcial',  label: 'Parcial',  color: '#FF9500', lucide: 'AlertCircle' },
+  { id: 'no_cumplido', label: 'No cumplido', color: '#FF3B30', lucide: 'XCircle' },
 ];
 
 const cardS = { background: '#FFF', borderRadius: 16, border: '1.5px solid #E5E5EA', padding: 20 };
@@ -79,7 +79,7 @@ export function P1Review({ tasks, onUpdateTasks, objective, onUpdateObjective, o
     <div style={{ maxWidth: 680, margin: '0 auto' }}>
       {/* Objective */}
       <div style={{ ...cardS, marginBottom: 16 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🎯 Objetivo de la iteración</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}><Icon name="Target" size={14} color="#007AFF" /> Objetivo de la iteración</h3>
         <input
           value={objective}
           onInput={e => onUpdateObjective((e.target as HTMLInputElement).value)}
@@ -101,7 +101,7 @@ export function P1Review({ tasks, onUpdateTasks, objective, onUpdateObjective, o
                     color: status === s.id ? s.color : '#6E6E73',
                     fontWeight: status === s.id ? 700 : 500, fontSize: 12,
                   }}>
-                  <div style={{ fontSize: 18, marginBottom: 2 }}>{s.icon}</div>
+                  <div style={{ marginBottom: 2 }}><Icon name={s.lucide} size={22} color={status === s.id ? s.color : '#C7C7CC'} /></div>
                   {s.label}
                 </button>
               ))}
@@ -113,7 +113,7 @@ export function P1Review({ tasks, onUpdateTasks, objective, onUpdateObjective, o
       {/* Task checklist */}
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>📋 Checklist de la iteración</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}><Icon name="ClipboardList" size={14} color="#007AFF" /> Checklist de la iteración</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: pct >= 80 ? '#34C759' : pct >= 50 ? '#FF9500' : '#FF3B30' }}>
               {doneCount}/{taskList.length} ({pct}%)
@@ -194,7 +194,7 @@ export function P1Review({ tasks, onUpdateTasks, objective, onUpdateObjective, o
           onClick={() => setDeleteIdx(null)}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.3)' }} />
           <div onClick={e => e.stopPropagation()} style={{ position: 'relative', background: '#FFF', borderRadius: 20, maxWidth: 380, width: '100%', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)', textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🗑️</div>
+            <div style={{ fontSize: 28, marginBottom: 8 }}><Icon name="Trash2" size={20} color="#FF3B30" /></div>
             <h3 style={{ fontSize: 16, fontWeight: 700 }}>Eliminar tarea</h3>
             <p style={{ fontSize: 12, color: '#86868B', marginTop: 6 }}>"{taskList[deleteIdx]?.text}"</p>
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
