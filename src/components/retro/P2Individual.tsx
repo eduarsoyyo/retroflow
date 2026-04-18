@@ -23,8 +23,7 @@ export function P2Individual({ notes, onUpdateNotes, user }: P2IndividualProps) 
 
   const allNotes = (notes || []) as RetroNote[];
   const myNotes = allNotes.filter(n => n.userId === user.id || n.userName === user.name);
-  // In phase 2, only show your own notes (privacy)
-  const visibleNotes = myNotes;
+  const isMine = (n: RetroNote) => n.userId === user.id || n.userName === user.name;
 
   const openAdd = (category?: string) => {
     setText('');
@@ -64,10 +63,11 @@ export function P2Individual({ notes, onUpdateNotes, user }: P2IndividualProps) 
     setDeleteNote(null);
   };
 
-  // Group by category
+  // Group by category — show all notes but blind others'
+  const displayNotes = filter === 'mine' ? myNotes : allNotes;
   const grouped = NOTE_CATEGORIES.map(c => ({
     ...c,
-    notes: visibleNotes.filter(n => n.category === c.id),
+    notes: displayNotes.filter(n => n.category === c.id),
   }));
 
   return (
@@ -98,12 +98,13 @@ export function P2Individual({ notes, onUpdateNotes, user }: P2IndividualProps) 
 
             {/* Notes */}
             <div style={{ padding: 8, minHeight: 80 }}>
-              {g.notes.map(n => (
-                <div key={n.id} style={{ padding: '8px 10px', borderRadius: 8, background: g.bg, borderLeft: `3px solid ${g.color}`, marginBottom: 4, position: 'relative' }}>
-                  <div style={{ fontSize: 12, marginBottom: 4, paddingRight: 40 }}>{n.text}</div>
-                  <div style={{ fontSize: 10, color: '#86868B' }}>{n.userName}</div>
-                  {/* Edit/delete (only own notes) */}
-                  {(n.userId === user.id || n.userName === user.name) && (
+              {g.notes.map(n => {
+                const mine = isMine(n);
+                return (
+                <div key={n.id} style={{ padding: '8px 10px', borderRadius: 8, background: mine ? g.bg : '#F2F2F7', borderLeft: `3px solid ${mine ? g.color : '#D1D1D6'}`, marginBottom: 4, position: 'relative' }}>
+                  <div style={{ fontSize: 12, marginBottom: 4, paddingRight: mine ? 40 : 0, filter: mine ? 'none' : 'blur(5px)', userSelect: mine ? 'auto' : 'none' as any }}>{n.text}</div>
+                  <div style={{ fontSize: 10, color: '#86868B', filter: mine ? 'none' : 'blur(4px)' }}>{n.userName}</div>
+                  {mine && (
                     <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', gap: 2 }}>
                       <button onClick={() => openEdit(n)}
                         style={{ width: 20, height: 20, borderRadius: 5, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -116,7 +117,8 @@ export function P2Individual({ notes, onUpdateNotes, user }: P2IndividualProps) 
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Add note button */}
               <button onClick={() => openAdd(g.id)}
