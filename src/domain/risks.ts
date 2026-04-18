@@ -21,7 +21,7 @@ export function riskTitle(r: Pick<Risk, 'title' | 'text'>): string {
 export function riskNumber(risk: Risk, allRisks: Risk[]): string {
   const type = risk.type || 'riesgo';
   const prefix = RISK_TYPES.find(t => t.id === type)?.prefix || 'R';
-  const sameType = allRisks.filter(r => (r.type || 'riesgo') === type && r.status !== 'mitigated');
+  const sameType = allRisks.filter(r => (r.type || 'riesgo') === type);
   const idx = sameType.findIndex(r => r.id === risk.id) + 1;
   return `${prefix}${idx || '?'}`;
 }

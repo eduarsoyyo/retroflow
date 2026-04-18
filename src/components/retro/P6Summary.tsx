@@ -204,7 +204,32 @@ export function P6Summary({ notes, actions, risks, phaseTimes, objective, object
             <span style={{ fontSize: 24, fontWeight: 800, color: qualityColor }}>{quality}</span>
           </div>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: qualityColor, marginBottom: 16 }}>{qualityLabel}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: qualityColor, marginBottom: 12 }}>{qualityLabel}</div>
+
+        {/* What's missing */}
+        {quality < 100 && (() => {
+          const missing: Array<{ text: string; pts: number }> = [];
+          if (allNotes.length < 5) missing.push({ text: `Más notas (${allNotes.length}/5 mínimo)`, pts: 20 - allNotes.length * 4 });
+          if (totalVotes < 5) missing.push({ text: `Más votos (${totalVotes}/5 mínimo)`, pts: 15 - totalVotes * 3 });
+          if (actions.length < 3) missing.push({ text: `Más acciones (${actions.length}/3 mínimo)`, pts: 20 - actions.length * 7 });
+          if (risks.length === 0) missing.push({ text: 'Revisar riesgos', pts: 10 });
+          if (participants.length < 3) missing.push({ text: `Más participantes (${participants.length}/3 mínimo)`, pts: 15 - participants.length * 5 });
+          if (!objective) missing.push({ text: 'Definir objetivo', pts: 10 });
+          if (tasksPct < 80) missing.push({ text: `Checklist ≥80% (actual: ${tasksPct}%)`, pts: tasksPct >= 50 ? 5 : 10 });
+          if (missing.length === 0) return null;
+          return (
+            <div style={{ textAlign: 'left', margin: '0 auto 16px', maxWidth: 320, padding: '10px 14px', background: '#FFF5F5', borderRadius: 10, border: '1px solid #FF3B3015' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#FF3B30', marginBottom: 6 }}>PARA MEJORAR</div>
+              {missing.map((m, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#6E6E73', marginBottom: 3 }}>
+                  <Icon name="Circle" size={6} color="#FF3B30" />
+                  <span style={{ flex: 1 }}>{m.text}</span>
+                  <span style={{ fontSize: 9, color: '#FF3B30', fontWeight: 600 }}>+{m.pts}pts</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <button onClick={onFinalize} disabled={finalizing}
           style={{

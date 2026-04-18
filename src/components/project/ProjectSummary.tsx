@@ -53,7 +53,7 @@ export function ProjectSummary({ actions, risks, teamMembers, user, sala, phase,
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 14 }}>
         {[
-          { l: 'Tareas', v: acts.length, c: '#007AFF', i: 'CheckSquare' },
+          { l: 'Accionables', v: acts.length, c: '#007AFF', i: 'CheckSquare' },
           { l: 'Completadas', v: `${actPct}%`, c: actPct >= 75 ? '#34C759' : actPct >= 40 ? '#FF9500' : '#FF3B30', i: 'CheckCircle2' },
           { l: 'Vencidas', v: actOver, c: actOver > 0 ? '#FF3B30' : '#34C759', i: 'Clock' },
           { l: 'Riesgos', v: rOpen.length, c: rOpen.length > 0 ? '#FF9500' : '#34C759', i: 'AlertTriangle' },
@@ -179,7 +179,7 @@ export function ProjectSummary({ actions, risks, teamMembers, user, sala, phase,
       {/* Overdue tasks */}
       {actOver > 0 && (
         <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #FF3B3015', padding: '14px 16px' }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: '#FF3B30' }}>Tareas vencidas</h3>
+          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: '#FF3B30' }}>Accionables vencidos</h3>
           {actOpen.filter(a => a.date && a.date < today).slice(0, 5).map(a => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #F2F2F7', fontSize: 12 }}>
               <div style={{ width: 6, height: 6, borderRadius: 3, background: '#FF3B30', flexShrink: 0 }} />
