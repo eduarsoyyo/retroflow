@@ -33,7 +33,9 @@ export function CrossProject() {
   const [data, setData] = useState<CrossProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [matrixMode, setMatrixMode] = useState<'pct' | 'fte' | 'hours'>('pct');
   const yr = new Date().getFullYear();
+  const MONTHLY_BASE_HOURS = 176; // ~22 days × 8h
 
   useEffect(() => {
     loadCrossProjectData().then(d => { setData(d); setLoading(false); });
@@ -114,6 +116,14 @@ export function CrossProject() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <Icon name="Grid3X3" size={16} color="#5856D6" />
           <span style={{ fontSize: 14, fontWeight: 700 }}>Matriz de asignación</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', background: '#F2F2F7', borderRadius: 8, overflow: 'hidden' }}>
+            {([['pct', '%'], ['fte', 'FTEs'], ['hours', 'Horas']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setMatrixMode(key)}
+                style={{ padding: '4px 12px', fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer', background: matrixMode === key ? '#007AFF' : 'transparent', color: matrixMode === key ? '#FFF' : '#86868B', transition: 'all .15s' }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -121,22 +131,29 @@ export function CrossProject() {
             <tr>
               <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #E5E5EA', fontSize: 11, color: '#86868B', fontWeight: 700 }}>Persona</th>
               {allProjects.map(p => (
-                <th key={p} style={{ textAlign: 'center', padding: '8px 6px', borderBottom: '2px solid #E5E5EA', fontSize: 10, color: '#86868B', fontWeight: 700, maxWidth: 80 }}>
+                <th key={p} style={{ textAlign: 'center', padding: '8px 6px', borderBottom: '2px solid #E5E5EA', fontSize: 10, color: '#86868B', fontWeight: 700, maxWidth: 100 }}>
                   {projectNames[p] || p}
                 </th>
               ))}
               <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #E5E5EA', fontSize: 11, color: '#86868B', fontWeight: 700 }}>Total</th>
+              <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #E5E5EA', fontSize: 11, color: '#FF9500', fontWeight: 700 }}>IC</th>
             </tr>
           </thead>
           <tbody>
-            {memberProjects.map(mp => {
+            {memberProjects.map((mp, ri) => {
               const total = mp.projects.reduce((s, p) => s + p.dedication, 0);
+              const ic = Math.max(0, 1 - total);
               const isOver = total > 1.05;
+              const fmtVal = (ded: number) => {
+                if (matrixMode === 'pct') return `${Math.round(ded * 100)}%`;
+                if (matrixMode === 'fte') return ded.toFixed(2);
+                return `${Math.round(ded * MONTHLY_BASE_HOURS)}h`;
+              };
               return (
-                <tr key={mp.member.id} style={{ background: isOver ? '#FFF5F5' : undefined }}>
-                  <td style={{ padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 600 }}>
+                <tr key={mp.member.id} style={{ background: isOver ? '#FFF5F5' : ri % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
+                  <td style={{ padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     <span style={{ marginRight: 6 }}>{mp.member.avatar || '👤'}</span>
-                    {mp.member.name.split(' ')[0]}
+                    {mp.member.name}
                   </td>
                   {allProjects.map(sala => {
                     const proj = mp.projects.find(p => p.sala === sala);
@@ -149,7 +166,7 @@ export function CrossProject() {
                             background: ded >= 1 ? '#007AFF15' : ded >= 0.5 ? '#34C75915' : '#F2F2F7',
                             color: ded >= 1 ? '#007AFF' : ded >= 0.5 ? '#34C759' : '#86868B',
                           }}>
-                            {Math.round(ded * 100)}%
+                            {fmtVal(ded)}
                           </span>
                         ) : (
                           <span style={{ color: '#E5E5EA' }}>—</span>
@@ -158,11 +175,44 @@ export function CrossProject() {
                     );
                   })}
                   <td style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: isOver ? '#FF3B30' : '#1D1D1F' }}>
-                    {Math.round(total * 100)}%
+                    {fmtVal(total)}
+                  </td>
+                  <td style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 700, fontSize: 11, color: ic > 0.5 ? '#FF3B30' : ic > 0 ? '#FF9500' : '#34C759' }}>
+                    {ic > 0 ? fmtVal(ic) : <span style={{ color: '#34C759' }}>0</span>}
                   </td>
                 </tr>
               );
             })}
+            {/* ── Totals row ── */}
+            <tr style={{ background: '#F2F2F7' }}>
+              <td style={{ padding: '8px 10px', fontWeight: 800, fontSize: 11, borderTop: '2px solid #E5E5EA' }}>
+                Total por proyecto
+              </td>
+              {allProjects.map(sala => {
+                const projTotal = memberProjects.reduce((s, mp) => {
+                  const p = mp.projects.find(p => p.sala === sala);
+                  return s + (p ? p.dedication : 0);
+                }, 0);
+                const fmtTotal = matrixMode === 'pct' ? `${Math.round(projTotal * 100)}%` : matrixMode === 'fte' ? projTotal.toFixed(2) : `${Math.round(projTotal * MONTHLY_BASE_HOURS)}h`;
+                return (
+                  <td key={sala} style={{ textAlign: 'center', padding: '8px 6px', borderTop: '2px solid #E5E5EA', fontWeight: 800, fontSize: 12, color: '#5856D6' }}>
+                    {fmtTotal}
+                  </td>
+                );
+              })}
+              <td style={{ textAlign: 'center', padding: '8px 10px', borderTop: '2px solid #E5E5EA', fontWeight: 800, fontSize: 12, color: '#1D1D1F' }}>
+                {(() => {
+                  const gt = memberProjects.reduce((s, mp) => s + mp.projects.reduce((sp, p) => sp + p.dedication, 0), 0);
+                  return matrixMode === 'pct' ? `${Math.round(gt * 100)}%` : matrixMode === 'fte' ? gt.toFixed(2) : `${Math.round(gt * MONTHLY_BASE_HOURS)}h`;
+                })()}
+              </td>
+              <td style={{ textAlign: 'center', padding: '8px 10px', borderTop: '2px solid #E5E5EA', fontWeight: 800, fontSize: 12, color: '#FF9500' }}>
+                {(() => {
+                  const totalIc = memberProjects.reduce((s, mp) => s + Math.max(0, 1 - mp.projects.reduce((sp, p) => sp + p.dedication, 0)), 0);
+                  return matrixMode === 'pct' ? `${Math.round(totalIc * 100)}%` : matrixMode === 'fte' ? totalIc.toFixed(2) : `${Math.round(totalIc * MONTHLY_BASE_HOURS)}h`;
+                })()}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
