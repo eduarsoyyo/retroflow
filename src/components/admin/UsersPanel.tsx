@@ -26,6 +26,7 @@ interface UserForm {
   role_label: string; company: string; phone: string;
   calendario_id: string; manager_id: string;
   hire_date: string; status: string; is_superuser: boolean;
+  rooms: string[];
 }
 
 const emptyForm: UserForm = {
@@ -33,6 +34,7 @@ const emptyForm: UserForm = {
   role_label: '', company: '', phone: '',
   calendario_id: '', manager_id: '',
   hire_date: '', status: 'active', is_superuser: false,
+  rooms: [],
 };
 
 export function UsersPanel() {
@@ -114,6 +116,7 @@ export function UsersPanel() {
       hire_date: (m as Record<string, unknown>).hire_date as string || '',
       status: (m as Record<string, unknown>).status as string || 'active',
       is_superuser: !!m.is_superuser,
+      rooms: m.rooms || [],
     });
     setEditMember(m);
     setModal('edit');
@@ -133,13 +136,13 @@ export function UsersPanel() {
     };
     if (modal === 'create') {
       payload.id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-      payload.rooms = [];
+      payload.rooms = form.rooms || [];
       payload.vacations = [];
       payload.annual_vac_days = 22;
       payload.prev_year_pending = 0;
     } else if (editMember) {
       payload.id = editMember.id;
-      payload.rooms = editMember.rooms;
+      payload.rooms = editMember.rooms || form.rooms || [];
       payload.vacations = editMember.vacations;
       payload.annual_vac_days = editMember.annual_vac_days;
       payload.prev_year_pending = editMember.prev_year_pending;
@@ -324,6 +327,32 @@ export function UsersPanel() {
                     <input type="checkbox" checked={form.is_superuser} onChange={() => setForm({ ...form, is_superuser: !form.is_superuser })} style={{ accentColor: '#007AFF' }} />
                     Administrador
                   </label>
+                </div>
+              </div>
+
+              {/* Project assignment */}
+              <div>
+                <label style={labelS}>Proyectos asignados</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {rooms.map(r => {
+                    const assigned = (editMember?.rooms || form.rooms || []).includes(r.slug);
+                    return (
+                      <button key={r.slug} onClick={() => {
+                        const current = editMember?.rooms || form.rooms || [];
+                        const updated = assigned ? current.filter((s: string) => s !== r.slug) : [...current, r.slug];
+                        if (editMember) setEditMember({ ...editMember, rooms: updated });
+                        setForm({ ...form, rooms: updated });
+                      }}
+                        style={{
+                          padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          border: assigned ? 'none' : '1.5px solid #E5E5EA',
+                          background: assigned ? '#007AFF' : '#FFF',
+                          color: assigned ? '#FFF' : '#6E6E73',
+                        }}>
+                        {assigned && '✓ '}{r.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
