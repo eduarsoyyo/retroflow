@@ -95,6 +95,7 @@ export function UsersPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
   const [calendarios, setCalendarios] = useState<Calendario[]>([]);
+  const [orgData, setOrgData] = useState<Array<{ member_id: string; sala: string; dedication: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
@@ -105,14 +106,29 @@ export function UsersPanel() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
   useEffect(() => {
-    Promise.all([loadTeamMembers(), loadAdminRoles(), loadCalendarios(), loadRooms()]).then(([mR, rolesData, cals, roomsR]) => {
+    const loadAllOrg = async () => {
+      try {
+        const { supabase } = await import('../../data/supabase');
+        const { data } = await supabase.from('org_chart').select('member_id, sala, dedication');
+        return (data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1 }));
+      } catch { return []; }
+    };
+    Promise.all([loadTeamMembers(), loadAdminRoles(), loadCalendarios(), loadRooms(), loadAllOrg()]).then(([mR, rolesData, cals, roomsR, org]) => {
       if (mR.ok) setMembers(mR.data);
       setRoles(rolesData || []);
       setCalendarios(cals);
       if (roomsR.ok) setRooms(roomsR.data);
+      setOrgData(org);
       setLoading(false);
     });
   }, []);
+
+  // Dedication helpers
+  const memberDedication = (m: Member) => {
+    const entries = orgData.filter(o => o.member_id === m.id);
+    return entries.reduce((s, e) => s + (e.dedication || 0), 0);
+  };
+  const memberIntercontrato = (m: Member) => Math.max(0, 1 - memberDedication(m));
 
   const filtered = useMemo(() => {
     if (!search) return members;
@@ -232,6 +248,12 @@ export function UsersPanel() {
     setSaving(false);
     setModal(null);
     setEditMember(null);
+    // Reload org data for table
+    try {
+      const { supabase } = await import('../../data/supabase');
+      const { data } = await supabase.from('org_chart').select('member_id, sala, dedication');
+      setOrgData((data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1 })));
+    } catch {}
   };
 
   const handleDelete = async () => {
@@ -278,7 +300,7 @@ export function UsersPanel() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ background: '#FAFAFA' }}>
-                {['', 'Nombre', 'Usuario', 'Email', 'Empresa', 'Rol', 'Calendario', 'Responsable', 'Proyectos', 'Vac. pend.', 'Aus.', 'Admin', 'Estado', ''].map(h => (
+                {['', 'Nombre', 'Usuario', 'Email', 'Empresa', 'Rol', 'Proyectos', 'Dedicación', 'Intercontrato', 'Calendario', 'Vac. pend.', 'Admin', 'Estado', ''].map(h => (
                   <th key={h} style={{ padding: '7px 6px', fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', borderBottom: '2px solid #E5E5EA', whiteSpace: 'nowrap', textAlign: h === 'Nombre' ? 'left' : 'center' }}>{h}</th>
                 ))}
               </tr>
@@ -286,9 +308,10 @@ export function UsersPanel() {
             <tbody>
               {filtered.map((m, i) => {
                 const vacPend = Math.max(0, (m.annual_vac_days || ANNUAL_VAC_DAYS) + (m.prev_year_pending || 0) - vacUsed(m));
-                const aus = ausCount(m);
                 const status = (m as Record<string, unknown>).status as string || 'active';
                 const projs = memberProjects(m);
+                const ded = memberDedication(m);
+                const inter = memberIntercontrato(m);
                 return (
                   <tr key={m.id} style={{ background: i % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
@@ -303,8 +326,6 @@ export function UsersPanel() {
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
                       {m.role_label ? <span style={{ fontSize: 9, fontWeight: 600, color: '#5856D6', background: '#5856D610', padding: '2px 6px', borderRadius: 5 }}>{m.role_label}</span> : <span style={{ color: '#D1D1D6' }}>—</span>}
                     </td>
-                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10, color: '#6E6E73' }}>{calName(m)}</td>
-                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10, color: '#6E6E73' }}>{managerName(m)}</td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
                       {projs.length > 0 ? (
                         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -313,8 +334,14 @@ export function UsersPanel() {
                         </div>
                       ) : <span style={{ color: '#D1D1D6' }}>—</span>}
                     </td>
+                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 700, fontSize: 11, color: ded >= 1 ? '#34C759' : ded > 0 ? '#007AFF' : '#D1D1D6' }}>
+                      {ded > 0 ? `${Math.round(ded * 100)}%` : '—'}
+                    </td>
+                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 700, fontSize: 11, color: inter > 0.5 ? '#FF3B30' : inter > 0 ? '#FF9500' : '#34C759' }}>
+                      {Math.round(inter * 100)}%
+                    </td>
+                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10, color: '#6E6E73' }}>{calName(m)}</td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 600, color: vacPend <= 5 ? '#FF3B30' : vacPend <= 10 ? '#FF9500' : '#34C759' }}>{vacPend}</td>
-                    <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', color: aus > 0 ? '#FF9500' : '#D1D1D6' }}>{aus}</td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
                       <input type="checkbox" checked={!!m.is_superuser} onChange={() => toggleSuperuser(m)} style={{ accentColor: '#007AFF', cursor: 'pointer' }} />
                     </td>
