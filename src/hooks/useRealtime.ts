@@ -75,11 +75,8 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
     try { localStorage.setItem(`rf-retro-${sala}`, JSON.stringify(s)); } catch {}
   };
 
-  // ── Load initial state from Supabase ──
+  // ── Load initial state from Supabase (ALWAYS, prefer DB if richer) ──
   useEffect(() => {
-    const hasData = (state.actions?.length ?? 0) > 0 || (state.risks?.length ?? 0) > 0;
-    if (hasData) { initialLoaded.current = true; return; }
-
     log.info('Loading initial state from Supabase...', { sala });
     (async () => {
       try {
@@ -96,14 +93,25 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
 
         if (data?.[0]?.data) {
           const snap = data[0].data as any;
-          log.info('Recovered snapshot', { actions: snap.actions?.length || 0, risks: snap.risks?.length || 0 });
+          const dbActions = snap.actions?.length || 0;
+          const dbRisks = snap.risks?.length || 0;
+          const dbNotes = snap.notes?.length || 0;
+          log.info('DB snapshot', { actions: dbActions, risks: dbRisks, notes: dbNotes });
+
           setState(prev => {
+            const localActions = prev.actions?.length || 0;
+            const localRisks = prev.risks?.length || 0;
+            const localNotes = prev.notes?.length || 0;
+
+            // Prefer whichever has MORE data (DB wins ties)
             const merged = { ...prev };
-            if (snap.actions?.length > 0 && !prev.actions?.length) merged.actions = snap.actions;
-            if (snap.risks?.length > 0 && !prev.risks?.length) merged.risks = snap.risks;
-            if (snap.notes?.length > 0 && !prev.notes?.length) merged.notes = snap.notes;
+            if (dbActions >= localActions) merged.actions = snap.actions || [];
+            if (dbRisks >= localRisks) merged.risks = snap.risks || [];
+            if (dbNotes >= localNotes) merged.notes = snap.notes || [];
             if (snap.tasks?.length > 0) merged.tasks = snap.tasks;
             if (snap.obj) merged.obj = snap.obj;
+
+            lastSavedActions.current = Math.max(lastSavedActions.current, (merged.actions || []).length);
             saveLocal(merged);
             return merged;
           });

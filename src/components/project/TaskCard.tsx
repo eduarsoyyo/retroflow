@@ -73,7 +73,7 @@ export function TaskCard({
             {task.owner && task.owner !== 'Sin asignar' && (
               <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#007AFF' }}>
                 <span style={{ fontSize: 12 }}>{avatar}</span>
-                {!compact && task.owner.split(' ')[0]}
+                {task.owner.split(' ')[0]}
               </span>
             )}
             {task.date && (
