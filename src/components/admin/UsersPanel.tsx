@@ -17,9 +17,46 @@ async function loadAdminRoles(): Promise<Array<{ id: string; name: string }>> {
   } catch { return []; }
 }
 
+// Load org_chart entries for a member (all projects)
+async function loadOrgForMember(memberId: string): Promise<Array<{ sala: string; dedication: number; start_date: string; end_date: string }>> {
+  try {
+    const { supabase } = await import('../../data/supabase');
+    const { data } = await supabase.from('org_chart').select('sala, dedication, start_date, end_date').eq('member_id', memberId);
+    return (data ?? []).map(d => ({ sala: d.sala, dedication: d.dedication ?? 1, start_date: d.start_date || '', end_date: d.end_date || '' }));
+  } catch { return []; }
+}
+
+// Save org_chart entry (upsert)
+async function saveOrgEntry(memberId: string, sala: string, dedication: number, startDate: string, endDate: string) {
+  try {
+    const { supabase } = await import('../../data/supabase');
+    const { data: existing } = await supabase.from('org_chart').select('id').eq('member_id', memberId).eq('sala', sala).limit(1).single();
+    if (existing) {
+      await supabase.from('org_chart').update({ dedication, start_date: startDate || null, end_date: endDate || null }).eq('id', existing.id);
+    } else {
+      await supabase.from('org_chart').insert({ member_id: memberId, sala, dedication, start_date: startDate || null, end_date: endDate || null });
+    }
+  } catch {}
+}
+
+// Delete org_chart entry
+async function deleteOrgEntry(memberId: string, sala: string) {
+  try {
+    const { supabase } = await import('../../data/supabase');
+    await supabase.from('org_chart').delete().eq('member_id', memberId).eq('sala', sala);
+  } catch {}
+}
+
 const inputS = { padding: '8px 12px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box' as const, fontFamily: 'inherit', background: '#F9F9FB' };
 const labelS = { fontSize: 10, fontWeight: 700 as number, color: '#86868B', display: 'block', marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: 0.3 };
 const cardS = { background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA' } as const;
+
+interface ProjectAssignment {
+  slug: string;
+  dedication: number; // 0-1
+  start_date: string;
+  end_date: string;
+}
 
 interface UserForm {
   name: string; username: string; email: string; password: string;
@@ -27,6 +64,7 @@ interface UserForm {
   calendario_id: string; manager_id: string;
   hire_date: string; status: string; is_superuser: boolean;
   rooms: string[]; avatar: string; color: string; house: string;
+  projectAssignments: ProjectAssignment[];
 }
 
 const emptyForm: UserForm = {
@@ -35,6 +73,7 @@ const emptyForm: UserForm = {
   calendario_id: '', manager_id: '',
   hire_date: '', status: 'active', is_superuser: false,
   rooms: [], avatar: '👤', color: '#007AFF', house: '',
+  projectAssignments: [],
 };
 
 const AVATAR_OPTIONS = ['🦊','🐻','🐼','🦁','🦉','🐍','🦡','🦅','🐉','🦄','🧙','⚡','🔮','🏰','🪄','🐺','🦋','🐝','🌙','🔥','💎','🎯','🍀','🦚'];
@@ -121,7 +160,12 @@ export function UsersPanel() {
   });
 
   const openCreate = () => { setForm({ ...emptyForm }); setEditMember(null); setModal('create'); };
-  const openEdit = (m: Member) => {
+  const openEdit = async (m: Member) => {
+    const orgEntries = await loadOrgForMember(m.id);
+    const pa: ProjectAssignment[] = (m.rooms || []).map(slug => {
+      const org = orgEntries.find(o => o.sala === slug);
+      return { slug, dedication: org?.dedication ?? 1, start_date: org?.start_date || '', end_date: org?.end_date || '' };
+    });
     setForm({
       name: m.name, username: m.username || '', email: m.email || '', password: '',
       role_label: m.role_label || '', company: m.company || '', phone: m.phone || '',
@@ -134,6 +178,7 @@ export function UsersPanel() {
       avatar: m.avatar || '👤',
       color: m.color || '#007AFF',
       house: m.house || '',
+      projectAssignments: pa,
     });
     setEditMember(m);
     setModal('edit');
@@ -169,6 +214,18 @@ export function UsersPanel() {
     const result = await saveTeamMember(payload as Member);
     if (result.ok) {
       if (form.password) await setUserPassword(result.data.id, form.password);
+      // Save org_chart entries (dedication, dates per project)
+      const memberId = result.data.id;
+      const oldRooms = editMember?.rooms || [];
+      const newRooms = form.rooms;
+      // Remove org entries for unassigned projects
+      for (const slug of oldRooms) {
+        if (!newRooms.includes(slug)) await deleteOrgEntry(memberId, slug);
+      }
+      // Upsert org entries for assigned projects
+      for (const pa of form.projectAssignments) {
+        await saveOrgEntry(memberId, pa.slug, pa.dedication, pa.start_date, pa.end_date);
+      }
       if (modal === 'create') setMembers(prev => [...prev, result.data]);
       else setMembers(prev => prev.map(m => m.id === editMember?.id ? result.data : m));
     }
@@ -374,20 +431,73 @@ export function UsersPanel() {
               {/* Proyectos */}
               <div>
                 <label style={labelS}>Proyectos asignados</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {rooms.map(r => {
-                    const assigned = (form.rooms || []).includes(r.slug);
-                    return (
-                      <button key={r.slug} onClick={() => {
-                        const updated = assigned ? form.rooms.filter(s => s !== r.slug) : [...form.rooms, r.slug];
-                        setForm({ ...form, rooms: updated });
-                      }}
-                        style={{ padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: assigned ? 'none' : '1.5px solid #E5E5EA', background: assigned ? '#007AFF' : '#FFF', color: assigned ? '#FFF' : '#6E6E73' }}>
-                        {assigned && '✓ '}{r.name}
-                      </button>
-                    );
-                  })}
+                {/* Available projects to add */}
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {rooms.filter(r => !form.rooms.includes(r.slug)).map(r => (
+                    <button key={r.slug} onClick={() => {
+                      setForm({
+                        ...form,
+                        rooms: [...form.rooms, r.slug],
+                        projectAssignments: [...form.projectAssignments, { slug: r.slug, dedication: 1, start_date: '', end_date: '' }],
+                      });
+                    }}
+                      style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: 'pointer', border: '1.5px dashed #E5E5EA', background: '#FFF', color: '#86868B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Icon name="Plus" size={9} color="#86868B" /> {r.name}
+                    </button>
+                  ))}
                 </div>
+                {/* Assigned projects with details */}
+                {form.projectAssignments.map((pa, idx) => {
+                  const room = rooms.find(r => r.slug === pa.slug);
+                  return (
+                    <div key={pa.slug} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#007AFF08', border: '1px solid #007AFF20', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#007AFF', minWidth: 90 }}>{room?.name || pa.slug}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <label style={{ fontSize: 9, color: '#86868B' }}>%</label>
+                        <input type="number" min="0" max="100" step="5"
+                          value={Math.round(pa.dedication * 100)}
+                          onInput={e => {
+                            const v = parseInt((e.target as HTMLInputElement).value) || 0;
+                            const updated = [...form.projectAssignments];
+                            updated[idx] = { ...pa, dedication: Math.min(1, Math.max(0, v / 100)) };
+                            setForm({ ...form, projectAssignments: updated });
+                          }}
+                          style={{ width: 48, padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, textAlign: 'center', outline: 'none' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <label style={{ fontSize: 9, color: '#86868B' }}>Desde</label>
+                        <input type="date" value={pa.start_date}
+                          onInput={e => {
+                            const updated = [...form.projectAssignments];
+                            updated[idx] = { ...pa, start_date: (e.target as HTMLInputElement).value };
+                            setForm({ ...form, projectAssignments: updated });
+                          }}
+                          style={{ padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <label style={{ fontSize: 9, color: '#86868B' }}>Hasta</label>
+                        <input type="date" value={pa.end_date}
+                          onInput={e => {
+                            const updated = [...form.projectAssignments];
+                            updated[idx] = { ...pa, end_date: (e.target as HTMLInputElement).value };
+                            setForm({ ...form, projectAssignments: updated });
+                          }}
+                          style={{ padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
+                      </div>
+                      <button onClick={() => {
+                        setForm({
+                          ...form,
+                          rooms: form.rooms.filter(s => s !== pa.slug),
+                          projectAssignments: form.projectAssignments.filter((_, i) => i !== idx),
+                        });
+                      }}
+                        style={{ marginLeft: 'auto', width: 20, height: 20, borderRadius: 5, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name="X" size={9} color="#FF3B30" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {form.projectAssignments.length === 0 && <p style={{ fontSize: 10, color: '#C7C7CC', textAlign: 'center', padding: 6 }}>Sin proyectos asignados</p>}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
