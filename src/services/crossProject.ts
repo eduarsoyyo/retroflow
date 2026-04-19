@@ -18,10 +18,26 @@ export interface CrossRiskAlert {
   risks: Array<{ sala: string; roomName: string; riskText: string; level: string }>;
 }
 
+export interface OrgPeriod {
+  sala: string;
+  name: string;
+  dedication: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface ConsultantView {
+  member: Member;
+  totalDedToday: number;
+  intercontrato: number;
+  periods: OrgPeriod[];
+}
+
 export interface CrossProjectData {
   overloads: OverloadAlert[];
   crossRisks: CrossRiskAlert[];
   memberProjects: Array<{ member: Member; projects: Array<{ sala: string; name: string; dedication: number }> }>;
+  consultants: ConsultantView[];
 }
 
 export async function loadCrossProjectData(): Promise<CrossProjectData> {
@@ -133,5 +149,36 @@ export async function loadCrossProjectData(): Promise<CrossProjectData> {
     }
   }
 
-  return { overloads, crossRisks, memberProjects };
+  // Build consultant view: all periods per member
+  const today = new Date().toISOString().slice(0, 10);
+  const consultants: ConsultantView[] = members.map(member => {
+    const allPeriods: OrgPeriod[] = [];
+    for (const sala of member.rooms || []) {
+      const room = rooms.find(r => r.slug === sala);
+      const entries = (orgCharts[sala] || []).filter(o => o.member_id === member.id);
+      for (const e of entries) {
+        allPeriods.push({
+          sala,
+          name: room?.name || sala,
+          dedication: e.dedication || 1,
+          start_date: e.start_date || '',
+          end_date: e.end_date || '',
+        });
+      }
+      // If no org entry, add a default
+      if (entries.length === 0) {
+        allPeriods.push({ sala, name: room?.name || sala, dedication: 1, start_date: '', end_date: '' });
+      }
+    }
+    // Calculate today's dedication
+    const todayDed = allPeriods.reduce((s, p) => {
+      const st = p.start_date || '2000-01-01';
+      const en = p.end_date || '2099-12-31';
+      if (today >= st && today <= en) return s + p.dedication;
+      return s;
+    }, 0);
+    return { member, totalDedToday: todayDed, intercontrato: Math.max(0, 1 - todayDed), periods: allPeriods };
+  }).filter(c => c.periods.length > 0);
+
+  return { overloads, crossRisks, memberProjects, consultants };
 }

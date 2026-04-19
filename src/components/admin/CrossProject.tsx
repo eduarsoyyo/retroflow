@@ -1,11 +1,39 @@
-// ═══ CROSS-PROJECT — Overload alerts + resource allocation matrix ═══
-import { useState, useEffect } from 'preact/hooks';
-import { loadCrossProjectData, type CrossProjectData, type OverloadAlert } from '../../services/crossProject';
+// ═══ CROSS-PROJECT — Overload alerts + resource allocation matrix + consultant view ═══
+import { useState, useEffect, useMemo } from 'preact/hooks';
+import { loadCrossProjectData, type CrossProjectData, type ConsultantView } from '../../services/crossProject';
 import { Icon } from '../common/Icon';
+
+const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// Dedication for a project in a specific month (weighted avg of active days)
+function dedForMonth(periods: ConsultantView['periods'], sala: string, year: number, month: number): number {
+  const projPeriods = periods.filter(p => p.sala === sala);
+  if (projPeriods.length === 0) return 0;
+  // If single open-ended period, return its dedication
+  if (projPeriods.length === 1 && !projPeriods[0].start_date && !projPeriods[0].end_date) return projPeriods[0].dedication;
+  // Count business days in month, find active periods
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let totalDed = 0;
+  let bDays = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(year, month, d);
+    if (dt.getDay() === 0 || dt.getDay() === 6) continue;
+    bDays++;
+    const ds = dt.toISOString().slice(0, 10);
+    for (const p of projPeriods) {
+      const s = p.start_date || '2000-01-01';
+      const e = p.end_date || '2099-12-31';
+      if (ds >= s && ds <= e) { totalDed += p.dedication; break; }
+    }
+  }
+  return bDays > 0 ? totalDed / bDays : 0;
+}
 
 export function CrossProject() {
   const [data, setData] = useState<CrossProjectData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const yr = new Date().getFullYear();
 
   useEffect(() => {
     loadCrossProjectData().then(d => { setData(d); setLoading(false); });
@@ -14,7 +42,7 @@ export function CrossProject() {
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#86868B' }}>Cargando datos cross-proyecto...</div>;
   if (!data) return null;
 
-  const { overloads, crossRisks, memberProjects } = data;
+  const { overloads, crossRisks, memberProjects, consultants } = data;
   const allProjects = [...new Set(memberProjects.flatMap(mp => mp.projects.map(p => p.sala)))];
   const projectNames: Record<string, string> = {};
   memberProjects.forEach(mp => mp.projects.forEach(p => { projectNames[p.sala] = p.name; }));
@@ -82,7 +110,7 @@ export function CrossProject() {
       )}
 
       {/* Resource allocation matrix */}
-      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, overflow: 'auto' }}>
+      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16, overflow: 'auto', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <Icon name="Grid3X3" size={16} color="#5856D6" />
           <span style={{ fontSize: 14, fontWeight: 700 }}>Matriz de asignación</span>
@@ -137,6 +165,135 @@ export function CrossProject() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Consultant View (collapsible) ── */}
+      <div style={{ background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA', padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Icon name="Users" size={16} color="#007AFF" />
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Vista por consultor — {yr}</span>
+        </div>
+        {consultants.map(c => {
+          const isOpen = expanded.has(c.member.id);
+          const uniqueProjects = [...new Set(c.periods.map(p => p.sala))];
+          const interPct = Math.round(c.intercontrato * 100);
+          return (
+            <div key={c.member.id} style={{ marginBottom: 4 }}>
+              {/* Header row */}
+              <div onClick={() => { const s = new Set(expanded); isOpen ? s.delete(c.member.id) : s.add(c.member.id); setExpanded(s); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 10, background: isOpen ? '#007AFF08' : '#FAFAFA', cursor: 'pointer', border: isOpen ? '1px solid #007AFF20' : '1px solid transparent' }}>
+                <Icon name={isOpen ? 'ChevronDown' : 'ChevronRight'} size={12} color="#86868B" />
+                <span style={{ fontSize: 16 }}>{c.member.avatar || '👤'}</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{c.member.name}</span>
+                  <span style={{ fontSize: 10, color: '#86868B', marginLeft: 8 }}>{c.member.role_label}</span>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.totalDedToday >= 1 ? '#34C759' : c.totalDedToday > 0 ? '#007AFF' : '#FF3B30' }}>
+                  {Math.round(c.totalDedToday * 100)}%
+                </span>
+                {interPct > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 600, color: interPct > 50 ? '#FF3B30' : '#FF9500', background: interPct > 50 ? '#FF3B3010' : '#FF950010', padding: '2px 6px', borderRadius: 5 }}>
+                    IC {interPct}%
+                  </span>
+                )}
+              </div>
+              {/* Expanded: monthly breakdown */}
+              {isOpen && (
+                <div style={{ padding: '8px 12px 8px 36px', overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '4px 6px', borderBottom: '2px solid #E5E5EA', color: '#86868B', fontWeight: 700, fontSize: 9 }}>Proyecto</th>
+                        {MO.map((m, i) => {
+                          const isNow = i === new Date().getMonth();
+                          return <th key={m} style={{ textAlign: 'center', padding: '4px 3px', borderBottom: '2px solid #E5E5EA', color: isNow ? '#007AFF' : '#86868B', fontWeight: 700, fontSize: 9, background: isNow ? '#007AFF08' : undefined }}>{m}</th>;
+                        })}
+                        <th style={{ textAlign: 'center', padding: '4px 6px', borderBottom: '2px solid #E5E5EA', color: '#1D1D1F', fontWeight: 700, fontSize: 9 }}>Anual</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uniqueProjects.map(sala => {
+                        const pName = c.periods.find(p => p.sala === sala)?.name || sala;
+                        const monthly = MO.map((_, mi) => dedForMonth(c.periods, sala, yr, mi));
+                        const annual = monthly.reduce((s, v) => s + v, 0) / 12;
+                        return (
+                          <tr key={sala}>
+                            <td style={{ padding: '4px 6px', borderBottom: '1px solid #F2F2F7', fontWeight: 600, color: '#007AFF', whiteSpace: 'nowrap' }}>{pName}</td>
+                            {monthly.map((v, mi) => {
+                              const isNow = mi === new Date().getMonth();
+                              const pct = Math.round(v * 100);
+                              return (
+                                <td key={mi} style={{ textAlign: 'center', padding: '3px 2px', borderBottom: '1px solid #F2F2F7', background: isNow ? '#007AFF06' : undefined }}>
+                                  {pct > 0 ? (
+                                    <span style={{ fontWeight: 700, fontSize: 10, color: pct >= 100 ? '#007AFF' : pct >= 50 ? '#34C759' : '#86868B' }}>{pct}%</span>
+                                  ) : (
+                                    <span style={{ color: '#E5E5EA', fontSize: 9 }}>—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td style={{ textAlign: 'center', padding: '3px 6px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: '#5856D6', fontSize: 11 }}>
+                              {Math.round(annual * 100)}%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Total row */}
+                      <tr style={{ background: '#F9F9FB' }}>
+                        <td style={{ padding: '4px 6px', fontWeight: 700, fontSize: 10 }}>Total</td>
+                        {MO.map((_, mi) => {
+                          const total = uniqueProjects.reduce((s, sala) => s + dedForMonth(c.periods, sala, yr, mi), 0);
+                          const pct = Math.round(total * 100);
+                          const isNow = mi === new Date().getMonth();
+                          return (
+                            <td key={mi} style={{ textAlign: 'center', padding: '3px 2px', fontWeight: 800, fontSize: 10, color: pct > 100 ? '#FF3B30' : pct === 100 ? '#34C759' : '#FF9500', background: isNow ? '#007AFF06' : undefined }}>
+                              {pct}%
+                            </td>
+                          );
+                        })}
+                        <td style={{ textAlign: 'center', padding: '3px 6px', fontWeight: 800, fontSize: 11, color: '#1D1D1F' }}>
+                          {Math.round(uniqueProjects.reduce((s, sala) => s + MO.reduce((sm, _, mi) => sm + dedForMonth(c.periods, sala, yr, mi), 0) / 12, 0) * 100)}%
+                        </td>
+                      </tr>
+                      {/* IC row */}
+                      <tr>
+                        <td style={{ padding: '4px 6px', fontWeight: 600, color: '#FF9500', fontSize: 10 }}>Intercontrato</td>
+                        {MO.map((_, mi) => {
+                          const total = uniqueProjects.reduce((s, sala) => s + dedForMonth(c.periods, sala, yr, mi), 0);
+                          const ic = Math.round(Math.max(0, 1 - total) * 100);
+                          const isNow = mi === new Date().getMonth();
+                          return (
+                            <td key={mi} style={{ textAlign: 'center', padding: '3px 2px', fontWeight: 700, fontSize: 10, color: ic > 50 ? '#FF3B30' : ic > 0 ? '#FF9500' : '#34C759', background: isNow ? '#007AFF06' : undefined }}>
+                              {ic > 0 ? `${ic}%` : <span style={{ color: '#34C759' }}>0%</span>}
+                            </td>
+                          );
+                        })}
+                        <td style={{ textAlign: 'center', padding: '3px 6px', fontWeight: 800, fontSize: 11, color: interPct > 50 ? '#FF3B30' : interPct > 0 ? '#FF9500' : '#34C759' }}>
+                          {interPct}%
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {/* Periods detail */}
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase' }}>Periodos</span>
+                    {c.periods.map((p, i) => (
+                      <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 10, marginTop: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 600, color: '#007AFF' }}>{p.name}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700 }}>{Math.round(p.dedication * 100)}%</span>
+                        <span style={{ fontSize: 8, color: '#86868B' }}>
+                          {p.start_date ? `${p.start_date.slice(8,10)}/${p.start_date.slice(5,7)}` : '∞'}
+                          {' → '}
+                          {p.end_date ? `${p.end_date.slice(8,10)}/${p.end_date.slice(5,7)}` : '∞'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
