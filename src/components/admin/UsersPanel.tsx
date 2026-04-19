@@ -17,25 +17,32 @@ async function loadAdminRoles(): Promise<Array<{ id: string; name: string }>> {
   } catch { return []; }
 }
 
-// Load org_chart entries for a member (all projects)
-async function loadOrgForMember(memberId: string): Promise<Array<{ sala: string; dedication: number; start_date: string; end_date: string }>> {
+// Load org_chart entries for a member (all projects, multiple periods)
+async function loadOrgForMember(memberId: string): Promise<Array<{ id: string; sala: string; dedication: number; start_date: string; end_date: string }>> {
   try {
     const { supabase } = await import('../../data/supabase');
-    const { data } = await supabase.from('org_chart').select('sala, dedication, start_date, end_date').eq('member_id', memberId);
-    return (data ?? []).map(d => ({ sala: d.sala, dedication: d.dedication ?? 1, start_date: d.start_date || '', end_date: d.end_date || '' }));
+    const { data } = await supabase.from('org_chart').select('id, sala, dedication, start_date, end_date').eq('member_id', memberId);
+    return (data ?? []).map(d => ({ id: d.id, sala: d.sala, dedication: d.dedication ?? 1, start_date: d.start_date || '', end_date: d.end_date || '' }));
   } catch { return []; }
 }
 
-// Save org_chart entry (upsert)
-async function saveOrgEntry(memberId: string, sala: string, dedication: number, startDate: string, endDate: string) {
+// Save all org_chart entries for a member (delete old, insert new)
+async function saveOrgEntries(memberId: string, assignments: ProjectAssignment[]) {
   try {
     const { supabase } = await import('../../data/supabase');
-    const { data: existing } = await supabase.from('org_chart').select('id').eq('member_id', memberId).eq('sala', sala).limit(1).single();
-    if (existing) {
-      await supabase.from('org_chart').update({ dedication, start_date: startDate || null, end_date: endDate || null }).eq('id', existing.id);
-    } else {
-      await supabase.from('org_chart').insert({ member_id: memberId, sala, dedication, start_date: startDate || null, end_date: endDate || null });
-    }
+    // Delete all existing entries for this member
+    await supabase.from('org_chart').delete().eq('member_id', memberId);
+    // Insert new entries
+    const rows = assignments.flatMap(a =>
+      a.periods.map(p => ({
+        member_id: memberId,
+        sala: a.slug,
+        dedication: p.dedication,
+        start_date: p.start_date || null,
+        end_date: p.end_date || null,
+      }))
+    );
+    if (rows.length > 0) await supabase.from('org_chart').insert(rows);
   } catch {}
 }
 
@@ -51,11 +58,16 @@ const inputS = { padding: '8px 12px', borderRadius: 10, border: '1.5px solid #E5
 const labelS = { fontSize: 10, fontWeight: 700 as number, color: '#86868B', display: 'block', marginBottom: 3, textTransform: 'uppercase' as const, letterSpacing: 0.3 };
 const cardS = { background: '#FFF', borderRadius: 14, border: '1.5px solid #E5E5EA' } as const;
 
-interface ProjectAssignment {
-  slug: string;
+interface DedicationPeriod {
+  orgId?: string;
   dedication: number; // 0-1
   start_date: string;
   end_date: string;
+}
+
+interface ProjectAssignment {
+  slug: string;
+  periods: DedicationPeriod[];
 }
 
 interface UserForm {
@@ -95,7 +107,7 @@ export function UsersPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
   const [calendarios, setCalendarios] = useState<Calendario[]>([]);
-  const [orgData, setOrgData] = useState<Array<{ member_id: string; sala: string; dedication: number }>>([]);
+  const [orgData, setOrgData] = useState<Array<{ member_id: string; sala: string; dedication: number; start_date: string; end_date: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
@@ -109,8 +121,8 @@ export function UsersPanel() {
     const loadAllOrg = async () => {
       try {
         const { supabase } = await import('../../data/supabase');
-        const { data } = await supabase.from('org_chart').select('member_id, sala, dedication');
-        return (data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1 }));
+        const { data } = await supabase.from('org_chart').select('member_id, sala, dedication, start_date, end_date');
+        return (data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1, start_date: d.start_date || '', end_date: d.end_date || '' }));
       } catch { return []; }
     };
     Promise.all([loadTeamMembers(), loadAdminRoles(), loadCalendarios(), loadRooms(), loadAllOrg()]).then(([mR, rolesData, cals, roomsR, org]) => {
@@ -123,10 +135,18 @@ export function UsersPanel() {
     });
   }, []);
 
-  // Dedication helpers
+  // Dedication helpers (current = based on today's date)
+  const today = new Date().toISOString().slice(0, 10);
   const memberDedication = (m: Member) => {
     const entries = orgData.filter(o => o.member_id === m.id);
-    return entries.reduce((s, e) => s + (e.dedication || 0), 0);
+    // Only count periods active today
+    return entries.filter(e => {
+      const s = (e as any).start_date || '';
+      const ed = (e as any).end_date || '';
+      if (s && s > today) return false;
+      if (ed && ed < today) return false;
+      return true;
+    }).reduce((s, e) => s + (e.dedication || 0), 0);
   };
   const memberIntercontrato = (m: Member) => Math.max(0, 1 - memberDedication(m));
 
@@ -178,10 +198,16 @@ export function UsersPanel() {
   const openCreate = () => { setForm({ ...emptyForm }); setEditMember(null); setModal('create'); };
   const openEdit = async (m: Member) => {
     const orgEntries = await loadOrgForMember(m.id);
-    const pa: ProjectAssignment[] = (m.rooms || []).map(slug => {
-      const org = orgEntries.find(o => o.sala === slug);
-      return { slug, dedication: org?.dedication ?? 1, start_date: org?.start_date || '', end_date: org?.end_date || '' };
-    });
+    // Group by sala → multiple periods per project
+    const paMap: Record<string, DedicationPeriod[]> = {};
+    for (const o of orgEntries) {
+      if (!paMap[o.sala]) paMap[o.sala] = [];
+      paMap[o.sala].push({ orgId: o.id, dedication: o.dedication, start_date: o.start_date, end_date: o.end_date });
+    }
+    const pa: ProjectAssignment[] = (m.rooms || []).map(slug => ({
+      slug,
+      periods: paMap[slug] || [{ dedication: 1, start_date: '', end_date: '' }],
+    }));
     setForm({
       name: m.name, username: m.username || '', email: m.email || '', password: '',
       role_label: m.role_label || '', company: m.company || '', phone: m.phone || '',
@@ -230,18 +256,9 @@ export function UsersPanel() {
     const result = await saveTeamMember(payload as Member);
     if (result.ok) {
       if (form.password) await setUserPassword(result.data.id, form.password);
-      // Save org_chart entries (dedication, dates per project)
+      // Save org_chart entries (multiple periods per project)
       const memberId = result.data.id;
-      const oldRooms = editMember?.rooms || [];
-      const newRooms = form.rooms;
-      // Remove org entries for unassigned projects
-      for (const slug of oldRooms) {
-        if (!newRooms.includes(slug)) await deleteOrgEntry(memberId, slug);
-      }
-      // Upsert org entries for assigned projects
-      for (const pa of form.projectAssignments) {
-        await saveOrgEntry(memberId, pa.slug, pa.dedication, pa.start_date, pa.end_date);
-      }
+      await saveOrgEntries(memberId, form.projectAssignments);
       if (modal === 'create') setMembers(prev => [...prev, result.data]);
       else setMembers(prev => prev.map(m => m.id === editMember?.id ? result.data : m));
     }
@@ -251,8 +268,8 @@ export function UsersPanel() {
     // Reload org data for table
     try {
       const { supabase } = await import('../../data/supabase');
-      const { data } = await supabase.from('org_chart').select('member_id, sala, dedication');
-      setOrgData((data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1 })));
+      const { data } = await supabase.from('org_chart').select('member_id, sala, dedication, start_date, end_date');
+      setOrgData((data ?? []).map(d => ({ member_id: d.member_id, sala: d.sala, dedication: d.dedication ?? 1, start_date: d.start_date || '', end_date: d.end_date || '' })));
     } catch {}
   };
 
@@ -465,7 +482,7 @@ export function UsersPanel() {
                       setForm({
                         ...form,
                         rooms: [...form.rooms, r.slug],
-                        projectAssignments: [...form.projectAssignments, { slug: r.slug, dedication: 1, start_date: '', end_date: '' }],
+                        projectAssignments: [...form.projectAssignments, { slug: r.slug, periods: [{ dedication: 1, start_date: '', end_date: '' }] }],
                       });
                     }}
                       style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: 'pointer', border: '1.5px dashed #E5E5EA', background: '#FFF', color: '#86868B', display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -473,54 +490,73 @@ export function UsersPanel() {
                     </button>
                   ))}
                 </div>
-                {/* Assigned projects with details */}
-                {form.projectAssignments.map((pa, idx) => {
+                {/* Assigned projects with periods */}
+                {form.projectAssignments.map((pa, paIdx) => {
                   const room = rooms.find(r => r.slug === pa.slug);
                   return (
-                    <div key={pa.slug} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#007AFF08', border: '1px solid #007AFF20', marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#007AFF', minWidth: 90 }}>{room?.name || pa.slug}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <label style={{ fontSize: 9, color: '#86868B' }}>%</label>
-                        <input type="number" min="0" max="100" step="5"
-                          value={Math.round(pa.dedication * 100)}
-                          onInput={e => {
-                            const v = parseInt((e.target as HTMLInputElement).value) || 0;
-                            const updated = [...form.projectAssignments];
-                            updated[idx] = { ...pa, dedication: Math.min(1, Math.max(0, v / 100)) };
-                            setForm({ ...form, projectAssignments: updated });
-                          }}
-                          style={{ width: 48, padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, textAlign: 'center', outline: 'none' }} />
+                    <div key={pa.slug} style={{ padding: '8px 10px', borderRadius: 10, background: '#007AFF06', border: '1px solid #007AFF15', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#007AFF' }}>{room?.name || pa.slug}</span>
+                        <span style={{ fontSize: 9, color: '#86868B' }}>{pa.periods.length} periodo{pa.periods.length !== 1 ? 's' : ''}</span>
+                        <button onClick={() => {
+                          const updated = [...form.projectAssignments];
+                          updated[paIdx] = { ...pa, periods: [...pa.periods, { dedication: 1, start_date: '', end_date: '' }] };
+                          setForm({ ...form, projectAssignments: updated });
+                        }}
+                          style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 5, border: '1px solid #007AFF30', background: '#FFF', fontSize: 9, fontWeight: 600, color: '#007AFF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <Icon name="Plus" size={8} color="#007AFF" /> Periodo
+                        </button>
+                        <button onClick={() => setForm({ ...form, rooms: form.rooms.filter(s => s !== pa.slug), projectAssignments: form.projectAssignments.filter((_, i) => i !== paIdx) })}
+                          style={{ width: 20, height: 20, borderRadius: 5, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon name="Trash2" size={9} color="#FF3B30" />
+                        </button>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <label style={{ fontSize: 9, color: '#86868B' }}>Desde</label>
-                        <input type="date" value={pa.start_date}
-                          onInput={e => {
-                            const updated = [...form.projectAssignments];
-                            updated[idx] = { ...pa, start_date: (e.target as HTMLInputElement).value };
-                            setForm({ ...form, projectAssignments: updated });
-                          }}
-                          style={{ padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <label style={{ fontSize: 9, color: '#86868B' }}>Hasta</label>
-                        <input type="date" value={pa.end_date}
-                          onInput={e => {
-                            const updated = [...form.projectAssignments];
-                            updated[idx] = { ...pa, end_date: (e.target as HTMLInputElement).value };
-                            setForm({ ...form, projectAssignments: updated });
-                          }}
-                          style={{ padding: '3px 4px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
-                      </div>
-                      <button onClick={() => {
-                        setForm({
-                          ...form,
-                          rooms: form.rooms.filter(s => s !== pa.slug),
-                          projectAssignments: form.projectAssignments.filter((_, i) => i !== idx),
-                        });
-                      }}
-                        style={{ marginLeft: 'auto', width: 20, height: 20, borderRadius: 5, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon name="X" size={9} color="#FF3B30" />
-                      </button>
+                      {pa.periods.map((p, pIdx) => (
+                        <div key={pIdx} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, paddingLeft: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <input type="number" min="0" max="100" step="5" value={Math.round(p.dedication * 100)}
+                              onInput={e => {
+                                const v = parseInt((e.target as HTMLInputElement).value) || 0;
+                                const updated = [...form.projectAssignments];
+                                const periods = [...pa.periods];
+                                periods[pIdx] = { ...p, dedication: Math.min(1, Math.max(0, v / 100)) };
+                                updated[paIdx] = { ...pa, periods };
+                                setForm({ ...form, projectAssignments: updated });
+                              }}
+                              style={{ width: 42, padding: '3px 2px', borderRadius: 5, border: '1px solid #E5E5EA', fontSize: 11, textAlign: 'center', outline: 'none', fontWeight: 700 }} />
+                            <span style={{ fontSize: 9, color: '#86868B' }}>%</span>
+                          </div>
+                          <input type="date" value={p.start_date}
+                            onInput={e => {
+                              const updated = [...form.projectAssignments];
+                              const periods = [...pa.periods];
+                              periods[pIdx] = { ...p, start_date: (e.target as HTMLInputElement).value };
+                              updated[paIdx] = { ...pa, periods };
+                              setForm({ ...form, projectAssignments: updated });
+                            }}
+                            style={{ padding: '3px 3px', borderRadius: 5, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
+                          <span style={{ fontSize: 9, color: '#C7C7CC' }}>→</span>
+                          <input type="date" value={p.end_date}
+                            onInput={e => {
+                              const updated = [...form.projectAssignments];
+                              const periods = [...pa.periods];
+                              periods[pIdx] = { ...p, end_date: (e.target as HTMLInputElement).value };
+                              updated[paIdx] = { ...pa, periods };
+                              setForm({ ...form, projectAssignments: updated });
+                            }}
+                            style={{ padding: '3px 3px', borderRadius: 5, border: '1px solid #E5E5EA', fontSize: 10, outline: 'none' }} />
+                          {pa.periods.length > 1 && (
+                            <button onClick={() => {
+                              const updated = [...form.projectAssignments];
+                              updated[paIdx] = { ...pa, periods: pa.periods.filter((_, i) => i !== pIdx) };
+                              setForm({ ...form, projectAssignments: updated });
+                            }}
+                              style={{ width: 16, height: 16, borderRadius: 4, border: 'none', background: '#FF3B3010', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Icon name="X" size={7} color="#FF3B30" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
