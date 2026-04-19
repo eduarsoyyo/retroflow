@@ -37,7 +37,7 @@ const emptyForm: UserForm = {
   rooms: [], avatar: '👤', color: '#007AFF', house: '',
 };
 
-const AVATAR_OPTIONS = ['🦊','🐻','🐼','🦁','🦉','🐍','🦡','🦅','🐉','🦄','🧙','⚡','🔮','🏰','🪄','🐺','🦋','🐝','🧚','🐸','👤'];
+const AVATAR_OPTIONS = ['🦊','🐻','🐼','🦁','🦉','🐍','🦡','🦅','🐉','🦄','🧙','⚡','🔮','🏰','🪄','🐺','🦋','🐝','🌙','🔥','💎','🎯','🍀','🦚'];
 const HOUSE_OPTIONS = [
   { id: '', label: 'Sin casa', color: '#86868B', emoji: '' },
   { id: 'gryffindor', label: 'Gryffindor', color: '#AE0001', emoji: '🦁' },
@@ -45,7 +45,11 @@ const HOUSE_OPTIONS = [
   { id: 'ravenclaw', label: 'Ravenclaw', color: '#0E1A40', emoji: '🦅' },
   { id: 'hufflepuff', label: 'Hufflepuff', color: '#FFDB00', emoji: '🦡' },
 ];
-const COLOR_OPTIONS = ['#007AFF','#FF3B30','#34C759','#FF9500','#5856D6','#AF52DE','#FF2D55','#00C7BE','#1D1D1F'];
+const COLOR_OPTIONS = [
+  '#007AFF','#5856D6','#AF52DE','#FF2D55','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7',
+  '#1D1D1F','#3A3A3C','#0E1A40','#2A623D','#8B4513','#4A0E4E','#1B3A4B','#6B2D2D',
+  '#FFFFFF','#F0F0F5','#FFE5EC','#FFF3CD','#D4EDDA','#CCE5FF','#E8DAEF','#FDEBD0','#D5F5E3','#D6EAF8',
+];
 
 export function UsersPanel() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -299,7 +303,7 @@ export function UsersPanel() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div>
                   <label style={labelS}>Avatar</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3 }}>
                     {AVATAR_OPTIONS.map(a => (
                       <button key={a} onClick={() => setForm({ ...form, avatar: a })}
                         style={{ width: 28, height: 28, borderRadius: 8, border: form.avatar === a ? '2px solid #007AFF' : '1px solid #E5E5EA', background: form.avatar === a ? '#007AFF10' : '#FFF', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -313,7 +317,7 @@ export function UsersPanel() {
                   <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                     {COLOR_OPTIONS.map(c => (
                       <button key={c} onClick={() => setForm({ ...form, color: c })}
-                        style={{ width: 24, height: 24, borderRadius: 6, background: c, border: form.color === c ? '3px solid #1D1D1F' : '2px solid transparent', cursor: 'pointer' }} />
+                        style={{ width: 24, height: 24, borderRadius: 6, background: c, border: form.color === c ? '3px solid #1D1D1F' : `1px solid ${c === '#FFFFFF' || c === '#F0F0F5' ? '#E5E5EA' : 'transparent'}`, cursor: 'pointer' }} />
                     ))}
                   </div>
                 </div>
