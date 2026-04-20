@@ -12,7 +12,6 @@ import { RolesPanel } from './RolesPanel';
 import { CalendarPanel } from './CalendarPanel';
 import { EscaladoPanel } from './EscaladoPanel';
 import { CrossProject } from './CrossProject';
-import { ConsultantTimeline } from './ConsultantTimeline';
 import { ProjectsPanel } from './ProjectsPanel';
 import { ConfigPanel } from './ConfigPanel';
 import { Icon } from '@components/common/Icon';
@@ -52,7 +51,6 @@ const NAV: NavItem[] = [
       { id: 'roles',       icon: 'Shield',     label: 'Roles y Habilidades' },
       { id: 'calendarios', icon: 'Calendar',   label: 'Calendario / Convenio' },
       { id: 'organigrama', icon: 'GitBranch',  label: 'Organigrama' },
-      { id: 'timeline',    icon: 'Clock',      label: 'Consultant Timeline' },
       { id: 'cross',       icon: 'GitMerge',   label: 'Cross-proyecto' },
     ],
   },
@@ -268,7 +266,6 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
           {tab === 'roles' && <RolesPanel />}
           {tab === 'calendarios' && <CalendarPanel />}
           {tab === 'organigrama' && <AdminOrgChart />}
-          {tab === 'timeline' && <ConsultantTimeline />}
           {tab === 'cross' && <CrossProject />}
 
           {/* Maestros — legacy, will merge into RRHH later */}
