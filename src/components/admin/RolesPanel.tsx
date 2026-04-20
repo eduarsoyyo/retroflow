@@ -76,6 +76,8 @@ export function RolesPanel() {
   const [newRole, setNewRole] = useState('');
   const [editRole, setEditRole] = useState<string | null>(null);
   const [editRoleName, setEditRoleName] = useState('');
+  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+  const [assigningSaving, setAssigningSaving] = useState<string | null>(null);
 
   // Generic delete modal
   const [delModal, setDelModal] = useState<{ type: string; id: string; name: string } | null>(null);
@@ -120,6 +122,28 @@ export function RolesPanel() {
   // ── Handlers ──
   const handleAddRole = async () => { const t = newRole.trim(); if (!t || allRoleNames.includes(t)) return; await saveRole(t); setRoles(prev => [...prev, { id: t, name: t }]); setNewRole(''); };
   const handleEditRole = async (old: string) => { if (!editRoleName.trim() || editRoleName === old) { setEditRole(null); return; } await deleteRole(old); await saveRole(editRoleName.trim()); setRoles(prev => prev.map(r => r.name === old ? { ...r, name: editRoleName.trim() } : r)); for (const m of members.filter(x => x.role_label === old)) { const u = { ...m, role_label: editRoleName.trim() }; await saveTeamMember(u); setMembers(prev => prev.map(x => x.id === m.id ? u : x)); } setEditRole(null); };
+
+  const handleAssignRole = async (memberId: string, role: string) => {
+    setAssigningSaving(memberId);
+    const m = members.find(x => x.id === memberId);
+    if (m) {
+      const u = { ...m, role_label: role };
+      await saveTeamMember(u);
+      setMembers(prev => prev.map(x => x.id === memberId ? u : x));
+    }
+    setAssigningSaving(null);
+  };
+
+  const handleUnassignRole = async (memberId: string) => {
+    setAssigningSaving(memberId);
+    const m = members.find(x => x.id === memberId);
+    if (m) {
+      const u = { ...m, role_label: '' };
+      await saveTeamMember(u);
+      setMembers(prev => prev.map(x => x.id === memberId ? u : x));
+    }
+    setAssigningSaving(null);
+  };
 
   const handleSaveSkill = async () => {
     if (!skForm.name.trim() || !skForm.category.trim()) return;
@@ -178,24 +202,65 @@ export function RolesPanel() {
             <input value={newRole} onInput={e => setNewRole((e.target as HTMLInputElement).value)} onKeyDown={e => e.key === 'Enter' && handleAddRole()} placeholder="Nombre del nuevo rol…" style={{ ...inputS, flex: 1 }} />
             <button onClick={handleAddRole} disabled={!newRole.trim()} style={{ padding: '8px 18px', borderRadius: 10, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: newRole.trim() ? 1 : 0.4, whiteSpace: 'nowrap' }}>+ Añadir</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 10 }}>
             {allRoleNames.map(role => {
               const mems = byRole(role); const color = roleColor(role);
+              const isExp = expandedRole === role;
+              const unassigned = members.filter(m => m.role_label !== role);
               return (
-                <div key={role} style={{ ...cardS, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 16, fontWeight: 800, color }}>{role.charAt(0)}</span>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {editRole === role ? (
-                      <input value={editRoleName} onInput={e => setEditRoleName((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') handleEditRole(role); if (e.key === 'Escape') setEditRole(null); }} onBlur={() => handleEditRole(role)} autoFocus style={{ fontSize: 13, fontWeight: 700, border: '1px solid #007AFF', borderRadius: 6, padding: '2px 6px', outline: 'none', width: '100%' }} />
-                    ) : <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role}</div>}
-                    <div style={{ fontSize: 10, color: mems.length > 0 ? color : '#C7C7CC', fontWeight: 600 }}>{mems.length} persona{mems.length !== 1 ? 's' : ''}</div>
-                  </div>
-                  {(
-                    <div style={{ display: 'flex', gap: 3 }}>
+                <div key={role} style={{ ...cardS, overflow: 'hidden' }}>
+                  <div onClick={() => setExpandedRole(isExp ? null : role)}
+                    style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: isExp ? color + '06' : '#FFF' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 16, fontWeight: 800, color }}>{role.charAt(0)}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {editRole === role ? (
+                        <input value={editRoleName} onInput={e => setEditRoleName((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter') handleEditRole(role); if (e.key === 'Escape') setEditRole(null); }} onBlur={() => handleEditRole(role)} onClick={e => e.stopPropagation()} autoFocus style={{ fontSize: 13, fontWeight: 700, border: '1px solid #007AFF', borderRadius: 6, padding: '2px 6px', outline: 'none', width: '100%' }} />
+                      ) : <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role}</div>}
+                      <div style={{ fontSize: 10, color: mems.length > 0 ? color : '#C7C7CC', fontWeight: 600 }}>{mems.length} persona{mems.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 3 }} onClick={e => e.stopPropagation()}>
                       <button onClick={() => { setEditRole(role); setEditRoleName(role); }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="Edit" size={10} color="#007AFF" /></button>
                       <button onClick={() => { setDelModal({ type: 'role', id: role, name: role }); setDelConfirm(''); }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="Trash2" size={10} color="#FF3B30" /></button>
+                    </div>
+                    <Icon name={isExp ? 'ChevronDown' : 'ChevronRight'} size={14} color="#C7C7CC" />
+                  </div>
+
+                  {/* Expanded: assigned + assignable */}
+                  {isExp && (
+                    <div style={{ borderTop: '1px solid #F2F2F7', padding: '10px 14px' }}>
+                      {/* Currently assigned */}
+                      {mems.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', marginBottom: 4 }}>ASIGNADOS ({mems.length})</div>
+                          {mems.map(m => (
+                            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 8, background: color + '08', marginBottom: 3 }}>
+                              <div style={{ width: 22, height: 22, borderRadius: 6, background: m.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{m.avatar || '👤'}</div>
+                              <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{m.name}</span>
+                              <span style={{ fontSize: 9, color: '#86868B' }}>{m.company || ''}</span>
+                              <button onClick={() => handleUnassignRole(m.id)} disabled={assigningSaving === m.id}
+                                style={{ width: 20, height: 20, borderRadius: 5, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: assigningSaving === m.id ? 0.4 : 1 }}>
+                                <Icon name="X" size={9} color="#FF3B30" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {mems.length === 0 && <p style={{ fontSize: 11, color: '#C7C7CC', marginBottom: 8 }}>Nadie tiene este rol asignado</p>}
+
+                      {/* Available to assign */}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', marginBottom: 4 }}>ASIGNAR PERSONAS</div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {unassigned.map(m => (
+                          <button key={m.id} onClick={() => handleAssignRole(m.id, role)} disabled={assigningSaving === m.id}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, border: '1.5px dashed #E5E5EA', background: '#FFF', cursor: 'pointer', fontSize: 10, fontWeight: 500, opacity: assigningSaving === m.id ? 0.4 : 1 }}>
+                            <span style={{ fontSize: 12 }}>{m.avatar || '👤'}</span> {m.name.split(' ')[0]}
+                            {m.role_label && <span style={{ fontSize: 8, color: '#C7C7CC' }}>({m.role_label})</span>}
+                          </button>
+                        ))}
+                        {unassigned.length === 0 && <span style={{ fontSize: 10, color: '#C7C7CC' }}>Todos asignados</span>}
+                      </div>
                     </div>
                   )}
                 </div>
