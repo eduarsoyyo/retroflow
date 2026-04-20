@@ -166,7 +166,7 @@ export function RetroBoard({ user, sala, tipo, salaDisplay, onLogout, onBackToHo
       participants: Object.keys(online || {}).length + 1,
       totalMembers: teamMembers.length,
       actions: actions.length,
-      votes: notes.reduce((s: number, n: Record<string, unknown>) => s + (Array.isArray(n.votes) ? n.votes.length : 0), 0),
+      votes: (notes as Array<Record<string, unknown>>).reduce((s: number, n) => s + (Array.isArray(n.votes) ? n.votes.length : 0), 0),
       risksReviewed: Array.isArray(state.risks) && (state.risks as Array<Record<string, unknown>>).some(r => r.status === 'mitigated'),
       objectiveMet: obj?.met as boolean | null ?? null,
     });
@@ -421,7 +421,7 @@ export function RetroBoard({ user, sala, tipo, salaDisplay, onLogout, onBackToHo
       {detailTask && (() => {
         const epicNames = [...new Set((state.actions as Task[]).map(a => (a as Record<string, unknown>).epicLink as string).filter(Boolean))];
         return (
-        <TaskDetailModal task={detailTask} teamMembers={teamMembers} epics={epicNames} tags={tags} tagAssignments={tagAssignments} risks={(state.risks as Risk[]) || []}
+        <TaskDetailModal task={detailTask} teamMembers={teamMembers} epics={epicNames} tags={tags} tagAssignments={tagAssignments} risks={((state.risks || []) as any[])}
           onSave={updated => { upd('actions', (state.actions as Task[]).map(a => a.id === updated.id ? updated : a)); setDetailTask(null); }}
           onClose={() => setDetailTask(null)}
           onDelete={id => { upd('actions', (state.actions as Task[]).filter(a => a.id !== id)); setDetailTask(null); }}

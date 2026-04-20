@@ -3,11 +3,11 @@ import { filterTasks, sortTasks, taskMetrics, groupByStatus } from '../tasks';
 import type { Task } from '@app-types/index';
 
 const makeTasks = (): Task[] => [
-  { id: '1', text: 'Setup CI', owner: 'Eduardo', date: '2026-04-10', status: 'done', priority: 'high', voteScore: 0 },
-  { id: '2', text: 'Fix login bug', owner: 'Miguel', date: '2026-04-08', status: 'backlog', priority: 'critical', voteScore: 0 },
-  { id: '3', text: 'Write docs', owner: 'Eduardo', date: '2026-05-01', status: 'doing', priority: 'low', voteScore: 0 },
-  { id: '4', text: 'Deploy staging', owner: 'Cecilia', date: '', status: 'blocked', priority: 'medium', voteScore: 0 },
-  { id: '5', text: 'Archive old data', owner: '', status: 'cancelled', priority: 'low', voteScore: 0 },
+  { id: '1', text: 'Setup CI', owner: 'Eduardo', date: '2026-04-10', status: 'done', priority: 'high', voteScore: 0, type: 'task', progress: 100 },
+  { id: '2', text: 'Fix login bug', owner: 'Miguel', date: '2026-04-08', status: 'backlog', priority: 'critical', voteScore: 0, type: 'task', progress: 0 },
+  { id: '3', text: 'Write docs', owner: 'Eduardo', date: '2026-05-01', status: 'doing', priority: 'low', voteScore: 0, type: 'task', progress: 50 },
+  { id: '4', text: 'Deploy staging', owner: 'Cecilia', date: '', status: 'blocked', priority: 'medium', voteScore: 0, type: 'task', progress: 0 },
+  { id: '5', text: 'Archive old data', owner: '', status: 'cancelled', priority: 'low', voteScore: 0, type: 'task', progress: 0 },
 ];
 
 describe('filterTasks', () => {

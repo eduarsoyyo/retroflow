@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 export async function loadAdminRoles(): Promise<string[]> {
   try {
     const { data } = await supabase.from('admin_roles').select('name');
-    return data ? data.map((r: Record<string, unknown>) => r.name) : [];
+    return data ? data.map((r: Record<string, unknown>) => r.name as string) : [];
   } catch { return []; }
 }
 
