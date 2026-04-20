@@ -180,7 +180,7 @@ export function RolesPanel() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 10 }}>
             {allRoleNames.map(role => {
-              const mems = byRole(role); const color = roleColor(role); const isDb = roles.some(r => r.name === role);
+              const mems = byRole(role); const color = roleColor(role);
               return (
                 <div key={role} style={{ ...cardS, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -192,7 +192,7 @@ export function RolesPanel() {
                     ) : <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role}</div>}
                     <div style={{ fontSize: 10, color: mems.length > 0 ? color : '#C7C7CC', fontWeight: 600 }}>{mems.length} persona{mems.length !== 1 ? 's' : ''}</div>
                   </div>
-                  {isDb && (
+                  {(
                     <div style={{ display: 'flex', gap: 3 }}>
                       <button onClick={() => { setEditRole(role); setEditRoleName(role); }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="Edit" size={10} color="#007AFF" /></button>
                       <button onClick={() => { setDelModal({ type: 'role', id: role, name: role }); setDelConfirm(''); }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #FF3B3020', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="Trash2" size={10} color="#FF3B30" /></button>
