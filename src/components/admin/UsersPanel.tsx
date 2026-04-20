@@ -7,6 +7,7 @@ import { loadCalendarios, type Calendario } from '@data/calendarios';
 import { setUserPassword } from '@data/auth';
 import { Icon } from '@components/common/Icon';
 import { ANNUAL_VAC_DAYS } from '../../config/absenceTypes';
+import { UserDetail } from './UserDetail';
 
 // Load roles from admin table
 async function loadAdminRoles(): Promise<Array<{ id: string; name: string }>> {
@@ -120,6 +121,7 @@ export function UsersPanel() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
 
   useEffect(() => {
     const loadAllOrg = async () => {
@@ -298,6 +300,20 @@ export function UsersPanel() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: '#86868B' }}>Cargando usuarios…</div>;
 
+  // ── Ficha individual ──
+  if (selectedMember) {
+    return (
+      <UserDetail
+        member={selectedMember}
+        members={members}
+        rooms={rooms}
+        orgData={orgData}
+        onBack={() => setSelectedMember(null)}
+        onEdit={(m) => { setSelectedMember(null); openEdit(m); }}
+      />
+    );
+  }
+
   return (
     <div>
       {/* Header */}
@@ -340,7 +356,9 @@ export function UsersPanel() {
                         {m.avatar || '👤'}
                       </div>
                     </td>
-                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #F2F2F7', fontWeight: 700 }}>{m.name}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '1px solid #F2F2F7', fontWeight: 700 }}>
+                      <span onClick={() => setSelectedMember(m)} style={{ cursor: 'pointer', color: '#007AFF' }}>{m.name}</span>
+                    </td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', color: '#6E6E73' }}>{m.username || '—'}</td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10, color: '#6E6E73' }}>{m.email || '—'}</td>
                     <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10 }}>{m.company || '—'}</td>
