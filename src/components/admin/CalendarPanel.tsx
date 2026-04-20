@@ -23,8 +23,11 @@ export function CalendarPanel() {
   const [holidayPopup, setHolidayPopup] = useState<{ date: string } | null>(null);
   const [holidayName, setHolidayName] = useState('');
   const [showClone, setShowClone] = useState(false);
-  const [cloneHolidays, setCloneHolidays] = useState<Holiday[]>([]);
+  const [cloneHolidays, setCloneHolidays] = useState<(Holiday & { selected: boolean })[]>([]);
   const [cloneAssign, setCloneAssign] = useState<Set<string>>(new Set());
+  const [editModal, setEditModal] = useState(false);
+  const [editDraft, setEditDraft] = useState<Calendario | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     Promise.all([loadCalendarios(), loadTeamMembers()]).then(([cals, mR]) => {
@@ -70,7 +73,7 @@ export function CalendarPanel() {
   const openClone = () => {
     if (!editCal) return;
     const ny = calYear + 1;
-    setCloneHolidays(editCal.holidays.map(h => ({ ...h, date: h.date.replace(/^\d{4}/, String(ny)) })));
+    setCloneHolidays(editCal.holidays.map(h => ({ ...h, date: h.date.replace(/^\d{4}/, String(ny)), selected: true })));
     // Pre-select currently assigned members
     const assigned = members.filter(m => (m as Record<string, unknown>).calendario_id === editCal.id).map(m => m.id);
     setCloneAssign(new Set(assigned));
@@ -79,8 +82,9 @@ export function CalendarPanel() {
   const handleClone = async () => {
     if (!editCal) return;
     const ny = calYear + 1;
+    const selectedHols = cloneHolidays.filter(h => h.selected).map(({ selected, ...h }) => h);
     const saved = await saveCalendario({
-      name: editCal.name.replace(/\d{4}/, String(ny)), year: ny, region: editCal.region, holidays: cloneHolidays,
+      name: editCal.name.replace(/\d{4}/, String(ny)), year: ny, region: editCal.region, holidays: selectedHols,
       weekly_hours_normal: editCal.weekly_hours_normal, daily_hours_lj: editCal.daily_hours_lj, daily_hours_v: editCal.daily_hours_v,
       daily_hours_intensive: editCal.daily_hours_intensive, intensive_start: editCal.intensive_start, intensive_end: editCal.intensive_end,
       convenio_hours: editCal.convenio_hours, vacation_days: editCal.vacation_days, adjustment_days: editCal.adjustment_days,
@@ -93,6 +97,23 @@ export function CalendarPanel() {
       setMembers(prev => prev.map(m => cloneAssign.has(m.id) ? { ...m, calendario_id: saved.id } as Member : m));
     }
     setShowClone(false);
+  };
+
+  // ── Edit in modal with explicit save ──
+  const openEditModal = (cal: Calendario) => {
+    setEditDraft(JSON.parse(JSON.stringify(cal)));
+    setEditModal(true);
+  };
+  const handleSaveEdit = async () => {
+    if (!editDraft) return;
+    setSavingEdit(true);
+    const saved = await saveCalendario(editDraft);
+    if (saved) {
+      setCalendarios(prev => prev.map(c => c.id === saved.id ? saved : c));
+      setEditCal(saved);
+    }
+    setSavingEdit(false);
+    setEditModal(false);
   };
 
   // Mini month grid renderer
@@ -219,6 +240,10 @@ export function CalendarPanel() {
                 style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #5856D630', background: '#5856D608', color: '#5856D6', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Icon name="Copy" size={12} color="#5856D6" /> Copiar a {calYear + 1}
               </button>
+              <button onClick={() => openEditModal(editCal)}
+                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #007AFF30', background: '#007AFF08', color: '#007AFF', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="Edit" size={12} color="#007AFF" /> Editar en modal
+              </button>
             </div>
 
             {/* Holiday list dd/mm */}
@@ -281,11 +306,22 @@ export function CalendarPanel() {
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Copiar a {calYear + 1}</h3>
             <p style={{ fontSize: 12, color: '#86868B', marginBottom: 14 }}>Revisa los festivos y selecciona las personas a asignar al nuevo calendario.</p>
 
-            {/* Holidays */}
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', marginBottom: 4 }}>FESTIVOS ({cloneHolidays.length})</div>
+            {/* Holidays with checkboxes */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#86868B', textTransform: 'uppercase' }}>FESTIVOS ({cloneHolidays.filter(h => h.selected).length}/{cloneHolidays.length})</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setCloneHolidays(prev => prev.map(h => ({ ...h, selected: true })))}
+                  style={{ fontSize: 9, padding: '2px 8px', borderRadius: 5, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', color: '#007AFF', fontWeight: 600 }}>Todos</button>
+                <button onClick={() => setCloneHolidays(prev => prev.map(h => ({ ...h, selected: false })))}
+                  style={{ fontSize: 9, padding: '2px 8px', borderRadius: 5, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', color: '#86868B', fontWeight: 600 }}>Ninguno</button>
+              </div>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14, maxHeight: 200, overflowY: 'auto' }}>
               {cloneHolidays.map(h => (
-                <div key={h.date} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: '#F9F9FB', borderRadius: 8 }}>
+                <div key={h.date} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: h.selected ? '#F9F9FB' : '#F9F9FB80', borderRadius: 8, opacity: h.selected ? 1 : 0.5 }}>
+                  <input type="checkbox" checked={h.selected}
+                    onChange={() => setCloneHolidays(prev => prev.map(x => x.date === h.date ? { ...x, selected: !x.selected } : x))}
+                    style={{ accentColor: '#5856D6', cursor: 'pointer' }} />
                   <span style={{ fontWeight: 600, color: '#FF3B30', minWidth: 44, fontSize: 11 }}>{fmtDD(h.date)}</span>
                   <input value={h.name} onInput={e => setCloneHolidays(prev => prev.map(x => x.date === h.date ? { ...x, name: (e.target as HTMLInputElement).value } : x))}
                     style={{ flex: 1, border: '1px solid #E5E5EA', borderRadius: 6, padding: '3px 8px', fontSize: 12, outline: 'none' }} />
@@ -316,9 +352,66 @@ export function CalendarPanel() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setShowClone(false)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#6E6E73' }}>Cancelar</button>
               <button onClick={handleClone} style={{ flex: 2, padding: 10, borderRadius: 10, border: 'none', background: '#5856D6', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                Crear {calYear + 1} · {cloneHolidays.length} festivos · {cloneAssign.size} personas
+                Crear {calYear + 1} · {cloneHolidays.filter(h => h.selected).length} festivos · {cloneAssign.size} personas
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── Edit modal with explicit save ── */}
+      {editModal && editDraft && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 9200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setEditModal(false)}>
+          <div onClick={(e: Event) => e.stopPropagation()}
+            style={{ background: '#FFF', borderRadius: 20, maxWidth: 560, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700 }}>Editar calendario</h3>
+              <button onClick={() => setEditModal(false)}
+                style={{ border: 'none', background: '#F2F2F7', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <Icon name="X" size={16} color="#86868B" />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                <div><label style={labelS}>Nombre</label>
+                  <input value={editDraft.name} onInput={e => setEditDraft({ ...editDraft, name: (e.target as HTMLInputElement).value })} style={inputS} /></div>
+                <div><label style={labelS}>Región</label>
+                  <input value={editDraft.region} onInput={e => setEditDraft({ ...editDraft, region: (e.target as HTMLInputElement).value })} style={inputS} /></div>
+              </div>
+
+              <div style={{ background: '#F9F9FB', borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#86868B', marginBottom: 8, textTransform: 'uppercase' }}>JORNADA Y CONVENIO</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                  {([
+                    ['H. convenio', 'convenio_hours', 1800], ['Vacaciones', 'vacation_days', 22],
+                    ['H/sem', 'weekly_hours_normal', 40], ['H/día int.', 'daily_hours_intensive', 7],
+                    ['H/día L-J', 'daily_hours_lj', 8], ['H/día V', 'daily_hours_v', 8],
+                    ['Ajuste días', 'adjustment_days', 0], ['Libre disp.', 'free_days', 0],
+                  ] as [string, string, number][]).map(([l, f, d]) => (
+                    <div key={f}><label style={labelS}>{l}</label>
+                      <input type="number" step="0.01" value={(editDraft as any)[f] ?? d}
+                        onInput={e => setEditDraft({ ...editDraft, [f]: parseFloat((e.target as HTMLInputElement).value) || d })}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1.5px solid #E5E5EA', fontSize: 12, outline: 'none' }} /></div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                  <div><label style={labelS}>Intensiva desde (dd/mm)</label>
+                    <input value={mmddToDdmm(editDraft.intensive_start || '08-01')}
+                      onInput={e => setEditDraft({ ...editDraft, intensive_start: ddmmToMmdd((e.target as HTMLInputElement).value) })}
+                      placeholder="01/08" style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1.5px solid #E5E5EA', fontSize: 12, outline: 'none' }} /></div>
+                  <div><label style={labelS}>Intensiva hasta (dd/mm)</label>
+                    <input value={mmddToDdmm(editDraft.intensive_end || '08-31')}
+                      onInput={e => setEditDraft({ ...editDraft, intensive_end: ddmmToMmdd((e.target as HTMLInputElement).value) })}
+                      placeholder="31/08" style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1.5px solid #E5E5EA', fontSize: 12, outline: 'none' }} /></div>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={handleSaveEdit} disabled={savingEdit}
+              style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: '#007AFF', color: '#FFF', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 16, opacity: savingEdit ? 0.6 : 1 }}>
+              {savingEdit ? 'Guardando…' : 'Guardar cambios'}
+            </button>
           </div>
         </div>
       )}
