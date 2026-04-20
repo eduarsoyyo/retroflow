@@ -43,7 +43,7 @@ export function GanttView({ actions, sala, teamMembers, onUpdateActions, onOpenD
         const dedMap: Record<string, number> = {};
         for (const room of otherRooms) {
           const orgR = await loadOrgChart(room.slug);
-          if (orgR.ok) orgR.data.forEach((o: Record<string, unknown>) => {
+          if (orgR.ok) { orgR.data.forEach((o: Record<string, unknown>) => {
             const mid = o.member_id as string;
             dedMap[mid] = (dedMap[mid] || 0) + ((o as Record<string, unknown>).dedication as number || 0);
           });
@@ -336,7 +336,7 @@ export function GanttView({ actions, sala, teamMembers, onUpdateActions, onOpenD
                 {dependencies.map((dep, i) => {
                   const fromRow = rowMap[dep.from];
                   const toRow = rowMap[dep.to];
-                  if (fromRow == null || toRow == null) return null;
+                  if (fromRow === undefined || toRow === undefined) return null;
                   const fromTask = tasks.find(t => t.id === dep.from);
                   const toTask = tasks.find(t => t.id === dep.to);
                   if (!fromTask || !toTask) return null;
