@@ -122,6 +122,7 @@ export function UsersPanel() {
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [viewMode, setViewMode] = useState<'general' | 'jornada'>('general');
 
   useEffect(() => {
     const loadAllOrg = async () => {
@@ -180,6 +181,43 @@ export function UsersPanel() {
 
   const ausCount = (m: Member) => {
     return (m.vacations || []).filter(v => v.from && (v.type || 'vacaciones') !== 'vacaciones' && new Date(v.from).getFullYear() === yr).length;
+  };
+
+  // Jornada helpers
+  const memberCal = (m: Member): Calendario | null => {
+    const cid = (m as Record<string, unknown>).calendario_id as string;
+    return cid ? calendarios.find(x => x.id === cid) || null : null;
+  };
+  const convenioHours = (m: Member) => {
+    const c = memberCal(m);
+    return (c as any)?.convenio_hours || 1800;
+  };
+  const weeklyHours = (m: Member) => {
+    const c = memberCal(m);
+    return (c as any)?.weekly_hours_normal || 40;
+  };
+  const vacDaysTotal = (m: Member) => {
+    const c = memberCal(m);
+    return (c as any)?.vacation_days || m.annual_vac_days || ANNUAL_VAC_DAYS;
+  };
+  const holidayCount = (m: Member) => {
+    const c = memberCal(m);
+    if (!c) return 0;
+    return (c.holidays || []).filter(h => h.date.startsWith(String(yr))).length;
+  };
+  // Working days estimate: 365 - weekends(104) - holidays - vacUsed
+  const workingDays = (m: Member) => {
+    const hols = holidayCount(m);
+    const vac = vacUsed(m);
+    return Math.max(0, 365 - 104 - hols - vac);
+  };
+  // Worked hours estimate: workingDays * average daily hours (L-J ~8h, V ~7h → ~7.8h/day avg)
+  const workedHoursEstimate = (m: Member) => {
+    const c = memberCal(m);
+    const lj = (c as any)?.daily_hours_lj || 8;
+    const v = (c as any)?.daily_hours_v || 7;
+    const avgDaily = (lj * 4 + v) / 5;
+    return Math.round(workingDays(m) * avgDaily);
   };
 
   const calName = (m: Member) => {
@@ -322,7 +360,18 @@ export function UsersPanel() {
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Usuarios</h3>
           <p style={{ fontSize: 12, color: '#86868B' }}>{members.length} registrados · {members.filter(m => (m as Record<string, unknown>).status !== 'inactive').length} activos</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* View mode toggle */}
+          <div style={{ display: 'flex', gap: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid #E5E5EA' }}>
+            <button onClick={() => setViewMode('general')}
+              style={{ padding: '5px 12px', fontSize: 11, fontWeight: viewMode === 'general' ? 700 : 500, background: viewMode === 'general' ? '#1D1D1F' : '#FFF', color: viewMode === 'general' ? '#FFF' : '#6E6E73', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="List" size={11} color={viewMode === 'general' ? '#FFF' : '#86868B'} /> General
+            </button>
+            <button onClick={() => setViewMode('jornada')}
+              style={{ padding: '5px 12px', fontSize: 11, fontWeight: viewMode === 'jornada' ? 700 : 500, background: viewMode === 'jornada' ? '#1D1D1F' : '#FFF', color: viewMode === 'jornada' ? '#FFF' : '#6E6E73', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="Calendar" size={11} color={viewMode === 'jornada' ? '#FFF' : '#86868B'} /> Vacaciones / Jornada
+            </button>
+          </div>
           <input value={search} onInput={e => setSearch((e.target as HTMLInputElement).value)} placeholder="Buscar…"
             style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid #E5E5EA', fontSize: 12, outline: 'none', width: 200 }} />
           <button onClick={openCreate} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#1D1D1F', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
@@ -331,7 +380,71 @@ export function UsersPanel() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* ═══ JORNADA VIEW ═══ */}
+      {viewMode === 'jornada' && (
+        <div style={{ ...cardS, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: '#FAFAFA' }}>
+                  {['', 'Nombre', 'Calendario', 'H. convenio', 'H/semana', 'Festivos', 'Vac. usadas', 'Vac. total', 'Vac. pend.', 'Ausencias', 'Días trab.', 'H. estimadas', ''].map(h => (
+                    <th key={h} style={{ padding: '7px 6px', fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', borderBottom: '2px solid #E5E5EA', whiteSpace: 'nowrap', textAlign: h === 'Nombre' ? 'left' : 'center' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((m, i) => {
+                  const vUsed = vacUsed(m);
+                  const vTotal = vacDaysTotal(m);
+                  const vPend = Math.max(0, vTotal + (m.prev_year_pending || 0) - vUsed);
+                  const aus = ausCount(m);
+                  const cal = memberCal(m);
+                  const wDays = workingDays(m);
+                  const wHours = workedHoursEstimate(m);
+                  const convH = convenioHours(m);
+                  const pctHours = convH > 0 ? Math.round(wHours / convH * 100) : 0;
+                  return (
+                    <tr key={m.id} style={{ background: i % 2 === 0 ? '#FFF' : '#FAFAFA' }}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 8, background: m.color || '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, margin: '0 auto' }}>{m.avatar || '👤'}</div>
+                      </td>
+                      <td style={{ padding: '6px 8px', borderBottom: '1px solid #F2F2F7', fontWeight: 700 }}>
+                        <span onClick={() => setSelectedMember(m)} style={{ cursor: 'pointer', color: '#007AFF' }}>{m.name}</span>
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontSize: 10, color: '#6E6E73' }}>{cal?.name || '—'}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 600 }}>{convH}h</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>{weeklyHours(m)}h</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', color: '#FF3B30', fontWeight: 600 }}>{holidayCount(m)}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 600, color: '#007AFF' }}>{vUsed}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', color: '#86868B' }}>{vTotal}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 700, color: vPend <= 5 ? '#FF3B30' : vPend <= 10 ? '#FF9500' : '#34C759' }}>{vPend}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', color: aus > 0 ? '#FF9500' : '#C7C7CC', fontWeight: aus > 0 ? 600 : 400 }}>{aus}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center', fontWeight: 600 }}>{wDays}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                          <span style={{ fontWeight: 700, color: pctHours >= 90 ? '#34C759' : pctHours >= 70 ? '#FF9500' : '#FF3B30' }}>{wHours}h</span>
+                          <div style={{ width: 36, height: 3, background: '#F2F2F7', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, pctHours)}%`, height: '100%', background: pctHours >= 90 ? '#34C759' : pctHours >= 70 ? '#FF9500' : '#FF3B30', borderRadius: 2 }} />
+                          </div>
+                          <span style={{ fontSize: 8, color: '#86868B' }}>{pctHours}% conv.</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #F2F2F7', textAlign: 'center' }}>
+                        <button onClick={() => openEdit(m)} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon name="Edit" size={10} color="#007AFF" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ GENERAL VIEW (original table) ═══ */}
+      {viewMode === 'general' && (
       <div style={{ ...cardS, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -406,6 +519,7 @@ export function UsersPanel() {
           </table>
         </div>
       </div>
+      )}
 
       {/* ── Create/Edit Modal ── */}
       {modal && (
