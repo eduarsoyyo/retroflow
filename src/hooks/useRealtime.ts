@@ -198,7 +198,7 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
       if (payload.from === user.id) return;
       const s = stRef.current;
       Object.keys(s).forEach(k => {
-        ch.send({ type: 'broadcast', event: 'sync', payload: { key: k, data: (s as any)[k], from: user.id } });
+        ch.httpSend({ type: 'broadcast', event: 'sync', payload: { key: k, data: (s as any)[k], from: user.id } });
       });
     });
 
@@ -211,7 +211,7 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
       if (status === 'SUBSCRIBED') {
         await ch.track({ name: user.name, avatar: user.avatar || '👤', color: user.color || '#007AFF' });
         // Request state from other users after a short delay
-        setTimeout(() => ch.send({ type: 'broadcast', event: 'req', payload: { from: user.id } }), 600);
+        setTimeout(() => ch.httpSend({ type: 'broadcast', event: 'req', payload: { from: user.id } }), 600);
         log.info('Subscribed to channel', { sala });
       }
     });
@@ -239,14 +239,14 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
       return next;
     });
     if (chRef.current && user) {
-      chRef.current.send({ type: 'broadcast', event: 'sync', payload: { key, data, from: user.id } });
+      chRef.current.httpSend({ type: 'broadcast', event: 'sync', payload: { key, data, from: user.id } });
     }
   }, [user]);
 
   /** Broadcast cursor position */
   const moveCursor = useCallback((x: number, y: number) => {
     if (chRef.current && user) {
-      chRef.current.send({
+      chRef.current.httpSend({
         type: 'broadcast', event: 'cursor',
         payload: { id: user.id, x, y, name: user.name, avatar: user.avatar || '👤', color: user.color || '#007AFF' },
       });
@@ -256,21 +256,21 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
   /** Broadcast timer state */
   const broadcastTimer = useCallback((secs: number, isRunning: boolean, startedAt: number | null) => {
     if (chRef.current && user) {
-      chRef.current.send({ type: 'broadcast', event: 'timer', payload: { secs, isRunning, startedAt, from: user.id } });
+      chRef.current.httpSend({ type: 'broadcast', event: 'timer', payload: { secs, isRunning, startedAt, from: user.id } });
     }
   }, [user]);
 
   /** Broadcast phase change */
   const broadcastPhase = useCallback((phaseIdx: number) => {
     if (chRef.current && user) {
-      chRef.current.send({ type: 'broadcast', event: 'phase', payload: { phase: phaseIdx, from: user.id, name: user.name } });
+      chRef.current.httpSend({ type: 'broadcast', event: 'phase', payload: { phase: phaseIdx, from: user.id, name: user.name } });
     }
   }, [user]);
 
   /** Broadcast celebration to all connected users */
   const broadcastCelebration = useCallback(() => {
     if (chRef.current && user) {
-      chRef.current.send({ type: 'broadcast', event: 'celebration', payload: { from: user.id } });
+      chRef.current.httpSend({ type: 'broadcast', event: 'celebration', payload: { from: user.id } });
     }
   }, [user]);
 
@@ -283,7 +283,7 @@ export function useRealtime({ user, sala, tipo, onPhaseReceived, onTimerReceived
     setState(fresh);
     if (chRef.current && user) {
       Object.keys(fresh).forEach(k => {
-        chRef.current.send({ type: 'broadcast', event: 'sync', payload: { key: k, data: (fresh as any)[k], from: user.id } });
+        chRef.current.httpSend({ type: 'broadcast', event: 'sync', payload: { key: k, data: (fresh as any)[k], from: user.id } });
       });
     }
   }, [user, sala]);

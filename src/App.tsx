@@ -58,13 +58,16 @@ export function App() {
   const [view, setView] = useState<View>('landing');
   const [project, setProject] = useState<ProjectContext | null>(null);
 
+  // Persist view + project to survive refresh
+  const setViewPersist = (v: View) => { setView(v); try { localStorage.setItem('rf-view', v); } catch {} };
+  const setProjectPersist = (p: ProjectContext | null) => { setProject(p); try { localStorage.setItem('rf-project', p ? JSON.stringify(p) : ''); } catch {} };
+
   // On mount: check URL params and session
   useEffect(() => {
     const params = getUrlParams();
     const session = loadSession();
 
     if (params.sala && session) {
-      // Direct URL to a project
       setUser(session);
       setProject({ sala: params.sala, tipo: params.tipo });
       setView('project');
@@ -73,7 +76,16 @@ export function App() {
       setView('admin');
     } else if (session) {
       setUser(session);
-      setView('home');
+      // Restore previous view
+      const savedView = localStorage.getItem('rf-view') as View;
+      const savedProject = localStorage.getItem('rf-project');
+      if (savedView === 'project' && savedProject) {
+        try { setProject(JSON.parse(savedProject)); setView('project'); } catch { setView('home'); }
+      } else if (savedView === 'home' || savedView === 'admin') {
+        setView(savedView);
+      } else {
+        setView('home');
+      }
     } else {
       setView('landing');
     }
@@ -84,9 +96,9 @@ export function App() {
   const handleJoin = (u: AppUser) => {
     setUser(u);
     saveSession(u);
-    setView('transitioning');
+    setViewPersist('transitioning');
     playLoginEffect(() => {
-      setView('home');
+      setViewPersist('home');
       if (window.location.search) {
         window.history.replaceState({}, '', window.location.pathname);
       }
@@ -96,25 +108,25 @@ export function App() {
   const handleLogout = () => {
     setUser(null);
     clearSession();
-    setView('landing');
-    setProject(null);
+    setViewPersist('landing');
+    setProjectPersist(null);
+    try { localStorage.removeItem('rf-view'); localStorage.removeItem('rf-project'); localStorage.removeItem('rf-cdc-tab'); } catch {}
   };
 
   const handleSelectProject = (sala: string, tipo: string) => {
-    setProject({ sala, tipo });
-    setView('project');
-    // Update URL for shareability
+    setProjectPersist({ sala, tipo });
+    setViewPersist('project');
     window.history.pushState({}, '', `?sala=${sala}&tipo=${tipo}`);
   };
 
   const handleBackToHome = () => {
-    setProject(null);
-    setView('home');
+    setProjectPersist(null);
+    setViewPersist('home');
     window.history.pushState({}, '', window.location.pathname);
   };
 
   const handleOpenAdmin = () => {
-    setView('admin');
+    setViewPersist('admin');
   };
 
   // ── Render ──

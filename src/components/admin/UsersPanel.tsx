@@ -31,7 +31,8 @@ async function saveOrgEntries(memberId: string, assignments: ProjectAssignment[]
   try {
     const { supabase } = await import('../../data/supabase');
     // Delete all existing entries for this member
-    await supabase.from('org_chart').delete().eq('member_id', memberId);
+    const { error: delErr } = await supabase.from('org_chart').delete().eq('member_id', memberId);
+    if (delErr) console.error('org_chart delete failed:', delErr);
     // Insert new entries
     const rows = assignments.flatMap(a =>
       a.periods.map(p => ({
@@ -42,8 +43,11 @@ async function saveOrgEntries(memberId: string, assignments: ProjectAssignment[]
         end_date: p.end_date || null,
       }))
     );
-    if (rows.length > 0) await supabase.from('org_chart').insert(rows);
-  } catch {}
+    if (rows.length > 0) {
+      const { error: insErr } = await supabase.from('org_chart').insert(rows);
+      if (insErr) console.error('org_chart insert failed:', insErr);
+    }
+  } catch (e) { console.error('saveOrgEntries exception:', e); }
 }
 
 // Delete org_chart entry
@@ -243,7 +247,7 @@ export function UsersPanel() {
       house: form.house || null,
     };
     if (modal === 'create') {
-      payload.id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      payload.id = crypto.randomUUID();
       payload.vacations = [];
       payload.annual_vac_days = 22;
       payload.prev_year_pending = 0;
@@ -317,7 +321,7 @@ export function UsersPanel() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ background: '#FAFAFA' }}>
-                {['', 'Nombre', 'Usuario', 'Email', 'Empresa', 'Rol', 'Proyectos', 'Dedicación', 'Intercontrato', 'Calendario', 'Vac. pend.', 'Admin', 'Estado', ''].map(h => (
+                {['', 'Nombre', 'Usuario', 'Email', 'Empresa', 'Rol', 'Proyectos', 'Dedicación', 'No asignado', 'Calendario', 'Vac. pend.', 'Admin', 'Estado', ''].map(h => (
                   <th key={h} style={{ padding: '7px 6px', fontSize: 9, fontWeight: 700, color: '#86868B', textTransform: 'uppercase', borderBottom: '2px solid #E5E5EA', whiteSpace: 'nowrap', textAlign: h === 'Nombre' ? 'left' : 'center' }}>{h}</th>
                 ))}
               </tr>

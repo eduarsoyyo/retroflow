@@ -136,13 +136,11 @@ export function CrossProject() {
                 </th>
               ))}
               <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #E5E5EA', fontSize: 11, color: '#86868B', fontWeight: 700 }}>Total</th>
-              <th style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '2px solid #E5E5EA', fontSize: 11, color: '#FF9500', fontWeight: 700 }}>IC</th>
             </tr>
           </thead>
           <tbody>
             {memberProjects.map((mp, ri) => {
               const total = mp.projects.reduce((s, p) => s + p.dedication, 0);
-              const ic = Math.max(0, 1 - total);
               const isOver = total > 1.05;
               const fmtVal = (ded: number) => {
                 if (matrixMode === 'pct') return `${Math.round(ded * 100)}%`;
@@ -174,11 +172,8 @@ export function CrossProject() {
                       </td>
                     );
                   })}
-                  <td style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: isOver ? '#FF3B30' : '#1D1D1F' }}>
+                  <td style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 800, color: isOver ? '#FF3B30' : total >= 1 ? '#34C759' : '#FF9500' }}>
                     {fmtVal(total)}
-                  </td>
-                  <td style={{ textAlign: 'center', padding: '6px 10px', borderBottom: '1px solid #F2F2F7', fontWeight: 700, fontSize: 11, color: ic > 0.5 ? '#FF3B30' : ic > 0 ? '#FF9500' : '#34C759' }}>
-                    {ic > 0 ? fmtVal(ic) : <span style={{ color: '#34C759' }}>0</span>}
                   </td>
                 </tr>
               );
@@ -204,12 +199,6 @@ export function CrossProject() {
                 {(() => {
                   const gt = memberProjects.reduce((s, mp) => s + mp.projects.reduce((sp, p) => sp + p.dedication, 0), 0);
                   return matrixMode === 'pct' ? `${Math.round(gt * 100)}%` : matrixMode === 'fte' ? gt.toFixed(2) : `${Math.round(gt * MONTHLY_BASE_HOURS)}h`;
-                })()}
-              </td>
-              <td style={{ textAlign: 'center', padding: '8px 10px', borderTop: '2px solid #E5E5EA', fontWeight: 800, fontSize: 12, color: '#FF9500' }}>
-                {(() => {
-                  const totalIc = memberProjects.reduce((s, mp) => s + Math.max(0, 1 - mp.projects.reduce((sp, p) => sp + p.dedication, 0)), 0);
-                  return matrixMode === 'pct' ? `${Math.round(totalIc * 100)}%` : matrixMode === 'fte' ? totalIc.toFixed(2) : `${Math.round(totalIc * MONTHLY_BASE_HOURS)}h`;
                 })()}
               </td>
             </tr>

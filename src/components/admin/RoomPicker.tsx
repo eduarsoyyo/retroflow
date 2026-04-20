@@ -59,7 +59,10 @@ const NAV: NavItem[] = [
 ];
 
 export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPickerProps) {
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState(() => {
+    try { return localStorage.getItem('rf-cdc-tab') || 'dashboard'; } catch { return 'dashboard'; }
+  });
+  const setTabPersist = (t: string) => { setTab(t); try { localStorage.setItem('rf-cdc-tab', t); } catch {} };
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['rrhh', 'proyectos-group']));
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,7 +176,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
             if (!item.children) {
               // Simple nav item
               return (
-                <button key={item.id} onClick={() => setTab(item.id)} style={navBtnStyle(isActive(item.id))}>
+                <button key={item.id} onClick={() => setTabPersist(item.id)} style={navBtnStyle(isActive(item.id))}>
                   <Icon name={item.icon} size={14} color={isActive(item.id) ? '#007AFF' : '#86868B'} />
                   {item.label}
                 </button>
@@ -200,7 +203,7 @@ export function RoomPicker({ user, onGoToRoom, onLogout, onBackToHome }: RoomPic
                 {expanded && (
                   <div style={{ paddingLeft: 14, marginTop: 2 }}>
                     {item.children.map(child => (
-                      <button key={child.id} onClick={() => setTab(child.id)}
+                      <button key={child.id} onClick={() => setTabPersist(child.id)}
                         style={{
                           ...navBtnStyle(isActive(child.id)),
                           fontSize: 11, padding: '6px 10px',

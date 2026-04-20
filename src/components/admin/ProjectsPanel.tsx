@@ -53,7 +53,7 @@ export function ProjectsPanel({ onGoToRoom }: ProjectsPanelProps) {
       // Count retros per sala
       if (retrosR.ok) {
         const counts: Record<string, number> = {};
-        retrosR.data.forEach((r: Record<string, unknown>) => {
+        retrosR.data.forEach((r: any) => {
           const sala = r.sala as string;
           counts[sala] = (counts[sala] || 0) + 1;
         });

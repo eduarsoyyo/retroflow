@@ -35,11 +35,12 @@ export function Login({ onJoin, isModal = false }: LoginProps) {
           'RPC_ERROR': 'Error de autenticación. Contacta con tu administrador.',
           'NETWORK_ERROR': 'Error de conexión. Inténtalo de nuevo.',
         };
-        setError(messages[result.error] || 'Error de autenticación');
+        setError(messages[result.error as string] || 'Error de autenticación');
         return;
       }
 
       const u = result.user;
+      if (!u) { setError('Error de autenticación'); setLoading(false); return; }
       const userSession: AppUser = {
         id: u.id,
         name: u.name,
