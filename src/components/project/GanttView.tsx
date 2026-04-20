@@ -43,10 +43,12 @@ export function GanttView({ actions, sala, teamMembers, onUpdateActions, onOpenD
         const dedMap: Record<string, number> = {};
         for (const room of otherRooms) {
           const orgR = await loadOrgChart(room.slug);
-          if (orgR.ok) { orgR.data.forEach((o: Record<string, unknown>) => {
-            const mid = o.member_id as string;
-            dedMap[mid] = (dedMap[mid] || 0) + ((o as Record<string, unknown>).dedication as number || 0);
-          });
+          if (orgR.ok) {
+            orgR.data.forEach((o: Record<string, unknown>) => {
+              const mid = o.member_id as string;
+              dedMap[mid] = (dedMap[mid] || 0) + ((o as Record<string, unknown>).dedication as number || 0);
+            });
+          }
         }
         setOtherProjectDed(dedMap);
       });
