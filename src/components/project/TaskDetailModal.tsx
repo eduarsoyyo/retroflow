@@ -192,7 +192,7 @@ export function TaskDetailModal({
             <div>
               <label style={labelStyle}>Estado</label>
               <select value={f.status || 'backlog'} onChange={e => setF({ ...f, status: (e.target as HTMLSelectElement).value })} style={selectStyle}>
-                {TASK_STATUSES.filter(s => s.id !== 'discarded').map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {TASK_STATUSES.filter(s => (s.id as string) !== 'discarded').map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </div>
             <div>

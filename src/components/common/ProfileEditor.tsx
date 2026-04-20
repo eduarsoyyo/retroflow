@@ -133,7 +133,7 @@ export function ProfileEditor({ user, profile, onClose, onSave }: ProfileEditorP
           ] as const).map(([label, field]) => (
             <div key={field}>
               <label style={labelS}>{label}</label>
-              <input value={(f as Record<string, string>)[field] || ''} onInput={e => setF({ ...f, [field]: (e.target as HTMLInputElement).value })}
+              <input value={(f as any)[field] || ''} onInput={e => setF({ ...f, [field]: (e.target as HTMLInputElement).value })}
                 style={inputS} />
             </div>
           ))}

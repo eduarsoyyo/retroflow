@@ -139,8 +139,8 @@ export function TagManager({ sala, teamMembers, risks, actions, onClose }: TagMa
                         return (
                           <div key={item.id} style={{ marginBottom: 8, padding: '8px 9px', borderRadius: 10, background: '#F9F9FB' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: (itTags.length > 0 || tags.length > 0) ? 5 : 0 }}>
-                              <span style={{ fontSize: 16 }}>{col.getIcon(item)}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, flex: 1, lineHeight: 1.3 }}>{col.getLabel(item)}</span>
+                              <span style={{ fontSize: 16 }}>{col.getIcon(item as any)}</span>
+                              <span style={{ fontSize: 11, fontWeight: 600, flex: 1, lineHeight: 1.3 }}>{col.getLabel(item as any)}</span>
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                               {itTags.map(t => (

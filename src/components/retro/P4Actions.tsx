@@ -29,13 +29,14 @@ export function P4Actions({ notes, actions, risks = [], onUpdateActions, onOpenT
   const openRisks = risks.filter(r => r.status !== 'mitigated');
 
   const createAndOpen = (text: string, extra?: Partial<Task>) => {
-    const action: Task = {
+    const action = {
       id: uid(), text: text.trim(), owner: user.name,
+      type: 'tarea',
       date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      status: 'backlog', priority: 'medium',
+      status: 'backlog' as const, priority: 'medium',
       createdBy: user.id, noteId: null, fromCategory: null,
       ...extra,
-    };
+    } as Task;
     onUpdateActions([...actions, action]);
     if (onOpenTaskDetail) onOpenTaskDetail(action);
   };

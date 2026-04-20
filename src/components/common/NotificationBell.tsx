@@ -37,7 +37,7 @@ export function NotificationBell({ user, actions, risks, sala, global: isGlobal 
         const allRisks: Risk[] = [];
         // Get latest retro per room
         const latest: Record<string, Record<string, unknown>> = {};
-        r.data.forEach((s: Record<string, unknown>) => {
+        r.data.forEach((s: any) => {
           const sl = s.sala as string;
           if (!latest[sl] || (s.created_at as string) > (latest[sl].created_at as string)) latest[sl] = s;
         });

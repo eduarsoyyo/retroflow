@@ -1,6 +1,6 @@
 // ═══ TAB VACACIONES — Vacation management with calendar grid ═══
 import { useState, useEffect } from 'preact/hooks';
-import type { Member } from '@app-types/index';
+import type { Member, Vacation } from '@app-types/index';
 import { loadTeamMembers, saveTeamMember } from '@data/team';
 import { Icon } from '@components/common/Icon';
 import { ABSENCE_TYPES } from '../../config/absenceTypes';

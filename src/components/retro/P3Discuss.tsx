@@ -30,7 +30,7 @@ export function P3Discuss({ notes, onUpdateNotes, user }: P3DiscussProps) {
   const react = (noteId: string, emoji: string) => {
     onUpdateNotes(allNotes.map(n => {
       if (n.id !== noteId) return n;
-      const reactions = { ...(n.reactions || {}) } as Record<string, string[]>;
+      const reactions = { ...(n.reactions || {}) } as unknown as Record<string, string[]>;
       const users = reactions[emoji] || [];
       if (users.includes(user.id)) {
         reactions[emoji] = users.filter(u => u !== user.id);
@@ -82,7 +82,7 @@ export function P3Discuss({ notes, onUpdateNotes, user }: P3DiscussProps) {
               {g.notes.map((n: RetroNote) => {
                 const voteCount = n.votes?.length || 0;
                 const hasVoted = (n.votes || []).includes(user.id);
-                const reactions = (n.reactions || {}) as Record<string, string[]>;
+                const reactions = (n.reactions || {}) as unknown as Record<string, string[]>;
                 
                 return (
                   <div key={n.id} style={{
