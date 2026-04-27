@@ -48,15 +48,6 @@ function expectedHoursToDate(cal: CalFull | null, yr: number, toStr: string): nu
     d.setDate(d.getDate() + 1) }
   return h
 }
-function annualHours(cal: CalFull | null, yr: number): number {
-  if (!cal) return 1800
-  const hS = getHolidaySet(cal, yr); const intS = cal.intensive_start || '08-01'; const intE = cal.intensive_end || '08-31'
-  let h = 0; const d = new Date(yr, 0, 1); const end = new Date(yr, 11, 31)
-  while (d <= end) { const dw = d.getDay(); const ds = d.toISOString().slice(0, 10); const mm = ds.slice(5)
-    if (dw !== 0 && dw !== 6 && !hS.has(ds)) { if (mm >= intS && mm <= intE) h += cal.daily_hours_intensive || 7; else if (dw === 5) h += cal.daily_hours_v || 8; else h += cal.daily_hours_lj || 8 }
-    d.setDate(d.getDate() + 1) }
-  return h
-}
 function workDaysToDate(cal: CalFull | null, yr: number, toStr: string): number {
   const hS = getHolidaySet(cal, yr); let days = 0; const d = new Date(yr, 0, 1); const end = new Date(toStr)
   while (d <= end) { if (d.getDay() !== 0 && d.getDay() !== 6 && !hS.has(d.toISOString().slice(0, 10))) days++; d.setDate(d.getDate() + 1) }
