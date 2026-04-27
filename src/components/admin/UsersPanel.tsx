@@ -89,7 +89,7 @@ export function UsersPanel() {
   // Derived helpers
   const getCal = (m: Member): CalFull | null => { const cid = m.calendario_id || (rx(m).calendario_id as string); return cid ? calendarios.find(c => c.id === cid) || null : null }
   const calNameOf = (m: Member) => getCal(m)?.name || '—'
-  const memberDedToday = (m: Member) => orgChart.filter(o => o.member_id === m.id && (o.start_date || '2000-01-01') <= today && (o.end_date || '2099-12-31') >= today).reduce((s, o) => s + (o.dedication || 0), 0)
+  const memberDedToday = (m: Member) => orgChart.filter(o => o.member_id === m.id && o.sala !== '__global__' && (o.start_date || '2000-01-01') <= today && (o.end_date || '2099-12-31') >= today).reduce((s, o) => s + (o.dedication || 0), 0)
   const memberProjects = (m: Member) => (m.rooms || []).map(slug => rooms.find(r => r.slug === slug)?.name || slug)
 
   // Fichadas: real hours from time_entries YTD (excluding rejected and _pendiente)
