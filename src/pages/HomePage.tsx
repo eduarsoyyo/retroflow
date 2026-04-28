@@ -89,7 +89,7 @@ export function HomePage() {
   if (loading) return <div className="text-sm text-revelio-subtle text-center py-20">Cargando...</div>
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full max-w-[1600px]">
       {/* Greeting */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-revelio-text dark:text-revelio-dark-text">
