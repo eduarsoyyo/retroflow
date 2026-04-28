@@ -329,7 +329,7 @@ export function ProjectPage() {
 
       {/* ═══ CONTENT ═══ */}
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-7xl mx-auto">
 
         {/* ═══ PROJECT TABS ═══ */}
         {!inRetro && <>
