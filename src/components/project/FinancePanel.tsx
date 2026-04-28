@@ -3,7 +3,7 @@ import { supabase } from '@/data/supabase'
 import type { Member } from '@/types'
 import {
   TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight,
-  Calculator, BarChart3, Sliders, Download,
+  Calculator, BarChart3, Sliders, Download, Plus, X,
 } from 'lucide-react'
 import { exportPnLPDF, exportPnLExcel } from '@/lib/exports'
 
@@ -29,6 +29,9 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
   // Simulator overrides
   const [simSellRate, setSimSellRate] = useState<number | null>(null)
   const [simCostOverrides, setSimCostOverrides] = useState<Record<string, number>>({})
+  const [simDedOverrides, setSimDedOverrides] = useState<Record<string, number>>({})
+  const [simSalaryOverrides, setSimSalaryOverrides] = useState<Record<string, number>>({})
+  const [simExtraPersons, setSimExtraPersons] = useState<Array<{ id: string; name: string; salary: number; multiplier: number; dedication: number }>>([])
 
   const billing = roomData?.billing_type || 'tm'
   const baseSellRate = roomData?.sell_rate || 0
@@ -54,22 +57,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
     }> = []
 
     team.forEach(m => {
-      // Cost rate from salary model: salary * multiplier / convenio_hours
-      const rx = m as unknown as Record<string, unknown>
-      const crArr = rx.cost_rates as Array<{ from: string; to?: string; salary?: number; rate?: number; multiplier?: number }> | undefined
-      let baseCostRate = (rx.cost_rate as number) || 0
-      if (crArr && crArr.length > 0) {
-        const now = new Date().toISOString().slice(0, 7)
-        const sorted = [...crArr].sort((a, b) => b.from.localeCompare(a.from))
-        const cur = sorted.find(r => r.from <= now && (!r.to || r.to >= now)) || sorted[0]
-        if (cur?.salary) {
-          const calId2 = rx.calendario_id as string
-          const mCal = calId2 ? calendarios.find(c => c.id === calId2) : null
-          const convH = (mCal as unknown as Record<string, unknown>)?.convenio_hours as number || 1800
-          baseCostRate = Math.round(((cur.salary * (cur.multiplier || 1.33)) / convH) * 100) / 100
-        } else if (cur?.rate) { baseCostRate = cur.rate }
-      }
-      const costRate = simCostOverrides[m.id] ?? baseCostRate
+      const costRate = simCostOverrides[m.id] ?? (((m as unknown as Record<string, unknown>).cost_rate as number) || 0)
       const memberSellRate = ((m as unknown as Record<string, unknown>).sell_rate as number) || effectiveSellRate
       const calId = (m as unknown as Record<string, unknown>).calendario_id as string
       const cal = calId ? calendarios.find(c => c.id === calId) : null
@@ -334,58 +322,148 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
       {/* ═══ SIMULATOR ═══ */}
       {view === 'simulator' && (
         <div className="space-y-4">
+          {/* Per-person controls */}
           <div className="rounded-card border border-[#E5E5EA] dark:border-[#3A3A3C] bg-white dark:bg-[#1C1C1E] p-4">
-            <h4 className="text-[10px] font-semibold dark:text-[#F5F5F7] flex items-center gap-1 mb-3"><Sliders className="w-3 h-3 text-[#5856D6]" /> Ajustar parámetros</h4>
-
-            {/* Sell rate */}
-            <div className="mb-4">
-              <label className="text-[8px] font-bold text-[#8E8E93] uppercase">Tarifa venta (€/hora)</label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="number" value={simSellRate ?? baseSellRate} onChange={e => setSimSellRate(Number(e.target.value))}
-                  className="w-24 rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-2 py-1 text-xs outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={1} />
-                {simSellRate !== null && simSellRate !== baseSellRate && (
-                  <span className="text-[8px]" style={{ color: simSellRate > baseSellRate ? '#34C759' : '#FF3B30' }}>
-                    {simSellRate > baseSellRate ? '+' : ''}{fmt(simSellRate - baseSellRate)}€ vs base
-                  </span>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-[10px] font-semibold dark:text-[#F5F5F7] flex items-center gap-1"><Sliders className="w-3 h-3 text-[#5856D6]" /> Equipo actual</h4>
+              <div className="flex gap-1">
+                {(Object.keys(simCostOverrides).length > 0 || Object.keys(simDedOverrides).length > 0 || Object.keys(simSalaryOverrides).length > 0 || simSellRate !== null || simExtraPersons.length > 0) && (
+                  <button onClick={() => { setSimCostOverrides({}); setSimDedOverrides({}); setSimSalaryOverrides({}); setSimSellRate(null); setSimExtraPersons([]) }} className="text-[8px] text-[#007AFF] hover:underline">Reset todo</button>
                 )}
-                {simSellRate !== null && <button onClick={() => setSimSellRate(null)} className="text-[8px] text-[#007AFF] hover:underline">Reset</button>}
               </div>
             </div>
 
-            {/* Cost rates per person */}
-            <label className="text-[8px] font-bold text-[#8E8E93] uppercase">Coste por persona (€/hora)</label>
-            <div className="space-y-1 mt-1">
-              {team.filter(m => monthlyData.some(d => d.id === m.id)).map(m => {
-                const baseCost = ((m as unknown as Record<string, unknown>).cost_rate as number) || 0
-                const simCost = simCostOverrides[m.id]
-                return (
-                  <div key={m.id} className="flex items-center gap-2">
-                    <span className="text-[9px] w-24 truncate dark:text-[#F5F5F7]">{m.avatar || '·'} {m.name.split(' ')[0]}</span>
-                    <input type="number" value={simCost ?? baseCost} onChange={e => setSimCostOverrides(prev => ({ ...prev, [m.id]: Number(e.target.value) }))}
-                      className="w-20 rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-2 py-0.5 text-[10px] outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={0.5} />
-                    {simCost !== undefined && simCost !== baseCost && (
-                      <span className="text-[8px]" style={{ color: simCost < baseCost ? '#34C759' : '#FF3B30' }}>
-                        {simCost < baseCost ? '' : '+'}{fmtD(simCost - baseCost)}€
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-              {Object.keys(simCostOverrides).length > 0 && (
-                <button onClick={() => setSimCostOverrides({})} className="text-[8px] text-[#007AFF] hover:underline mt-1">Reset todos</button>
-              )}
+            {/* Sell rate override */}
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-[#F2F2F7] dark:border-[#2C2C2E]">
+              <label className="text-[8px] font-bold text-[#8E8E93] uppercase w-28">Tarifa venta €/h</label>
+              <input type="number" value={simSellRate ?? baseSellRate} onChange={e => setSimSellRate(Number(e.target.value))}
+                className="w-20 rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-2 py-0.5 text-[10px] outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7] text-right" step={1} />
+              {simSellRate !== null && simSellRate !== baseSellRate && <span className="text-[8px]" style={{ color: simSellRate > baseSellRate ? '#34C759' : '#FF3B30' }}>{simSellRate > baseSellRate ? '+' : ''}{fmt(simSellRate - baseSellRate)}€</span>}
             </div>
+
+            {/* Table header */}
+            <div className="grid grid-cols-[1fr_70px_55px_70px_55px] gap-1 text-[7px] font-bold text-[#8E8E93] uppercase px-1 mb-1">
+              <span>Persona</span><span className="text-right">Salario</span><span className="text-right">Ded. %</span><span className="text-right">Coste/h</span><span className="text-right">Coste año</span>
+            </div>
+
+            {/* Existing team */}
+            {team.filter(m => monthlyData.some(d => d.id === m.id)).map(m => {
+              const rx2 = m as unknown as Record<string, unknown>
+              const crArr = rx2.cost_rates as Array<{ salary?: number; multiplier?: number; rate?: number; from: string; to?: string }> | undefined
+              let baseSalary = 0, baseMult = 1.33
+              if (crArr && crArr.length > 0) {
+                const now2 = new Date().toISOString().slice(0, 7)
+                const sorted = [...crArr].sort((a, b) => b.from.localeCompare(a.from))
+                const cur = sorted.find(r => r.from <= now2 && (!r.to || r.to >= now2)) || sorted[0]
+                if (cur?.salary) { baseSalary = cur.salary; baseMult = cur.multiplier || 1.33 }
+                else if (cur?.rate) { baseSalary = Math.round((cur.rate * 1800) / 1.33) }
+              }
+              const simSalary = simSalaryOverrides[m.id]
+              const effSalary = simSalary ?? baseSalary
+              const calId2 = rx2.calendario_id as string
+              const mCal = calId2 ? calendarios.find(c => c.id === calId2) : null
+              const convH = (mCal as unknown as Record<string, unknown>)?.convenio_hours as number || 1800
+              const costeEmp = effSalary * baseMult
+              const costH2 = convH > 0 ? Math.round((costeEmp / convH) * 100) / 100 : 0
+              const orgDed = orgData.find(o => o.member_id === m.id)?.dedication || 0
+              const simDed = simDedOverrides[m.id]
+              const effDed = simDed !== undefined ? simDed / 100 : orgDed
+              const costYear = Math.round(costH2 * convH * effDed)
+              const changed = simSalary !== undefined || simDed !== undefined
+
+              return (
+                <div key={m.id} className={`grid grid-cols-[1fr_70px_55px_70px_55px] gap-1 items-center py-1 px-1 rounded ${changed ? 'bg-[#5856D6]/5' : ''}`}>
+                  <span className="text-[9px] truncate dark:text-[#F5F5F7]">{m.avatar || '·'} {m.name.split(' ')[0]} <span className="text-[7px] text-[#8E8E93]">{m.role_label}</span></span>
+                  <input type="number" value={effSalary || ''} onChange={e => setSimSalaryOverrides(p => ({ ...p, [m.id]: Number(e.target.value) }))} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={500} />
+                  <input type="number" value={Math.round(effDed * 100)} onChange={e => setSimDedOverrides(p => ({ ...p, [m.id]: Number(e.target.value) }))} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" min={0} max={100} step={5} />
+                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH2 > 0 ? `${costH2.toFixed(2).replace('.', ',')}€` : '—'}</span>
+                  <span className="text-[9px] text-right font-semibold" style={{ color: costYear > 0 ? '#FF9500' : '#8E8E93' }}>{costYear > 0 ? `${fmt(costYear)}€` : '—'}</span>
+                </div>
+              )
+            })}
+
+            {/* Extra (simulated) persons */}
+            {simExtraPersons.map((ep, ei) => {
+              const convH = 1800
+              const costeEmp = ep.salary * ep.multiplier
+              const costH2 = convH > 0 ? Math.round((costeEmp / convH) * 100) / 100 : 0
+              const costYear = Math.round(costH2 * convH * (ep.dedication / 100))
+              return (
+                <div key={ep.id} className="grid grid-cols-[1fr_70px_55px_70px_55px_20px] gap-1 items-center py-1 px-1 rounded bg-[#34C759]/5">
+                  <input value={ep.name} onChange={e => { const n = [...simExtraPersons]; n[ei] = { ...n[ei]!, name: e.target.value }; setSimExtraPersons(n) }} placeholder="Nombre" className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" />
+                  <input type="number" value={ep.salary || ''} onChange={e => { const n = [...simExtraPersons]; n[ei] = { ...n[ei]!, salary: Number(e.target.value) }; setSimExtraPersons(n) }} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={500} />
+                  <input type="number" value={ep.dedication} onChange={e => { const n = [...simExtraPersons]; n[ei] = { ...n[ei]!, dedication: Number(e.target.value) }; setSimExtraPersons(n) }} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" min={0} max={100} step={5} />
+                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH2 > 0 ? `${costH2.toFixed(2).replace('.', ',')}€` : '—'}</span>
+                  <span className="text-[9px] text-right font-semibold text-[#FF9500]">{costYear > 0 ? `${fmt(costYear)}€` : '—'}</span>
+                  <button onClick={() => setSimExtraPersons(simExtraPersons.filter((_, i) => i !== ei))} className="text-[#8E8E93] hover:text-[#FF3B30]"><X className="w-3 h-3" /></button>
+                </div>
+              )
+            })}
+
+            <button onClick={() => setSimExtraPersons([...simExtraPersons, { id: String(Date.now()), name: '', salary: 25000, multiplier: 1.33, dedication: 100 }])}
+              className="text-[9px] text-[#34C759] font-medium flex items-center gap-0.5 mt-2"><Plus className="w-3 h-3" /> Añadir persona ficticia</button>
           </div>
 
           {/* Simulated result */}
-          <div className="rounded-card border-2 border-[#5856D6]/20 bg-[#5856D6]/3 dark:bg-[#5856D6]/5 p-4">
-            <h4 className="text-[10px] font-semibold text-[#5856D6] mb-2 flex items-center gap-1"><Calculator className="w-3 h-3" /> Resultado simulado {yr}</h4>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div><p className="text-lg font-bold text-[#007AFF]">{fmt(pnl.totRev)}€</p><p className="text-[7px] text-[#8E8E93]">Ingresos</p></div>
-              <div><p className="text-lg font-bold text-[#FF9500]">{fmt(pnl.totCost)}€</p><p className="text-[7px] text-[#8E8E93]">Costes</p></div>
-              <div><p className="text-lg font-bold" style={{ color: pnl.totMargin >= 0 ? '#34C759' : '#FF3B30' }}>{fmt(pnl.totMargin)}€ ({pnl.totMarginPct}%)</p><p className="text-[7px] text-[#8E8E93]">Margen</p></div>
-            </div>
-          </div>
+          {(() => {
+            // Recalc with overrides + extra persons
+            let simTotCost = 0, simTotRev = 0
+            // Existing team with overrides
+            team.filter(m => monthlyData.some(d => d.id === m.id)).forEach(m => {
+              const pd = monthlyData.find(d => d.id === m.id)
+              if (!pd) return
+              const rx2 = m as unknown as Record<string, unknown>
+              const crArr = rx2.cost_rates as Array<{ salary?: number; multiplier?: number; rate?: number; from: string; to?: string }> | undefined
+              let bSal = 0, bMult = 1.33
+              if (crArr && crArr.length > 0) {
+                const now2 = new Date().toISOString().slice(0, 7)
+                const sorted = [...crArr].sort((a, b) => b.from.localeCompare(a.from))
+                const cur = sorted.find(r => r.from <= now2 && (!r.to || r.to >= now2)) || sorted[0]
+                if (cur?.salary) { bSal = cur.salary; bMult = cur.multiplier || 1.33 }
+                else if (cur?.rate) bSal = Math.round((cur.rate * 1800) / 1.33)
+              }
+              const eSal = simSalaryOverrides[m.id] ?? bSal
+              const calId2 = rx2.calendario_id as string
+              const mCal = calId2 ? calendarios.find(c => c.id === calId2) : null
+              const convH = (mCal as unknown as Record<string, unknown>)?.convenio_hours as number || 1800
+              const cH = convH > 0 ? (eSal * bMult) / convH : 0
+              const orgDed = orgData.find(o => o.member_id === m.id)?.dedication || 0
+              const eDed = simDedOverrides[m.id] !== undefined ? simDedOverrides[m.id]! / 100 : orgDed
+              // Total hours for this person = sum of monthly hours * (eDed / orgDed) ratio
+              const baseH = pd.months.reduce((s, mo) => s + mo.hours, 0)
+              const adjH = orgDed > 0 ? baseH * (eDed / orgDed) : 0
+              simTotCost += Math.round(adjH * cH)
+              const msr = ((rx2.sell_rate as number) || effectiveSellRate)
+              simTotRev += Math.round(adjH * msr)
+            })
+            // Extra persons: simple annual calc
+            simExtraPersons.forEach(ep => {
+              const convH = 1800
+              const cH = convH > 0 ? (ep.salary * ep.multiplier) / convH : 0
+              const h = convH * (ep.dedication / 100)
+              simTotCost += Math.round(h * cH)
+              simTotRev += Math.round(h * effectiveSellRate)
+            })
+            const simMargin = simTotRev - simTotCost
+            const simPct = simTotRev > 0 ? Math.round((simMargin / simTotRev) * 100) : 0
+
+            return (
+              <div className="rounded-card border-2 border-[#5856D6]/20 bg-[#5856D6]/3 dark:bg-[#5856D6]/5 p-4">
+                <h4 className="text-[10px] font-semibold text-[#5856D6] mb-2 flex items-center gap-1"><Calculator className="w-3 h-3" /> Resultado simulado {yr}</h4>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div><p className="text-lg font-bold text-[#007AFF]">{fmt(simTotRev)}€</p><p className="text-[7px] text-[#8E8E93]">Ingresos</p></div>
+                  <div><p className="text-lg font-bold text-[#FF9500]">{fmt(simTotCost)}€</p><p className="text-[7px] text-[#8E8E93]">Costes</p></div>
+                  <div><p className="text-lg font-bold" style={{ color: simMargin >= 0 ? '#34C759' : '#FF3B30' }}>{fmt(simMargin)}€ ({simPct}%)</p><p className="text-[7px] text-[#8E8E93]">Margen</p></div>
+                </div>
+                {/* Comparison vs base */}
+                <div className="mt-2 pt-2 border-t border-[#5856D6]/10 flex justify-center gap-4 text-[8px]">
+                  <span className="text-[#8E8E93]">vs Base: Ingresos <span style={{ color: simTotRev >= pnl.totRev ? '#34C759' : '#FF3B30' }}>{simTotRev >= pnl.totRev ? '+' : ''}{fmt(simTotRev - pnl.totRev)}€</span></span>
+                  <span className="text-[#8E8E93]">Costes <span style={{ color: simTotCost <= pnl.totCost ? '#34C759' : '#FF3B30' }}>{simTotCost <= pnl.totCost ? '' : '+'}{fmt(simTotCost - pnl.totCost)}€</span></span>
+                  <span className="text-[#8E8E93]">Margen <span style={{ color: simPct >= pnl.totMarginPct ? '#34C759' : '#FF3B30' }}>{simPct >= pnl.totMarginPct ? '+' : ''}{simPct - pnl.totMarginPct}pp</span></span>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
