@@ -201,7 +201,7 @@ export function UsersPanel() {
         if (tmErr) { errors.push(`${name}: ${tmErr.message}`); continue }
         if (email) {
           // Delete any existing auth user with this email first to avoid duplicate key errors
-          await supabase.rpc('delete_auth_user_by_email', { target_email: email }).catch(() => {})
+          await supabase.rpc('delete_auth_user_by_email', { target_email: email }).then(() => {}, () => {})
           const { error: aE } = await supabase.rpc('create_auth_user', { user_email: email, user_password: String(row['contraseña']||'revelio2026'), user_id: id })
           if (aE) errors.push(`${name} auth: ${aE.message}`)
         }
