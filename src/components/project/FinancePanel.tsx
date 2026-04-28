@@ -190,13 +190,13 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             <thead><tr className="bg-[#F2F2F7] dark:bg-[#2C2C2E]"><th className="px-3 py-2 text-left font-semibold text-[#8E8E93] sticky left-0 bg-[#F2F2F7] dark:bg-[#2C2C2E] z-10">Concepto</th>{MO.map((m, i) => <th key={m} className={`px-1.5 py-2 text-center font-semibold ${i === now.getMonth() && isCurrentYear ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}>{m}</th>)}<th className="px-2 py-2 text-center font-bold text-[#1D1D1F] dark:text-[#F5F5F7]">Total</th></tr></thead>
             <tbody>
               <tr className="border-t border-[#F2F2F7] dark:border-[#2C2C2E]"><td className="px-3 py-2 font-semibold text-[#007AFF] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Venta</td>{pnl.months.map((m, i) => <td key={i} className={`px-1 py-2 text-center font-medium ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}><span className="text-[#007AFF]">{fmt(m.revenue)}</span></td>)}<td className="px-2 py-2 text-center font-bold text-[#007AFF]">{fmt(pnl.totRev)}</td></tr>
-              <tr className="border-t border-[#F2F2F7]/50"><td className="px-3 py-2 font-semibold text-[#8E8E93] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Coste est.</td>{pnl.months.map((_, i) => <td key={i} className={`px-1 py-2 text-center text-[#8E8E93] ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}>{totalEstCost > 0 ? fmt(Math.round(totalEstCost / 12)) : '€'}</td>)}<td className="px-2 py-2 text-center font-semibold text-[#8E8E93]">{totalEstCost > 0 ? fmt(totalEstCost) : '€'}</td></tr>
+              <tr className="border-t border-[#F2F2F7]/50"><td className="px-3 py-2 font-semibold text-[#8E8E93] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Coste est.</td>{pnl.months.map((_, i) => <td key={i} className={`px-1 py-2 text-center text-[#8E8E93] ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}>{totalEstCost > 0 ? fmt(Math.round(totalEstCost / 12)) : '—'}</td>)}<td className="px-2 py-2 text-center font-semibold text-[#8E8E93]">{totalEstCost > 0 ? fmt(totalEstCost) : '—'}</td></tr>
               <tr className="border-t border-[#F2F2F7]/50"><td className="px-3 py-2 font-semibold text-[#FF9500] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Coste real</td>{pnl.months.map((m, i) => <td key={i} className={`px-1 py-2 text-center ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}><span className="text-[#FF9500]">{fmt(m.cost)}</span></td>)}<td className="px-2 py-2 text-center font-bold text-[#FF9500]">{fmt(pnl.totCost)}</td></tr>
               <tr className="border-t-2 border-[#E5E5EA] dark:border-[#3A3A3C] bg-[#F9F9FB] dark:bg-[#2C2C2E]"><td className="px-3 py-2 font-bold sticky left-0 bg-[#F9F9FB] dark:bg-[#2C2C2E] z-10" style={{ color: pnl.totMargin >= 0 ? '#34C759' : '#FF3B30' }}>Margen real</td>{pnl.months.map((m, i) => <td key={i} className={`px-1 py-2 text-center font-bold ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}><span style={{ color: m.margin >= 0 ? '#34C759' : '#FF3B30' }}>{fmt(m.margin)}</span></td>)}<td className="px-2 py-2 text-center font-bold" style={{ color: pnl.totMargin >= 0 ? '#34C759' : '#FF3B30' }}>{fmt(pnl.totMargin)}</td></tr>
               <tr className="border-t border-[#F2F2F7]/50"><td className="px-3 py-1.5 text-[#8E8E93] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Margen %</td>{pnl.months.map((m, i) => <td key={i} className={`px-1 py-1.5 text-center ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}><span style={{ color: m.marginPct >= 20 ? '#34C759' : m.marginPct >= 10 ? '#FF9500' : '#FF3B30' }}>{m.marginPct}%</span></td>)}<td className="px-2 py-1.5 text-center font-bold" style={{ color: pnl.totMarginPct >= 20 ? '#34C759' : pnl.totMarginPct >= 10 ? '#FF9500' : '#FF3B30' }}>{pnl.totMarginPct}%</td></tr>
               <tr className="border-t border-[#F2F2F7]/50"><td className="px-3 py-1.5 text-[#8E8E93] sticky left-0 bg-white dark:bg-[#1C1C1E] z-10">Horas</td>{pnl.months.map((m, i) => <td key={i} className={`px-1 py-1.5 text-center text-[#8E8E93] ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}>{fmt(m.hours)}</td>)}<td className="px-2 py-1.5 text-center font-semibold text-[#8E8E93]">{fmt(pnl.totHours)}</td></tr>
               <tr><td colSpan={14} className="h-2 bg-[#F2F2F7]/30 dark:bg-[#2C2C2E]/30" /></tr>
-              {monthlyData.map(p => (<tr key={p.id} className="border-t border-[#F2F2F7]/30 hover:bg-[#F2F2F7]/30"><td className="px-3 py-1.5 sticky left-0 bg-white dark:bg-[#1C1C1E] z-10"><span className="dark:text-[#F5F5F7]">{p.avatar || '€'} {p.name.split(' ')[0]}</span> <span className="text-[7px] text-[#8E8E93]">{fmtD(p.costRate)}€/h</span></td>{p.months.map((m, i) => <td key={i} className={`px-1 py-1.5 text-center text-[#8E8E93] ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}>{m.hours > 0 ? fmt(m.cost) : '€'}</td>)}<td className="px-2 py-1.5 text-center font-semibold dark:text-[#F5F5F7]">{fmt(p.months.reduce((s, m) => s + m.cost, 0))}</td></tr>))}
+              {monthlyData.map(p => (<tr key={p.id} className="border-t border-[#F2F2F7]/30 hover:bg-[#F2F2F7]/30"><td className="px-3 py-1.5 sticky left-0 bg-white dark:bg-[#1C1C1E] z-10"><span className="dark:text-[#F5F5F7]">{p.avatar || '€'} {p.name.split(' ')[0]}</span> <span className="text-[7px] text-[#8E8E93]">{fmtD(p.costRate)}€/h</span></td>{p.months.map((m, i) => <td key={i} className={`px-1 py-1.5 text-center text-[#8E8E93] ${i === now.getMonth() && isCurrentYear ? 'bg-[#007AFF]/3' : ''}`}>{m.hours > 0 ? fmt(m.cost) : '—'}</td>)}<td className="px-2 py-1.5 text-center font-semibold dark:text-[#F5F5F7]">{fmt(p.months.reduce((s, m) => s + m.cost, 0))}</td></tr>))}
             </tbody>
           </table>
         </div>
@@ -227,7 +227,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
               <CalendarRange className="w-3.5 h-3.5 text-[#5856D6]" />
               <div className="flex items-center gap-1"><label className="text-[8px] text-[#8E8E93] font-bold uppercase">Desde</label><input type="date" value={simFrom} onChange={e => setSimFrom(e.target.value)} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-2 py-0.5 text-[10px] outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" /></div>
               <div className="flex items-center gap-1"><label className="text-[8px] text-[#8E8E93] font-bold uppercase">Hasta</label><input type="date" value={simTo} onChange={e => setSimTo(e.target.value)} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-2 py-0.5 text-[10px] outline-none dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" /></div>
-              {!simFrom && !simTo && <span className="text-[8px] text-[#8E8E93]">Sin filtro = a€o completo {yr}</span>}
+              {!simFrom && !simTo && <span className="text-[8px] text-[#8E8E93]">Sin filtro = año completo {yr}</span>}
             </div>
 
             {/* Table header */}
@@ -260,8 +260,8 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                   <span className="text-[9px] truncate dark:text-[#F5F5F7]">{m.avatar || '€'} {m.name.split(' ')[0]} <span className="text-[7px] text-[#8E8E93]">{m.role_label}</span></span>
                   <input type="number" value={effSal || ''} onChange={e => setSimSalaryOverrides(p => ({ ...p, [m.id]: Number(e.target.value) }))} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={500} />
                   <input type="number" value={Math.round(effDed * 100)} onChange={e => setSimDedOverrides(p => ({ ...p, [m.id]: Number(e.target.value) }))} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" min={0} max={100} step={5} />
-                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH > 0 ? `${costH.toFixed(2).replace('.', ',')}€` : '€'}</span>
-                  <span className="text-[9px] text-right font-semibold" style={{ color: costPeriod > 0 ? '#FF9500' : '#8E8E93' }}>{costPeriod > 0 ? `${fmt(costPeriod)}€` : '€'}</span>
+                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH > 0 ? `${costH.toFixed(2).replace('.', ',')}€` : '—'}</span>
+                  <span className="text-[9px] text-right font-semibold" style={{ color: costPeriod > 0 ? '#FF9500' : '#8E8E93' }}>{costPeriod > 0 ? `${fmt(costPeriod)}€` : '—'}</span>
                 </div>
               )
             })}
@@ -288,13 +288,13 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                   </div>
                   <input type="number" value={ep.salary || ''} onChange={e => { const n = [...simExtraPersons]; n[ei] = { ...n[ei]!, salary: Number(e.target.value) }; setSimExtraPersons(n) }} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" step={500} />
                   <input type="number" value={ep.dedication} onChange={e => { const n = [...simExtraPersons]; n[ei] = { ...n[ei]!, dedication: Number(e.target.value) }; setSimExtraPersons(n) }} className="rounded border border-[#E5E5EA] dark:border-[#3A3A3C] px-1 py-0.5 text-[9px] outline-none text-right dark:bg-[#2C2C2E] dark:text-[#F5F5F7]" min={0} max={100} step={5} />
-                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH > 0 ? `${costH.toFixed(2).replace('.', ',')}€` : '€'}</span>
-                  <span className="text-[9px] text-right font-semibold text-[#FF9500]">{costPeriod > 0 ? `${fmt(costPeriod)}€` : '€'}</span>
+                  <span className="text-[9px] text-right dark:text-[#F5F5F7]">{costH > 0 ? `${costH.toFixed(2).replace('.', ',')}€` : '—'}</span>
+                  <span className="text-[9px] text-right font-semibold text-[#FF9500]">{costPeriod > 0 ? `${fmt(costPeriod)}€` : '—'}</span>
                   <button onClick={() => setSimExtraPersons(simExtraPersons.filter((_, i) => i !== ei))} className="text-[#8E8E93] hover:text-[#FF3B30]"><X className="w-3 h-3" /></button>
                 </div>
               )
             })}
-            <button onClick={() => setSimExtraPersons([...simExtraPersons, { id: String(Date.now()), name: '', salary: 25000, multiplier: 1.33, dedication: 100, from: simFrom || '', to: simTo || '' }])} className="text-[9px] text-[#34C759] font-medium flex items-center gap-0.5 mt-2"><Plus className="w-3 h-3" /> A€adir persona ficticia</button>
+            <button onClick={() => setSimExtraPersons([...simExtraPersons, { id: String(Date.now()), name: '', salary: 25000, multiplier: 1.33, dedication: 100, from: simFrom || '', to: simTo || '' }])} className="text-[9px] text-[#34C759] font-medium flex items-center gap-0.5 mt-2"><Plus className="w-3 h-3" /> Añadir persona ficticia</button>
           </div>
 
           {/* Simulated result */}
@@ -327,7 +327,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             const simMargin = simTotRev - simTotCost; const simPct = simTotRev > 0 ? Math.round((simMargin / simTotRev) * 100) : 0
             return (
               <div className="rounded-card border-2 border-[#5856D6]/20 bg-[#5856D6]/3 dark:bg-[#5856D6]/5 p-4">
-                <h4 className="text-[10px] font-semibold text-[#5856D6] mb-2 flex items-center gap-1"><Calculator className="w-3 h-3" /> Resultado simulado{simFrom || simTo ? ` (${simFrom || 'inicio'} ? ${simTo || 'fin'})` : ` ${yr}`}</h4>
+                <h4 className="text-[10px] font-semibold text-[#5856D6] mb-2 flex items-center gap-1"><Calculator className="w-3 h-3" /> Resultado simulado{simFrom || simTo ? ` (${simFrom || 'inicio'} → ${simTo || 'fin'})` : ` ${yr}`}</h4>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div><p className="text-lg font-bold text-[#007AFF]">{fmt(simTotRev)}€</p><p className="text-[7px] text-[#8E8E93]">Venta</p></div>
                   <div><p className="text-lg font-bold text-[#FF9500]">{fmt(simTotCost)}€</p><p className="text-[7px] text-[#8E8E93]">Coste</p></div>
@@ -337,6 +337,17 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                   <span className="text-[#8E8E93]">vs Base: Venta <span style={{ color: simTotRev >= pnl.totRev ? '#34C759' : '#FF3B30' }}>{simTotRev >= pnl.totRev ? '+' : ''}{fmt(simTotRev - pnl.totRev)}€</span></span>
                   <span className="text-[#8E8E93]">Coste <span style={{ color: simTotCost <= pnl.totCost ? '#34C759' : '#FF3B30' }}>{simTotCost <= pnl.totCost ? '' : '+'}{fmt(simTotCost - pnl.totCost)}€</span></span>
                   <span className="text-[#8E8E93]">Margen <span style={{ color: simPct >= pnl.totMarginPct ? '#34C759' : '#FF3B30' }}>{simPct >= pnl.totMarginPct ? '+' : ''}{simPct - pnl.totMarginPct}pp</span></span>
+                </div>
+                {/* Monthly breakdown table */}
+                <div className="mt-3 pt-3 border-t border-[#5856D6]/10 overflow-auto">
+                  <table className="w-full text-[8px]">
+                    <thead><tr className="text-[7px] font-bold text-[#8E8E93] uppercase"><th className="text-left py-1 px-1">Mes</th>{MO.map(m => <th key={m} className="text-center px-0.5">{m}</th>)}<th className="text-center px-1">Total</th></tr></thead>
+                    <tbody>
+                      <tr><td className="py-1 px-1 font-semibold text-[#007AFF]">Venta</td>{MO.map((_, i) => { const r = monthlyRevenueFromServices(services, yr, i); return <td key={i} className="text-center px-0.5 text-[#007AFF]">{r > 0 ? fmt(r) : '\u2014'}</td> })}<td className="text-center px-1 font-bold text-[#007AFF]">{fmt(simTotRev)}</td></tr>
+                      <tr><td className="py-1 px-1 font-semibold text-[#FF9500]">Coste</td>{MO.map((_, i) => { const mc = monthlyData.reduce((s, p) => s + p.months[i]!.cost, 0); return <td key={i} className="text-center px-0.5 text-[#FF9500]">{mc > 0 ? fmt(mc) : '\u2014'}</td> })}<td className="text-center px-1 font-bold text-[#FF9500]">{fmt(simTotCost)}</td></tr>
+                      <tr className="border-t border-[#5856D6]/10"><td className="py-1 px-1 font-bold" style={{color: simMargin >= 0 ? '#34C759' : '#FF3B30'}}>Margen</td>{MO.map((_, i) => { const rv = monthlyRevenueFromServices(services, yr, i); const mc2 = monthlyData.reduce((s, p) => s + p.months[i]!.cost, 0); const mg = rv - mc2; return <td key={i} className="text-center px-0.5 font-bold" style={{color: mg >= 0 ? '#34C759' : '#FF3B30'}}>{rv > 0 || mc2 > 0 ? fmt(mg) : '\u2014'}</td> })}<td className="text-center px-1 font-bold" style={{color: simMargin >= 0 ? '#34C759' : '#FF3B30'}}>{fmt(simMargin)}</td></tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )
@@ -386,7 +397,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             <div className="flex gap-3 mt-2 text-[7px] text-[#8E8E93]">
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[#007AFF]" />Venta</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[#FF9500]" />Coste real</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[#007AFF] opacity-40" />Proyecci€n</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[#007AFF] opacity-40" />Proyección</span>
             </div>
           </div>
         </div>
@@ -394,7 +405,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
       {view === 'forecast' && !isCurrentYear && <div className="text-center py-8 text-[10px] text-[#8E8E93]">Forecast solo disponible para {now.getFullYear()}</div>}
 
       {/* Setup notice */}
-      {services.length === 0 && <div className="mt-3 rounded-lg border border-[#FF9500]/20 bg-[#FF9500]/5 px-3 py-2 text-[9px] text-[#FF9500]">Configura servicios/contratos en CdC ? Proyectos para ver venta y margen.</div>}
+      {services.length === 0 && <div className="mt-3 rounded-lg border border-[#FF9500]/20 bg-[#FF9500]/5 px-3 py-2 text-[9px] text-[#FF9500]">Configura servicios/contratos en CdC → Proyectos para ver venta y margen.</div>}
     </div>
   )
 }
