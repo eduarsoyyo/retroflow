@@ -706,7 +706,7 @@ export function ProjectPage() {
             <FinancePanel
               team={teamMembers}
               sala={slug || ''}
-              roomData={room ? { billing_type: (room as unknown as Record<string, unknown>).billing_type as string || 'tm', budget: Number((room as unknown as Record<string, unknown>).budget) || 0, sell_rate: Number((room as unknown as Record<string, unknown>).sell_rate) || 0, fixed_price: Number((room as unknown as Record<string, unknown>).fixed_price) || 0, planned_hours: Number((room as unknown as Record<string, unknown>).planned_hours) || 0 } : undefined}
+              roomData={room ? { billing_type: (room as unknown as Record<string, unknown>).billing_type as string || 'fixed', budget: Number((room as unknown as Record<string, unknown>).budget) || 0, sell_rate: Number((room as unknown as Record<string, unknown>).sell_rate) || 0, fixed_price: Number((room as unknown as Record<string, unknown>).fixed_price) || 0, planned_hours: Number((room as unknown as Record<string, unknown>).planned_hours) || 0, services: ((room as unknown as Record<string, unknown>).services as Array<{ id: string; name: string; from: string; to: string; cost: number; margin_pct: number; risk_pct: number }>) || [] } : undefined}
             />
           )}
         </>}

@@ -9,7 +9,25 @@ import { exportPnLPDF, exportPnLExcel } from '@/lib/exports'
 
 interface OrgEntry { member_id: string; sala: string; dedication: number; start_date: string; end_date: string }
 interface Calendario { id: string; daily_hours_lj: number; daily_hours_v: number; daily_hours_intensive: number; intensive_start: string; intensive_end: string; holidays: Array<{ date: string }> }
-interface RoomFinance { billing_type: string; budget: number; sell_rate: number; fixed_price: number; planned_hours: number }
+interface ServiceContract { id: string; name: string; from: string; to: string; cost: number; margin_pct: number; risk_pct: number }
+interface RoomFinance { billing_type: string; budget: number; sell_rate: number; fixed_price: number; planned_hours: number; services?: ServiceContract[] }
+
+function saleFromService(s: ServiceContract): number { const d = 1 - (s.margin_pct / 100) - ((s.risk_pct || 0) / 100); return d > 0 ? Math.round(s.cost / d) : 0 }
+function monthlyRevenueFromServices(services: ServiceContract[], yr: number, month: number): number {
+  if (!services || services.length === 0) return 0
+  let rev = 0
+  for (const sv of services) {
+    const sale = saleFromService(sv)
+    if (sale <= 0) continue
+    const svFrom = sv.from ? new Date(sv.from) : new Date(yr, 0, 1)
+    const svTo = sv.to ? new Date(sv.to) : new Date(yr, 11, 31)
+    const totalMonths = Math.max(1, (svTo.getFullYear() - svFrom.getFullYear()) * 12 + svTo.getMonth() - svFrom.getMonth() + 1)
+    const moStart = new Date(yr, month, 1)
+    const moEnd = new Date(yr, month + 1, 0)
+    if (moEnd >= svFrom && moStart <= svTo) rev += Math.round(sale / totalMonths)
+  }
+  return rev
+}
 
 interface FinancePanelProps { team: Member[]; sala: string; roomData?: RoomFinance }
 
@@ -109,9 +127,8 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
         }
 
         const cost = Math.round(hours * costRate * 100) / 100
-        const revenue = billing === 'fixed'
-          ? Math.round((fixedPrice / 12) * 100) / 100 // Prorrateo mensual
-          : Math.round(hours * memberSellRate * 100) / 100
+        // Revenue from services, not sell_rate
+        const revenue = 0 // aggregated at PnL level from services
 
         months.push({ hours: Math.round(hours * 10) / 10, cost, revenue })
       }
@@ -127,7 +144,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
   // ── Aggregated P&L ──
   const pnl = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, i) => {
-      const rev = monthlyData.reduce((s, p) => s + p.months[i]!.revenue, 0)
+      const rev = monthlyRevenueFromServices(roomData?.services || [], yr, i)
       const cost = monthlyData.reduce((s, p) => s + p.months[i]!.cost, 0)
       return { revenue: rev, cost, margin: rev - cost, marginPct: pct(rev - cost, rev), hours: monthlyData.reduce((s, p) => s + p.months[i]!.hours, 0) }
     })
