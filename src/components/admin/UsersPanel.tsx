@@ -9,7 +9,7 @@ const AVATARS = ['👤','🧙','🧙‍♀️','🦁','🐍','🦅','🦡','⚡'
 const COLORS = ['#007AFF','#5856D6','#AF52DE','#FF2D55','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7','#5AC8FA','#8E8E93','#1D1D1F','#636366','#48484A','#D1D1D6','#0A84FF','#BF5AF2','#FF6482','#FF375F','#FFD60A','#32D74B','#64D2FF','#AC8E68']
 const ROLE_COLORS: Record<string, string> = { 'Service Manager': '#FF3B30', 'Jefe de Proyecto': '#FF9500', 'Jefe de proyecto': '#FF9500', 'Scrum Master': '#007AFF', 'Product Owner': '#5856D6', 'Consultor': '#34C759', 'PMO': '#FF9500', 'Tech Lead': '#FF6482', 'DevOps': '#5AC8FA', 'QA / Tester': '#FF2D55', 'Analista Funcional': '#AF52DE', 'Desarrollador/a': '#00C7BE' }
 
-interface CostRate { from: string; to?: string; rate: number }
+interface CostRate { from: string; to?: string; rate?: number; salary?: number; multiplier?: number }
 interface ProjectAssign { slug: string; dedication: number; from: string; to: string }
 interface OrgRow { id?: string; member_id: string; sala: string; dedication: number; start_date: string; end_date: string }
 interface TimeEntry { member_id: string; date: string; hours: number; status: string; sala: string }
@@ -18,11 +18,20 @@ interface CalFull { id: string; name: string; convenio_hours: number; daily_hour
 interface UserForm { name: string; username: string; password: string; email: string; company: string; role_label: string; avatar: string; color: string; is_superuser: boolean; calendario_id: string; cost_rates: CostRate[]; hire_date: string; contract_type: string; convenio: string; projects: ProjectAssign[]; responsable_id: string; vacation_carryover: number }
 const emptyForm: UserForm = { name: '', username: '', password: '', email: '', company: 'ALTEN', role_label: '', avatar: '👤', color: '#007AFF', is_superuser: false, calendario_id: '', cost_rates: [], hire_date: '', contract_type: 'indefinido', convenio: '', projects: [], responsable_id: '', vacation_carryover: 0 }
 
-function getCurrentRate(rates: CostRate[]): number {
+function getCurrentRate(rates: CostRate[], convenioHours: number = 1800): number {
   if (!rates || rates.length === 0) return 0
   const now = new Date().toISOString().slice(0, 7)
   const sorted = [...rates].sort((a, b) => b.from.localeCompare(a.from))
-  return (sorted.find(r => r.from <= now && (!r.to || r.to >= now)) || sorted[0])?.rate || 0
+  const current = sorted.find(r => r.from <= now && (!r.to || r.to >= now)) || sorted[0]
+  if (!current) return 0
+  // Soporta dos formatos: {rate} o {salary, multiplier}
+  const c = current as CostRate & { salary?: number; multiplier?: number }
+  if (typeof c.rate === 'number' && c.rate > 0) return c.rate
+  if (typeof c.salary === 'number' && c.salary > 0) {
+    const mult = typeof c.multiplier === 'number' ? c.multiplier : 1.33
+    return Math.round((c.salary * mult / convenioHours) * 100) / 100
+  }
+  return 0
 }
 
 type ViewMode = 'general' | 'vacaciones' | 'jornada' | 'costes'
