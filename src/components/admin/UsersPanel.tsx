@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Plus, Edit2, Trash2, Search, X } from 'lucide-react'
 import { supabase } from '@/data/supabase'
-import { vacDaysApproved, type CalendarData, type CostRate } from '@/domain/finance'
-import { soundCreate, soundDelete } from '@/lib/sounds'
 import type { Member } from '@/types'
+import { Plus, Edit2, Trash2, Search, X } from 'lucide-react'
+import { soundCreate, soundDelete } from '@/lib/sounds'
+import { vacDaysApproved, type CalendarData, type CostRate } from '@/domain/finance'
 
 const uid = () => crypto.randomUUID()
 
@@ -144,21 +144,75 @@ export function UsersPanel() {
     }
   }
 
+  /**
+   * Crea el usuario en Supabase Auth usando la Edge Function.
+   * Solo se ejecuta al crear un usuario nuevo (no al editar).
+   */
+  const createAuthUser = async (userId: string, email: string, password: string): Promise<void> => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    if (!supabaseUrl) throw new Error('VITE_SUPABASE_URL no configurado')
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) throw new Error('No hay sesión activa para llamar a la Edge Function')
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/auth`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        user_email: email,
+        user_password: password,
+        user_id: userId,
+      }),
+    })
+
+    const result = await response.json()
+    if (!response.ok) {
+      throw new Error(result.error || 'Error creando usuario en auth')
+    }
+  }
+
   const handleSave = async () => {
     if (!form.name || !form.email) return
+
+    // Validación adicional para creación
+    if (modal === 'create') {
+      if (!form.password || form.password.length < 6) {
+        setSaveError('La contraseña debe tener al menos 6 caracteres')
+        return
+      }
+    }
 
     setSaving(true)
     setSaveError('')
 
     try {
       if (modal === 'create') {
-        await supabase.from('team_members').insert({
-          id: uid(),
+        const newId = uid()
+
+        // 1. Crear team_member en la tabla
+        const { error: insertError } = await supabase.from('team_members').insert({
+          id: newId,
           name: form.name,
           email: form.email,
-          username: form.username,
+          username: form.username || form.email.split('@')[0],
           cost_rates: form.cost_rates,
         })
+
+        if (insertError) {
+          throw new Error(`Error creando team_member: ${insertError.message}`)
+        }
+
+        // 2. Crear auth user via Edge Function
+        try {
+          await createAuthUser(newId, form.email, form.password)
+        } catch (authError) {
+          // Rollback: borrar el team_member si falla la creación de auth
+          await supabase.from('team_members').delete().eq('id', newId)
+          throw authError
+        }
       } else if (editMember) {
         await supabase.from('team_members').update({
           name: form.name,
