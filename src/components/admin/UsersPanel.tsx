@@ -4,7 +4,7 @@ import type { Member } from '@/types'
 import { Plus, Edit, Trash2, Search, X } from 'lucide-react'
 import { soundCreate, soundDelete } from '@/lib/sounds'
 import {
-  getCurrentCostRate, vacDaysApproved,
+  vacDaysApproved,
   type CalendarData, type CostRate,
 } from '@/domain/finance'
 
