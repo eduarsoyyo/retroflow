@@ -15,10 +15,12 @@ interface RetroSnapshot {
   data: Record<string, unknown>;
 }
 
-export async function loadRetros(): Promise<Result<RetroSnapshot[]>> {
+export async function loadRetros(sala?: string): Promise<Result<RetroSnapshot[]>> {
   try {
-    const { data, error } = await supabase.from('retros')
-      .select('id,sala,tipo,status,created_at,updated_at,data')
+    let query = supabase.from('retros')
+      .select('id,sala,tipo,status,created_at,updated_at,data');
+    if (sala) query = query.eq('sala', sala);
+    const { data, error } = await query
       .order('created_at', { ascending: false });
     if (error) { log.error('loadRetros', error); return err(new DataError('Failed to load retros')); }
     return ok(data ?? []);
