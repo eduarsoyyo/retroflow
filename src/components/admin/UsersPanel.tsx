@@ -4,16 +4,12 @@ import type { Member } from '@/types'
 import { Plus, Edit, Trash2, Search, X } from 'lucide-react'
 import { soundCreate, soundDelete } from '@/lib/sounds'
 import {
-  getCurrentCostRate, memberCostHour,
-  vacDaysApproved, ausDaysApproved, effectiveTheoreticalHours,
+  getCurrentCostRate, vacDaysApproved,
   type CalendarData, type CostRate,
 } from '@/domain/finance'
 
 const uid = () => crypto.randomUUID()
-const AVATARS = ['👤','🧙','🧙‍♀️','🦁','🐍','🦅','🦡','⚡','🌟','🔮','🏰','📚','🧪','🦋','🐉','🎯','🛡️','🌊','🔥','🌿','💎','🦊','🐺','🦉','🐝','🐙','🦄','🐧','🐻','🐬','🦈','🐢','🦇','🌸','🍀','🌙','☀️','🌈','🎲','🎭','🚀','🎸','🎨','🏆','🎪','🧬','🔬','💻','🎮','🎧','📱','🛸','🌍','🗡️','🏹','🧲','🔑','🗝️','🎩','👑']
-const COLORS = ['#007AFF','#5856D6','#AF52DE','#FF2D55','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7','#5AC8FA','#8E8E93','#1D1D1F','#636366','#48484A','#D1D1D6','#0A84FF','#BF5AF2','#FF6482','#FF375F','#FFD60A','#32D74B','#64D2FF','#AC8E68']
 
-interface OrgRow { id?: string; member_id: string; sala: string; dedication: number; start_date: string; end_date: string }
 interface AbsenceReq { member_id: string; type: string; date_from: string; date_to: string; days: number; status: string }
 interface UserForm { name: string; username: string; password: string; email: string; company: string; role_label: string; avatar: string; color: string; is_superuser: boolean; calendario_id: string; cost_rates: CostRate[]; hire_date: string; contract_type: string; convenio: string; projects: any[]; responsable_id: string; vacation_carryover: number }
 const emptyForm: UserForm = { name: '', username: '', password: '', email: '', company: 'ALTEN', role_label: '', avatar: '👤', color: '#007AFF', is_superuser: false, calendario_id: '', cost_rates: [], hire_date: '', contract_type: 'indefinido', convenio: '', projects: [], responsable_id: '', vacation_carryover: 0 }
@@ -33,7 +29,6 @@ export function UsersPanel() {
   const [deleteConfirm, setDeleteConfirm] = useState('')
 
   const rx = (m: Member) => m as unknown as Record<string, unknown>
-  const today = new Date().toISOString().slice(0, 10)
   const yr = new Date().getFullYear()
 
   const getCal = (m: Member): CalendarData | null => {
@@ -46,11 +41,6 @@ export function UsersPanel() {
     return Math.max(0, total - vacDaysApproved(absReqs, m.id, yr))
   }
   const vacTotal = (m: Member): number => (m.annual_vac_days || 22) + (m.prev_year_pending || 0) + (Number(rx(m).vacation_carryover) || 0)
-
-  const getMemberCostRate = (m: Member): CostRate | null => {
-    const raw = rx(m).cost_rates as any[]
-    return raw && raw.length > 0 ? getCurrentCostRate(raw.map(r => ({ from: r.from, to: r.to, salary: r.salary || 0, multiplier: r.multiplier || 1.33 }))) : null
-  }
 
   useEffect(() => {
     Promise.all([
