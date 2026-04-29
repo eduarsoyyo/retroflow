@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/data/supabase'
+import { authAdmin } from '@/data/authAdmin'
 import type { Member } from '@/types'
 import { Plus, Edit, Trash2, Search, DollarSign, X, Upload, Download, List, Palmtree, Clock, TrendingUp, Check } from 'lucide-react'
 import { soundCreate, soundDelete } from '@/lib/sounds'
@@ -210,8 +211,8 @@ export function UsersPanel() {
         if (tmErr) { errors.push(`${name}: ${tmErr.message}`); continue }
         if (email) {
           // Delete any existing auth user with this email first to avoid duplicate key errors
-          try { await supabase.rpc('delete_auth_user_by_email', { target_email: email }) } catch { /* ignore */ }
-          const { error: aE } = await supabase.rpc('create_auth_user', { user_email: email, user_password: String(row['contraseña']||'revelio2026'), user_id: id })
+          try { await authAdmin.deleteByEmail({ email }) } catch { /* ignore */ }
+          let aE: { message: string } | null = null; try { await authAdmin.create({ email, password: String(row['contraseña']||'revelio2026'), userId: id }) } catch (err) { aE = { message: (err as Error).message } }
           if (aE) errors.push(`${name} auth: ${aE.message}`)
         }
         created++
@@ -261,13 +262,13 @@ export function UsersPanel() {
       const { data, error } = await supabase.from('team_members').insert({ id: memberId, ...payload }).select().single()
       if (error) { setSaveError(error.message); setSaving(false); return }
       if (data) { setMembers(prev => [...prev, data]); soundCreate() }
-      if (form.email && form.password) void supabase.rpc('create_auth_user', { user_email: form.email, user_password: form.password, user_id: memberId })
+      if (form.email && form.password) void authAdmin.create({ email: form.email, password: form.password, userId: memberId }).catch(err => console.error('Auth create failed:', err))
     } else if (editMember) {
       const { data, error } = await supabase.from('team_members').update(payload).eq('id', editMember.id).select().single()
       if (error) { setSaveError(error.message); setSaving(false); return }
       if (data) { setMembers(prev => prev.map(m => m.id === editMember.id ? data : m)); soundCreate() }
-      if (form.password) void supabase.rpc('update_auth_password', { target_user_id: editMember.id, new_password: form.password })
-      if (form.email && form.email !== editMember.email) void supabase.rpc('update_auth_email', { target_user_id: editMember.id, new_email: form.email })
+      if (form.password) void authAdmin.updatePassword({ userId: editMember.id, newPassword: form.password }).catch(err => console.error('Auth update password failed:', err))
+      if (form.email && form.email !== editMember.email) void authAdmin.updateEmail({ userId: editMember.id, newEmail: form.email }).catch(err => console.error('Auth update email failed:', err))
     }
     for (const pa of form.projects) { const ex = orgChart.find(o => o.member_id === memberId && o.sala === pa.slug); if (ex?.id) await supabase.from('org_chart').update({ dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }).eq('id', ex.id); else await supabase.from('org_chart').insert({ member_id: memberId, sala: pa.slug, dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }) }
     for (const s of (editMember?.rooms||[]).filter(s => !roomSlugs.includes(s))) await supabase.from('org_chart').delete().eq('member_id', memberId).eq('sala', s)
@@ -278,7 +279,7 @@ export function UsersPanel() {
     if (!deleteTarget || deleteConfirm !== deleteTarget.name) return
     await supabase.from('team_members').delete().eq('id', deleteTarget.id)
     await supabase.from('org_chart').delete().eq('member_id', deleteTarget.id)
-    void supabase.rpc('delete_auth_user', { target_user_id: deleteTarget.id })
+    void authAdmin.delete({ userId: deleteTarget.id }).catch(err => console.error('Auth delete failed:', err))
     setMembers(prev => prev.filter(m => m.id !== deleteTarget.id)); setDeleteTarget(null); setDeleteConfirm(''); soundDelete()
   }
 
