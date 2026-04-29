@@ -258,7 +258,7 @@ export function UsersPanel() {
                 <div className="hidden sm:block text-right">
                   <div className="text-xs text-text-secondary">{calNameOf(member)}</div>
                   <div className="text-xs text-text-secondary">
-                    Vac: {vacDaysApproved(absReqs, member.id, yr)}/{vacTotal(member)}
+                    Vac: {vacDaysApproved(absReqs, member.id, yr)}/{vacTotal(member)} · Pend: {vacPend(member)}
                   </div>
                 </div>
 
