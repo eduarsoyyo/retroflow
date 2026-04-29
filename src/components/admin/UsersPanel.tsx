@@ -279,7 +279,7 @@ export function UsersPanel() {
     if (!deleteTarget || deleteConfirm !== deleteTarget.name) return
     await supabase.from('team_members').delete().eq('id', deleteTarget.id)
     await supabase.from('org_chart').delete().eq('member_id', deleteTarget.id)
-    void authAdmin.delete({ userId: deleteTarget.id }).catch(err => console.error('Auth delete failed:', err))
+    void (async () => { try { await authAdmin.delete({ userId: deleteTarget.id }) } catch (err) { console.warn('Auth delete by ID failed:', err) } if (deleteTarget.email) { try { await authAdmin.deleteByEmail({ email: deleteTarget.email }) } catch (err) { console.warn('Auth delete by email failed:', err) } } })()
     setMembers(prev => prev.filter(m => m.id !== deleteTarget.id)); setDeleteTarget(null); setDeleteConfirm(''); soundDelete()
   }
 
