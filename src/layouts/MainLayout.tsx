@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Home, BarChart3, Users, Clock, AlertTriangle, User, Trophy, Settings, LogOut, ChevronDown, Moon, Sun, Menu, X } from 'lucide-react'
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, Link, useNavigate, useLocation, useMatch } from 'react-router-dom'
 import { ClockWidget, isClockRunning } from '@/components/common/ClockWidget'
 import { NotificationBell } from '@/components/common/NotificationBell'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import { supabase } from '@/data/supabase'
+import { fetchClienteById } from '@/data/clientes'
 import { trackSessionEnd, trackPageView } from '@/lib/usage'
+import type { Room, Cliente } from '@/types'
 
 const NAV_ITEMS = [
   { path: '/', icon: Home, label: 'Inicio' },
@@ -29,6 +31,39 @@ export function MainLayout() {
   const [showLogoutWarning, setShowLogoutWarning] = useState(false)
 
   useEffect(() => { if (user?.id) setThemeUserId(user.id) }, [user?.id, setThemeUserId])
+
+  // ─── Project context for top bar ─────────────────────────────────────────
+  // When the user is on /project/:slug or /project/:slug/retro, load room +
+  // cliente to display in the global top bar. Two queries hit on every
+  // navigation; this is a known duplication with ProjectPage's own load and
+  // will be deduplicated when we introduce a shared ProjectContext.
+  const projectMatch = useMatch('/project/:slug')
+  const retroMatch = useMatch('/project/:slug/retro')
+  const projectSlug = projectMatch?.params.slug || retroMatch?.params.slug
+  const isRetro = !!retroMatch
+  const [projectRoom, setProjectRoom] = useState<Room | null>(null)
+  const [projectCliente, setProjectCliente] = useState<Cliente | null>(null)
+
+  useEffect(() => {
+    if (!projectSlug) {
+      setProjectRoom(null); setProjectCliente(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const r = await supabase.from('rooms').select('*').eq('slug', projectSlug).single()
+      if (cancelled) return
+      const room = r.data as Room | null
+      setProjectRoom(room)
+      if (room?.cliente_id) {
+        const c = await fetchClienteById(room.cliente_id)
+        if (!cancelled) setProjectCliente(c)
+      } else {
+        setProjectCliente(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [projectSlug])
 
   const handleLogout = () => {
     if (isClockRunning()) { setShowLogoutWarning(true); return }
@@ -70,6 +105,7 @@ export function MainLayout() {
   }, [])
 
   const isActive = (path: string) => location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+  const isHome = location.pathname === '/'
 
   return (
     <div className="h-screen flex bg-revelio-bg dark:bg-revelio-dark-bg">
@@ -113,24 +149,43 @@ export function MainLayout() {
       {/* ═══ MAIN AREA ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-12 flex items-center justify-between px-4 bg-white dark:bg-revelio-dark-card border-b border-revelio-border dark:border-revelio-dark-border flex-shrink-0">
+        <header className="h-12 flex items-center justify-between px-4 bg-white dark:bg-revelio-dark-card border-b border-revelio-border dark:border-revelio-dark-border flex-shrink-0 gap-3">
           {/* Mobile hamburger */}
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border">
             {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
 
-          {/* Page title */}
-          <h1 className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text hidden sm:block capitalize">
-            {NAV_ITEMS.find(n => isActive(n.path))?.label || 'Revelio'}
-          </h1>
+          {/* Breadcrumb */}
+          <div className="flex-1 min-w-0 hidden sm:flex items-center">
+            {projectRoom ? (
+              <p className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text truncate">
+                {projectCliente && <><span className="text-revelio-blue">{projectCliente.name}</span> <span className="text-revelio-subtle dark:text-revelio-dark-subtle font-normal">·</span> </>}
+                {projectRoom.name}
+                {isRetro && <> <span className="text-revelio-subtle dark:text-revelio-dark-subtle font-normal">·</span> Retro</>}
+              </p>
+            ) : location.pathname.startsWith('/admin') ? (
+              <h1 className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text">Centro de Control</h1>
+            ) : location.pathname.startsWith('/proyectos') ? (
+              <h1 className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text">Mis proyectos</h1>
+            ) : (
+              <h1 className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text capitalize">
+                {NAV_ITEMS.find(n => isActive(n.path))?.label || 'Revelio'}
+              </h1>
+            )}
+          </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <ClockWidget userId={user?.id} />
             <button onClick={toggleTheme} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border transition-colors">
               {isDark ? <Sun className="w-4 h-4 text-revelio-orange" /> : <Moon className="w-4 h-4 text-revelio-subtle" />}
             </button>
             <NotificationBell userId={user?.id} />
+            {!isHome && (
+              <Link to="/" title="Inicio" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border transition-colors">
+                <Home className="w-4 h-4 text-revelio-subtle" />
+              </Link>
+            )}
 
             {/* Avatar menu */}
             <div className="relative" ref={menuRef}>
