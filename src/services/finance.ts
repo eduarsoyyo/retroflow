@@ -125,7 +125,7 @@ export interface PortfolioPnL {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
- * Convert the app-level Calendario type (with intensive_from/to) into the
+* Convert the app-level Calendario type (with intensive_start/end) into the
  * pure CalendarData shape that domain/finance expects (intensive_start/end).
  * Returns null if the input is null/undefined.
  */
@@ -138,8 +138,8 @@ function toCalendarData(cal: Calendario | null | undefined): CalendarData | null
     daily_hours_lj: cal.daily_hours_lj,
     daily_hours_v: cal.daily_hours_v,
     daily_hours_intensive: cal.daily_hours_intensive,
-    intensive_start: cal.intensive_from ?? '',
-    intensive_end: cal.intensive_to ?? '',
+   intensive_start: cal.intensive_start ?? '',
+    intensive_end: cal.intensive_end ?? '',
     holidays: cal.holidays ?? [],
   }
 }

@@ -67,8 +67,8 @@ export function FTEsPanel({ team, sala }: FTEsPanelProps) {
   const isIntensive = (cal: Calendario | null, ds: string) => {
     if (!cal) return false
     const mmdd = ds.slice(5)
-    const from = cal.intensive_from || '08-01'
-    const to = cal.intensive_to || '08-31'
+const from = cal.intensive_start || '08-01'
+    const to = cal.intensive_end || '08-31'
     return mmdd >= from && mmdd <= to
   }
 

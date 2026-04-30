@@ -59,8 +59,8 @@ const stdCalendar: Calendario = {
   daily_hours_lj: 8,
   daily_hours_v: 7,
   daily_hours_intensive: 7,
-  intensive_from: '07-01',
-  intensive_to: '08-31',
+intensive_start: '07-01',
+  intensive_end: '08-31',
   convenio_hours: 1800,
   holidays: [
     { date: '2026-01-01', name: 'Año Nuevo' },

@@ -50,6 +50,7 @@ export interface Room {
   name: string
   tipo: RoomType
   metadata: Record<string, unknown>
+cliente_id?: string | null
   // ─── Project lifecycle & finance (optional jsonb / columns) ───
   status?: string | null
   billing_type?: string | null
@@ -73,6 +74,18 @@ export interface Room {
   services?: ServiceContractEntry[] | null
   created_at?: string | null
 }
+export interface Cliente {
+  id: string
+  name: string
+  slug: string
+  logo_url?: string | null
+  contact_name?: string | null
+  contact_email?: string | null
+  notes?: string | null
+  status?: string | null
+  created_at?: string | null
+}
+
 export type RoomType = 'agile' | 'waterfall' | 'itil' | 'kanban'
 export interface Retro {
   id: string
@@ -142,24 +155,7 @@ export interface OrgChartEntry {
   start_date?: string
   end_date?: string
 }
-export interface SkillProfile {
-  id: string
-  sala: string
-  name: string
-  description: string
-  fte: number
-  color: string
-  icon: string
-  sort_order: number
-}
-export interface Skill {
-  id: string
-  sala: string
-  name: string
-  category: string
-  icon: string
-  description: string
-}
+
 export interface Calendario {
   id: string
   name: string
@@ -169,21 +165,14 @@ export interface Calendario {
   daily_hours_lj: number
   daily_hours_v: number
   daily_hours_intensive: number
-  intensive_from: string | null
-  intensive_to: string | null
+  intensive_start: string | null
+  intensive_end: string | null
   // ─── Optional finance / hours fields ───
   convenio_hours?: number | null
 }
 export interface CalendarHoliday {
   date: string
   name: string
-}
-export interface Convenio {
-  id: string
-  name: string
-  vac_days: number
-  extra_days: unknown[]
-  notes: string
 }
 // ─── Auth ───
 export interface AuthUser {
