@@ -18,7 +18,7 @@ vi.mock('@/data/orgChart', () => ({
   fetchOrgChartBySalas: vi.fn(),
 }))
 
-import { aggregateOrgChartByMember, isPeriodActive, loadProjectTeam } from '../team'
+import { aggregateOrgChartByMember, dedicationAt, isPeriodActive, loadProjectTeam } from '../team'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 function makeMember(id: string, name: string): Member {
@@ -186,3 +186,64 @@ describe('loadProjectTeam', () => {
     expect(orgMod.fetchOrgChartBySala).toHaveBeenCalledWith('vwfs')
   })
 })
+// ════════════════════════════════════════════════════════════════════════════
+// dedicationAt
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('dedicationAt', () => {
+  it('returns 0 when the member has no entries', () => {
+    const entries = [makeEntry({ member_id: 'other', dedication: 1 })]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0)
+  })
+
+  it('returns 0 when no entry of the member is active at the date', () => {
+    const entries = [
+      makeEntry({ member_id: 'm1', dedication: 1, start_date: '2025-01-01', end_date: '2025-12-31' }),
+      makeEntry({ member_id: 'm1', dedication: 0.5, start_date: '2027-01-01', end_date: '' }),
+    ]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0)
+  })
+
+  it('returns the dedication of the only active period', () => {
+    const entries = [makeEntry({ member_id: 'm1', dedication: 0.5, start_date: '', end_date: '' })]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0.5)
+  })
+
+  it('sums dedications when multiple periods overlap at the date', () => {
+    const entries = [
+      makeEntry({ member_id: 'm1', dedication: 0.5, start_date: '2026-01-01', end_date: '2026-06-30' }),
+      makeEntry({ member_id: 'm1', dedication: 0.3, start_date: '2026-04-01', end_date: '2026-12-31' }),
+    ]
+    expect(dedicationAt(entries, 'm1', '2026-05-15')).toBeCloseTo(0.8)
+  })
+
+  it('ignores entries belonging to other members', () => {
+    const entries = [
+      makeEntry({ member_id: 'm1', dedication: 0.5 }),
+      makeEntry({ member_id: 'm2', dedication: 1 }),
+    ]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0.5)
+  })
+
+  it('clamps negative or NaN dedications to 0', () => {
+    const entries = [
+      makeEntry({ member_id: 'm1', dedication: -0.5 }),
+      makeEntry({ member_id: 'm1', dedication: Number.NaN }),
+      makeEntry({ member_id: 'm1', dedication: 0.4 }),
+    ]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0.4)
+  })
+
+  it('treats undefined dedication as 1', () => {
+    const entries = [makeEntry({ member_id: 'm1', dedication: undefined })]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(1)
+  })
+
+  it('respects period boundaries inclusively', () => {
+    const entries = [makeEntry({ member_id: 'm1', dedication: 0.6, start_date: '2026-04-30', end_date: '2026-04-30' })]
+    expect(dedicationAt(entries, 'm1', '2026-04-30')).toBe(0.6)
+    expect(dedicationAt(entries, 'm1', '2026-04-29')).toBe(0)
+    expect(dedicationAt(entries, 'm1', '2026-05-01')).toBe(0)
+  })
+})
+

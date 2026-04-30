@@ -99,16 +99,35 @@ export function aggregateOrgChartByMember(
  * Both ends are inclusive.
  */
 export function isPeriodActive(entry: OrgChartEntry, asOf: string): boolean {
-  const start = entry.start_date && entry.start_date.length > 0 ? entry.start_date : null
-  const end = entry.end_date && entry.end_date.length > 0 ? entry.end_date : null
-  if (start && asOf < start) return false
-  if (end && asOf > end) return false
-  return true
-}
+     const start = entry.start_date && entry.start_date.length > 0 ? entry.start_date : null
+     const end = entry.end_date && entry.end_date.length > 0 ? entry.end_date : null
+     if (start && asOf < start) return false
+     if (end && asOf > end) return false
+     return true
+   }
 
 function clampDedication(d: number): number {
   if (!Number.isFinite(d) || d < 0) return 0
   return d
+  }
+/**
+ * Resolve the dedication of a member on a specific date.
+ *
+ * Rules:
+ *   - Considers only entries belonging to `memberId`.
+ *   - Sums dedications of all entries active at `date` (multi-period robust).
+ *   - Periods with empty start_date or end_date are treated as open on that side.
+ *   - If no entry is active at `date`, returns 0.
+ *   - Negative or NaN dedications are clamped to 0.
+ */
+export function dedicationAt(entries: OrgChartEntry[], memberId: string, date: string): number {
+  let sum = 0
+  for (const e of entries) {
+    if (e.member_id !== memberId) continue
+    if (!isPeriodActive(e, date)) continue
+    sum += clampDedication(e.dedication ?? 1)
+  }
+  return sum
 }
 
 function today(): string {
