@@ -18,7 +18,8 @@ import { RiskHeatmap } from '@/components/retro/RiskHeatmap'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/data/supabase'
 import { useRetroRealtime } from '@/hooks/useRetroRealtime'
-import type { Room, Member } from '@/types'
+import type { Room, Member, Cliente } from '@/types'
+import { fetchClienteById } from '@/data/clientes'
 import { RetroHistory } from '@/components/retro/RetroHistory'
 import { soundCreate, soundDrop, soundComplete, soundSuccess, soundDelete, soundSlide } from '@/lib/sounds'
 
@@ -78,6 +79,7 @@ export function ProjectPage() {
   const { slug } = useParams<{ slug: string }>()
   const { user } = useAuth()
   const [room, setRoom] = useState<Room | null>(null)
+const [cliente, setCliente] = useState<Cliente | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [actions, setActions] = useState<Action[]>([])
   const [risks, setRisks] = useState<Risk[]>([])
@@ -193,6 +195,11 @@ export function ProjectPage() {
         supabase.from('retros').select('*').eq('sala', slug).eq('status', 'active').order('created_at', { ascending: false }).limit(1),
       ])
       if (roomR.data) setRoom(roomR.data)
+      if (roomR.data?.cliente_id) {
+        fetchClienteById(roomR.data.cliente_id).then(c => setCliente(c))
+      } else {
+        setCliente(null)
+      }
       if (membersR.data) setMembers(membersR.data)
       if (retrosR.data?.[0]) {
         setRetroId(retrosR.data[0].id)
@@ -251,7 +258,10 @@ export function ProjectPage() {
             <Link to="/proyectos" className="w-5 h-5 rounded border border-revelio-border dark:border-revelio-dark-border flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border">
               <ArrowLeft className="w-2.5 h-2.5 text-revelio-subtle" />
             </Link>
-            <h1 className="text-xs font-bold text-revelio-text dark:text-revelio-dark-text truncate">{room.name}</h1>
+            <div className="flex-1 min-w-0">
+              {cliente && <p className="text-[9px] font-medium text-revelio-blue truncate leading-tight">{cliente.name}</p>}
+              <h1 className="text-xs font-bold text-revelio-text dark:text-revelio-dark-text truncate leading-tight">{room.name}</h1>
+            </div>
           </div>
           <p className="text-[9px] text-revelio-subtle dark:text-revelio-dark-subtle pl-7">{room.tipo} · {teamMembers.length}p</p>
         </div>
