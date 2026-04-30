@@ -132,12 +132,15 @@ export interface Tag {
   color: string
 }
 export interface OrgChartEntry {
-  id: string
+  id?: string
   sala: string
   member_id: string
-  manager_id: string | null
-  role: string
-  level: number
+  manager_id?: string | null
+  role?: string
+  level?: number
+dedication?: number
+  start_date?: string
+  end_date?: string
 }
 export interface SkillProfile {
   id: string
