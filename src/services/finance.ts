@@ -1,106 +1,577 @@
-import type { Member, OrgChartEntry } from '@/types'
+// ═══ FINANCE SERVICE — Orchestrates domain/finance + data layer ═══
+// Use case: components ask the service for finance data; the service loads
+// from data/* and runs pure calculations from domain/finance.
+//
+// Layer rules (Clean Architecture):
+//   - This file is the ONLY place that combines data + domain for finance.
+//   - Components NEVER call data/* or domain/finance directly for project P&L.
+//   - This file does NOT import from components/ or hooks/.
+//   - Calculations live in domain/finance — services only call them.
+
 import { fetchTeamMembers } from '@/data/team'
-import { fetchOrgChartBySala } from '@/data/orgChart'
+import { fetchRooms } from '@/data/rooms'
+import {
+  fetchTimeEntries,
+  hoursByMember,
+  hoursByMonth,
+  sumHours,
+  type TimeEntry,
+} from '@/data/time-entries'
+import { fetchCalendariosIndexed } from '@/data/calendarios'
+import {
+  // Cost rates
+  migrateCostRates,
+  costRateFromSalary,
+  memberCostHour,
+  // Service contracts (revenue)
+  monthlyRevenueFromServices,
+  totalSaleFromServices,
+  totalEstCostFromServices,
+  avgMarginFromServices,
+  // Calendar / hours
+  effectiveTheoreticalHoursYear,
+  // Helpers
+  pct,
+  type CostRate,
+  type LegacyCostRate,
+  type ServiceContract,
+  type CalendarData,
+  type AbsenceData,
+} from '@/domain/finance'
+import type {
+  Member,
+  Room,
+  Calendario,
+  MemberAssign,
+  ServiceContractEntry,
+  CostRateEntry,
+  VacationEntry,
+} from '@/types'
 
-/**
- * SCOPE de este service (sesion 9):
- *
- * Su unica responsabilidad es agregar el organigrama multi-periodo de una sala
- * y devolver, por miembro, su dedicacion efectiva y los periodos activos.
- *
- * NO calcula coste/hora ni P&L: esas funciones ya existen en domain/finance
- * y el caller las invoca con los datos que ya tiene cargados (costRates,
- * calendarios, services). El objetivo de esta sesion es que dejen de estar
- * dispersos los selects a `org_chart` y la logica de "que periodos cuentan
- * a fecha X".
- *
- * En sesiones siguientes ampliaremos el service para devolver el snapshot
- * financiero completo, una vez extraido P&L a domain con tests propios.
- */
+// ═════════════════════════════════════════════════════════════════════════════
+// Public types — what the components consume
+// ═════════════════════════════════════════════════════════════════════════════
 
-export interface MemberDedicationSlice {
-  member: Member
-  /** Suma de dedications de los periodos activos a `asOf` (0..N). */
-  effectiveDedication: number
-  /** Entradas de org_chart activas a `asOf`. Vacio = ninguna. */
-  activePeriods: OrgChartEntry[]
+export type CostMode = 'actual' | 'theoretical'
+
+export interface MonthlyPnL {
+  /** 0-indexed month (0 = January) */
+  month: number
+  revenue: number
+  cost: number
+  margin: number
+  marginPct: number
 }
 
-export interface LoadProjectTeamOptions {
-  sala: string
-  /** ISO `yyyy-mm-dd`. Default: hoy. */
-  asOf?: string
+export interface ProjectFinance {
+  slug: string
+  name: string
+  year: number
+  mode: CostMode
+  /** Total invoiced revenue from contracted services */
+  totalRevenue: number
+  /** Total real cost (based on `mode`) */
+  totalCost: number
+  /** totalRevenue - totalCost */
+  margin: number
+  /** Margin as percentage of revenue (0..100) */
+  marginPct: number
+  /** Per-month breakdown — always 12 entries (Jan..Dec) */
+  months: MonthlyPnL[]
+  /** Members included in the cost calculation, with their contribution */
+  members: ProjectMemberCost[]
 }
 
-/**
- * Caso de uso: "dame el equipo activo de esta sala a fecha X, con su
- * dedicacion efectiva agregada (multi-periodo)".
- *
- * El caller (FinancePanel, CrossProyecto, FTEs, etc.) recibe miembros listos
- * para alimentar a domain/finance#memberCostHour y a
- * domain/calendar#monthlyTheoreticalHours sin tener que tocar Supabase.
- */
-export async function loadProjectTeam(opts: LoadProjectTeamOptions): Promise<MemberDedicationSlice[]> {
-  const asOf = opts.asOf ?? today()
-  const [members, orgEntries] = await Promise.all([fetchTeamMembers(), fetchOrgChartBySala(opts.sala)])
-  const memberById = new Map(members.map((m) => [m.id, m]))
-  const aggregated = aggregateOrgChartByMember(orgEntries, asOf)
+export interface ProjectMemberCost {
+  memberId: string
+  memberName: string
+  /** Cost/hour vigente al cierre del periodo (informativo) */
+  currentCostHour: number
+  /** Horas usadas para el cálculo (reales si mode=actual; teóricas si mode=theoretical) */
+  hours: number
+  /** Coste imputado al proyecto */
+  cost: number
+}
 
-  const out: MemberDedicationSlice[] = []
-  for (const [memberId, info] of aggregated) {
-    const member = memberById.get(memberId)
-    if (!member) continue
-    out.push({ member, effectiveDedication: info.effectiveDedication, activePeriods: info.activePeriods })
+export interface MemberCostSummary {
+  memberId: string
+  memberName: string
+  year: number
+  /** Coste/hora vigente al final del año */
+  currentCostHour: number
+  /** Horas teóricas efectivas en el año (calendario - vacaciones - ausencias) */
+  effectiveTheoreticalHours: number
+  /** Total horas reales fichadas en el año (todos los proyectos) */
+  totalHoursLogged: number
+  /** Coste empresa real total: sum(time_entries.hours × cost/hora vigente en la fecha) */
+  totalCost: number
+  /** Coste por proyecto */
+  byProject: Array<{ sala: string; hours: number; cost: number }>
+}
+
+export interface PortfolioPnL {
+  year: number
+  mode: CostMode
+  totalRevenue: number
+  totalCost: number
+  margin: number
+  marginPct: number
+  projects: Array<Pick<ProjectFinance, 'slug' | 'name' | 'totalRevenue' | 'totalCost' | 'margin' | 'marginPct'>>
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Internal helpers — local to this service.
+// If any of these grow or get reused, promote them to domain/finance.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Convert the app-level Calendario type (with intensive_from/to) into the
+ * pure CalendarData shape that domain/finance expects (intensive_start/end).
+ * Returns null if the input is null/undefined.
+ */
+function toCalendarData(cal: Calendario | null | undefined): CalendarData | null {
+  if (!cal) return null
+  return {
+    id: cal.id,
+    name: cal.name,
+    convenio_hours: cal.convenio_hours ?? 1800,
+    daily_hours_lj: cal.daily_hours_lj,
+    daily_hours_v: cal.daily_hours_v,
+    daily_hours_intensive: cal.daily_hours_intensive,
+    intensive_start: cal.intensive_from ?? '',
+    intensive_end: cal.intensive_to ?? '',
+    holidays: cal.holidays ?? [],
   }
-  return out
-}
-
-// ----------------------------------------------------------------------------
-// Helpers puros (testables sin Supabase)
-// ----------------------------------------------------------------------------
-
-interface AggregatedMemberInfo {
-  effectiveDedication: number
-  activePeriods: OrgChartEntry[]
 }
 
 /**
- * Agrega multiples filas de org_chart de un mismo miembro, sumando
- * dedications de los periodos ACTIVOS a fecha `asOf`. Periodos sin start_date
- * o end_date se consideran abiertos por ese lado.
+ * Convert VacationEntry[] (app-level) into AbsenceData[] (domain-level).
+ * VacationEntry stores a single day with a date; AbsenceData expects a range.
+ * For day-based entries, from === to and days = 1 (or 0.5 for half days).
  */
-export function aggregateOrgChartByMember(
-  entries: OrgChartEntry[],
-  asOf: string,
-): Map<string, AggregatedMemberInfo> {
-  const out = new Map<string, AggregatedMemberInfo>()
+function toAbsenceData(vacations: VacationEntry[] | null | undefined, memberId: string): AbsenceData[] {
+  if (!vacations || vacations.length === 0) return []
+  return vacations.map((v) => ({
+    member_id: v.member_id ?? memberId,
+    type: v.type,
+    date_from: v.date_from ?? v.date,
+    date_to: v.date_to ?? v.date,
+    days: v.days ?? (v.half ? 0.5 : 1),
+    status: v.status ?? 'aprobada',
+  }))
+}
+
+/**
+ * Find the CostRate active on a specific date (yyyy-mm-dd).
+ * A rate is active when `from <= date` and (`to` is unset OR `to >= date`).
+ * If multiple match, the one with the latest `from` wins.
+ * Returns null if member has no rates or none cover the date.
+ */
+function costRateAt(rates: CostRate[], date: string): CostRate | null {
+  if (!rates || rates.length === 0) return null
+  const ym = date.slice(0, 7)
+  const sorted = [...rates].sort((a, b) => b.from.localeCompare(a.from))
+  return sorted.find((r) => r.from <= ym && (!r.to || r.to >= ym)) ?? null
+}
+
+/**
+ * Resolve cost/hour for a given member at a given date.
+ * Falls back to legacy `cost_rate` column if no rates array, then 0.
+ */
+function memberCostHourAt(member: Member, calendar: CalendarData | null, date: string): number {
+  const raw: LegacyCostRate[] = (member.cost_rates ?? []) as LegacyCostRate[]
+  const rates = migrateCostRates(raw)
+  const convH = calendar?.convenio_hours || 1800
+  const active = costRateAt(rates, date)
+  if (active && active.salary > 0) {
+    return costRateFromSalary(active.salary, active.multiplier, convH)
+  }
+  return member.cost_rate ?? 0
+}
+
+/**
+ * Build month-level cost from real time entries, applying the cost/hour
+ * that was active on each entry's date. This is the "actual" mode.
+ */
+function actualCostByMonth(
+  entries: TimeEntry[],
+  member: Member,
+  calendar: CalendarData | null,
+): { byMonth: number[]; total: number; totalHours: number } {
+  const byMonth = new Array<number>(12).fill(0)
+  let total = 0
+  let totalHours = 0
   for (const e of entries) {
-    if (!isPeriodActive(e, asOf)) continue
-    const dedication = clampDedication(e.dedication ?? 1)
-    const prev = out.get(e.member_id)
-    if (prev) {
-      prev.effectiveDedication += dedication
-      prev.activePeriods.push(e)
-    } else {
-      out.set(e.member_id, { effectiveDedication: dedication, activePeriods: [e] })
+    if (!e.date || !e.hours) continue
+    const m = Number.parseInt(e.date.slice(5, 7), 10) - 1
+    if (m < 0 || m > 11) continue
+    const ch = memberCostHourAt(member, calendar, e.date)
+    const c = e.hours * ch
+    byMonth[m]! += c
+    total += c
+    totalHours += e.hours
+  }
+  return { byMonth, total, totalHours }
+}
+
+/**
+ * Compute theoretical full-year cost for a member on a project.
+ * Used when mode='theoretical' or as a forecast anchor.
+ *   cost = effective_hours × dedication × current_cost_hour
+ * Returns 0 if member has no calendar or no rate.
+ */
+function theoreticalCost(
+  member: Member,
+  calendar: CalendarData | null,
+  dedication: number,
+  year: number,
+): { hours: number; cost: number; costHour: number } {
+  if (!calendar) return { hours: 0, cost: 0, costHour: 0 }
+  const absences: AbsenceData[] = toAbsenceData(member.vacations, member.id)
+  const effHours = effectiveTheoreticalHoursYear(calendar, year, absences, member.id)
+  const hours = effHours * dedication
+  const convH = calendar.convenio_hours || 1800
+  const ch = memberCostHour((member.cost_rates ?? []) as LegacyCostRate[], convH, member.cost_rate ?? 0)
+  return { hours, cost: hours * ch, costHour: ch }
+}
+
+/**
+ * Resolve the dedication of a member on a project for a given year.
+ * Reads rooms.member_assigns (jsonb) and intersects periods with the year.
+ * If multiple periods overlap, sums their dedications (matches v1 behavior).
+ */
+function dedicationFor(memberId: string, assigns: MemberAssign[] | undefined, year: number): number {
+  if (!assigns || assigns.length === 0) return 0
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year}-12-31`
+  let total = 0
+  for (const a of assigns) {
+    if (a.member_id !== memberId) continue
+    const from = a.from ?? '0000-01-01'
+    const to = a.to ?? '9999-12-31'
+    if (to < yearStart || from > yearEnd) continue
+    total += a.dedication ?? 1
+  }
+  return total
+}
+
+/** Normalize ServiceContractEntry[] from Room to ServiceContract[] used by domain. */
+function toServiceContracts(svcs: ServiceContractEntry[] | null | undefined): ServiceContract[] {
+  return (svcs ?? []) as ServiceContract[]
+}
+
+/** Read the calendar of a member from the indexed map, mapped to domain shape. */
+function memberCalendar(m: Member, calendarsById: Record<string, Calendario>): CalendarData | null {
+  if (!m.calendario_id) return null
+  const cal = calendarsById[m.calendario_id]
+  return cal ? toCalendarData(cal) : null
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Public API — use cases
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Load complete P&L for a single project for a given year.
+ *
+ * @param slug - Room slug (e.g. 'vwfs', 'endesa')
+ * @param year - Calendar year
+ * @param mode - 'actual' uses real time_entries (default); 'theoretical' uses calendar × dedication
+ *
+ * Throws if the room doesn't exist.
+ */
+export async function loadProjectFinance(
+  slug: string,
+  year: number,
+  mode: CostMode = 'actual',
+): Promise<ProjectFinance> {
+  // 1. Load all data needed in parallel
+  const [rooms, members, calendariosById] = await Promise.all([
+    fetchRooms(),
+    fetchTeamMembers(slug),
+    fetchCalendariosIndexed(),
+  ])
+
+  const room: Room | undefined = rooms.find((r) => r.slug === slug)
+  if (!room) throw new Error(`Project not found: ${slug}`)
+
+  const services = toServiceContracts(room.services)
+  const assigns: MemberAssign[] = room.member_assigns ?? []
+
+  // 2. Revenue (always from services — same in actual & theoretical mode)
+  const monthlyRevenue: number[] = []
+  for (let m = 0; m < 12; m++) {
+    monthlyRevenue.push(monthlyRevenueFromServices(services, year, m))
+  }
+  const totalRevenue = monthlyRevenue.reduce((s, x) => s + x, 0)
+
+  // 3. Cost — branch on mode
+  const monthlyCost = new Array<number>(12).fill(0)
+  const memberCosts: ProjectMemberCost[] = []
+  let totalCost = 0
+
+  if (mode === 'actual') {
+    const entries = await fetchTimeEntries({ sala: slug, year })
+    const entriesByMember: Record<string, TimeEntry[]> = {}
+    for (const e of entries) {
+      ;(entriesByMember[e.member_id] ??= []).push(e)
+    }
+
+    for (const m of members) {
+      const cal = memberCalendar(m, calendariosById)
+      const memEntries = entriesByMember[m.id] ?? []
+      if (memEntries.length === 0) continue
+      const { byMonth, total, totalHours } = actualCostByMonth(memEntries, m, cal)
+      for (let i = 0; i < 12; i++) monthlyCost[i]! += byMonth[i]!
+      totalCost += total
+      memberCosts.push({
+        memberId: m.id,
+        memberName: m.name,
+        currentCostHour: memberCostHourAt(m, cal, `${year}-12-31`),
+        hours: totalHours,
+        cost: total,
+      })
+    }
+  } else {
+    // theoretical: calendar × dedication × current cost hour
+    for (const m of members) {
+      const cal = memberCalendar(m, calendariosById)
+      const ded = dedicationFor(m.id, assigns, year)
+      if (ded <= 0) continue
+      const { hours, cost, costHour } = theoreticalCost(m, cal, ded, year)
+      if (cost <= 0) continue
+      const perMonth = cost / 12
+      for (let i = 0; i < 12; i++) monthlyCost[i]! += perMonth
+      totalCost += cost
+      memberCosts.push({
+        memberId: m.id,
+        memberName: m.name,
+        currentCostHour: costHour,
+        hours,
+        cost,
+      })
     }
   }
-  return out
+
+  const margin = totalRevenue - totalCost
+  const marginPct = pct(margin, totalRevenue)
+
+  const months: MonthlyPnL[] = []
+  for (let i = 0; i < 12; i++) {
+    const rev = monthlyRevenue[i]!
+    const cost = Math.round(monthlyCost[i]!)
+    const mar = rev - cost
+    months.push({
+      month: i,
+      revenue: rev,
+      cost,
+      margin: mar,
+      marginPct: pct(mar, rev),
+    })
+  }
+
+  return {
+    slug: room.slug,
+    name: room.name,
+    year,
+    mode,
+    totalRevenue,
+    totalCost: Math.round(totalCost),
+    margin: Math.round(margin),
+    marginPct,
+    months,
+    members: memberCosts.sort((a, b) => b.cost - a.cost),
+  }
 }
 
-export function isPeriodActive(entry: OrgChartEntry, asOf: string): boolean {
-  const start = entry.start_date && entry.start_date.length > 0 ? entry.start_date : null
-  const end = entry.end_date && entry.end_date.length > 0 ? entry.end_date : null
-  if (start && asOf < start) return false
-  if (end && asOf > end) return false
-  return true
+/**
+ * Forecast for a project — full-year projection using theoretical hours.
+ * Equivalent to loadProjectFinance(slug, year, 'theoretical') but with
+ * extra fields useful for forecasting dashboards.
+ */
+export async function loadProjectForecast(slug: string, year: number): Promise<ProjectFinance & {
+  contractedRevenue: number
+  contractedCost: number
+  contractedMarginPct: number
+}> {
+  const base = await loadProjectFinance(slug, year, 'theoretical')
+
+  const rooms = await fetchRooms()
+  const room = rooms.find((r) => r.slug === slug)
+  const services = toServiceContracts(room?.services)
+
+  return {
+    ...base,
+    contractedRevenue: totalSaleFromServices(services),
+    contractedCost: totalEstCostFromServices(services),
+    contractedMarginPct: avgMarginFromServices(services),
+  }
 }
 
-function clampDedication(d: number): number {
-  if (!Number.isFinite(d) || d < 0) return 0
-  return d
+/**
+ * Cost summary for a single member across all their projects in a year.
+ * Uses real time_entries for cost (actual mode).
+ */
+export async function loadMemberCostSummary(memberId: string, year: number): Promise<MemberCostSummary> {
+  const [members, calendariosById, entries] = await Promise.all([
+    fetchTeamMembers(),
+    fetchCalendariosIndexed(),
+    fetchTimeEntries({ memberId, year }),
+  ])
+
+  const member = members.find((m) => m.id === memberId)
+  if (!member) throw new Error(`Member not found: ${memberId}`)
+
+  const cal = memberCalendar(member, calendariosById)
+  const absences: AbsenceData[] = toAbsenceData(member.vacations, member.id)
+  const effHours = cal ? effectiveTheoreticalHoursYear(cal, year, absences, member.id) : 0
+
+  const totalsBySala: Record<string, { hours: number; cost: number }> = {}
+  let totalCost = 0
+  for (const e of entries) {
+    if (!e.date || !e.hours) continue
+    const ch = memberCostHourAt(member, cal, e.date)
+    const c = e.hours * ch
+    const sala = e.sala || 'unknown'
+    const cur = (totalsBySala[sala] ??= { hours: 0, cost: 0 })
+    cur.hours += e.hours
+    cur.cost += c
+    totalCost += c
+  }
+
+  const byProject = Object.entries(totalsBySala)
+    .map(([sala, v]) => ({ sala, hours: v.hours, cost: Math.round(v.cost) }))
+    .sort((a, b) => b.cost - a.cost)
+
+  return {
+    memberId: member.id,
+    memberName: member.name,
+    year,
+    currentCostHour: memberCostHourAt(member, cal, `${year}-12-31`),
+    effectiveTheoreticalHours: effHours,
+    totalHoursLogged: sumHours(entries),
+    totalCost: Math.round(totalCost),
+    byProject,
+  }
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
+/**
+ * Portfolio-wide P&L: aggregates every active project for the given year.
+ * Useful for the org-level dashboard.
+ */
+export async function loadAllProjectsPnL(year: number, mode: CostMode = 'actual'): Promise<PortfolioPnL> {
+  const rooms = await fetchRooms()
+  const projects: PortfolioPnL['projects'] = []
+  let totalRevenue = 0
+  let totalCost = 0
+
+  for (const r of rooms) {
+    if (r.status === 'archived' || r.status === 'cancelled') continue
+    try {
+      const p = await loadProjectFinance(r.slug, year, mode)
+      projects.push({
+        slug: p.slug,
+        name: p.name,
+        totalRevenue: p.totalRevenue,
+        totalCost: p.totalCost,
+        margin: p.margin,
+        marginPct: p.marginPct,
+      })
+      totalRevenue += p.totalRevenue
+      totalCost += p.totalCost
+    } catch {
+      continue
+    }
+  }
+
+  const margin = totalRevenue - totalCost
+  return {
+    year,
+    mode,
+    totalRevenue,
+    totalCost,
+    margin,
+    marginPct: pct(margin, totalRevenue),
+    projects: projects.sort((a, b) => b.totalRevenue - a.totalRevenue),
+  }
 }
+
+/**
+ * Hours-only summary for a member: theoretical vs logged, by month.
+ * No costs — just hours. Useful for balance/jornada widgets.
+ */
+export async function loadMemberHours(memberId: string, year: number): Promise<{
+  memberId: string
+  memberName: string
+  year: number
+  theoreticalHours: number
+  loggedHours: number
+  balance: number
+  byMonth: Record<string, number>
+}> {
+  const [members, calendariosById, entries] = await Promise.all([
+    fetchTeamMembers(),
+    fetchCalendariosIndexed(),
+    fetchTimeEntries({ memberId, year }),
+  ])
+
+  const member = members.find((m) => m.id === memberId)
+  if (!member) throw new Error(`Member not found: ${memberId}`)
+
+  const cal = memberCalendar(member, calendariosById)
+  const absences: AbsenceData[] = toAbsenceData(member.vacations, member.id)
+  const theoreticalHours = cal ? effectiveTheoreticalHoursYear(cal, year, absences, member.id) : 0
+  const loggedHours = sumHours(entries)
+
+  return {
+    memberId: member.id,
+    memberName: member.name,
+    year,
+    theoreticalHours,
+    loggedHours,
+    balance: loggedHours - theoreticalHours,
+    byMonth: hoursByMonth(entries),
+  }
+}
+
+/**
+ * Members assigned to a project, with their dedication and logged hours for the year.
+ */
+export async function loadProjectMembers(slug: string, year: number): Promise<Array<{
+  memberId: string
+  memberName: string
+  dedication: number
+  hoursLogged: number
+  costHour: number
+}>> {
+  const [rooms, members, entries, calendariosById] = await Promise.all([
+    fetchRooms(),
+    fetchTeamMembers(slug),
+    fetchTimeEntries({ sala: slug, year }),
+    fetchCalendariosIndexed(),
+  ])
+
+  const room = rooms.find((r) => r.slug === slug)
+  if (!room) throw new Error(`Project not found: ${slug}`)
+  const assigns: MemberAssign[] = room.member_assigns ?? []
+  const hoursMap = hoursByMember(entries)
+
+  return members
+    .map((m) => {
+      const cal = memberCalendar(m, calendariosById)
+      return {
+        memberId: m.id,
+        memberName: m.name,
+        dedication: dedicationFor(m.id, assigns, year),
+        hoursLogged: hoursMap[m.id] ?? 0,
+        costHour: memberCostHourAt(m, cal, `${year}-12-31`),
+      }
+    })
+    .sort((a, b) => b.dedication - a.dedication)
+}
+
+/**
+ * Re-export CostRateEntry so existing modules can find it via the service if they prefer.
+ * (Kept here so importers that already use @/services/finance don't need a second import.)
+ */
+export type { CostRateEntry }
