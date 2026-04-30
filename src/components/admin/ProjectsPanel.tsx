@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react'
 import { Plus, Edit, Trash2, ExternalLink, Users, DollarSign, Calendar, X, Upload, Download, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/data/supabase'
+import { fetchClientes } from '@/data/clientes'
 import {
   saleFromServiceContract, totalSaleFromServices, totalEstCostFromServices,
   avgMarginFromServices, memberCostHour, memberProjectCost, fmt,
   type ServiceContract, type CalendarData, type AbsenceData, type LegacyCostRate,
 } from '@/domain/finance'
 import { soundCreate, soundDelete } from '@/lib/sounds'
-import type { Room, Member } from '@/types'
+import type { Room, Member, Cliente } from '@/types'
+
 const TIPOS = [
   { id: 'agile', label: 'Agile / Scrum' }, { id: 'kanban', label: 'Kanban' },
   { id: 'itil', label: 'ITIL / Servicio' }, { id: 'waterfall', label: 'Waterfall' },
@@ -18,10 +20,11 @@ interface OrgEntry { id?: string; member_id: string; sala: string; dedication: n
 
 interface ProjectForm {
   name: string; slug: string; tipo: string; status: string
+  cliente_id: string
   start_date: string; end_date: string
   services: ServiceContract[]
 }
-const emptyForm: ProjectForm = { name: '', slug: '', tipo: 'agile', status: 'active', start_date: '', end_date: '', services: [] }
+const emptyForm: ProjectForm = { name: '', slug: '', tipo: 'agile', status: 'active', cliente_id: '', start_date: '', end_date: '', services: [] }
 
 const rx = (r: Room) => r as unknown as Record<string, unknown>
 const rxm = (m: Member) => m as unknown as Record<string, unknown>
@@ -29,6 +32,7 @@ const uid = () => crypto.randomUUID().slice(0, 8)
 
 export function ProjectsPanel() {
   const [rooms, setRooms] = useState<Room[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [orgChart, setOrgChart] = useState<OrgEntry[]>([])
   const [calendarios, setCalendarios] = useState<CalendarData[]>([])
@@ -55,12 +59,14 @@ export function ProjectsPanel() {
       supabase.from('retros').select('sala, data').eq('status', 'active'),
       supabase.from('calendarios').select('*'),
       supabase.from('absence_requests').select('member_id, type, date_from, date_to, days, status'),
-    ]).then(([rR, mR, oR, retR, cR, aR]) => {
+      fetchClientes(),
+    ]).then(([rR, mR, oR, retR, cR, aR, clientesData]) => {
       if (rR.data) setRooms(rR.data)
       if (mR.data) setMembers(mR.data)
       if (oR.data) setOrgChart(oR.data as OrgEntry[])
       if (cR.data) setCalendarios(cR.data as CalendarData[])
       if (aR.data) setAbsenceDatas(aR.data as AbsenceData[])
+      setClientes(clientesData)
       const stats: Record<string, { actions: number; done: number; risks: number }> = {}
       ;(retR.data || []).forEach((r: { sala: string; data: Record<string, unknown> }) => {
         const d = r.data || {}; const acts = ((d.actions || []) as Array<Record<string, unknown>>).filter(a => a.status !== 'discarded' && a.status !== 'cancelled')
@@ -109,6 +115,7 @@ export function ProjectsPanel() {
     })
     setForm({
       name: r.name, slug: r.slug, tipo: r.tipo || 'agile', status: (rx(r).status as string) || 'active',
+      cliente_id: (rx(r).cliente_id as string) || '',
       start_date: (rx(r).start_date as string) || '', end_date: (rx(r).end_date as string) || '',
       services: getServices(r),
     })
@@ -122,6 +129,7 @@ export function ProjectsPanel() {
     const avgMargin = avgMarginFromServices(form.services)
     const payload = {
       name: form.name, tipo: form.tipo, status: form.status,
+      cliente_id: form.cliente_id || null,
       start_date: form.start_date || null, end_date: form.end_date || null,
       services: form.services,
       budget: totalCost, fixed_price: totalSale, target_margin: avgMargin,
@@ -225,11 +233,12 @@ export function ProjectsPanel() {
             const realMargin = totalSale > 0 ? Math.round(((totalSale - projCost) / totalSale) * 100) : 0
             const consumed = totalSale > 0 ? Math.min(100, Math.round((realCost / totalSale) * 100)) : 0
             const sd = (rx(r).start_date as string) || ''; const ed = (rx(r).end_date as string) || ''
+            const cli = clientes.find(c => c.id === (rx(r).cliente_id as string))
             // Trend: will we exceed budget?
             const willExceed = projCost > totalSale && totalSale > 0
             return (
               <tr key={r.slug} className={`border-t border-revelio-border dark:border-revelio-dark-border/50 ${i % 2 ? 'bg-revelio-bg/50 dark:bg-revelio-dark-border/20' : ''} hover:bg-revelio-blue/5`}>
-                <td className="px-2 py-2.5 text-left"><Link to={`/project/${r.slug}`} className="font-medium text-revelio-text dark:text-revelio-dark-text hover:text-revelio-blue text-xs">{r.name}</Link><div className="text-[10px] text-revelio-subtle dark:text-revelio-dark-subtle capitalize">{r.tipo}</div></td>
+                <td className="px-2 py-2.5 text-left"><Link to={`/project/${r.slug}`} className="font-medium text-revelio-text dark:text-revelio-dark-text hover:text-revelio-blue text-xs">{r.name}</Link><div className="text-[10px] text-revelio-subtle dark:text-revelio-dark-subtle">{cli ? <><span className="font-medium">{cli.name}</span> · </> : ''}<span className="capitalize">{r.tipo}</span></div></td>
                 <td className="px-2 py-2.5 text-center text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{sd && ed ? <span className="flex items-center justify-center gap-0.5"><Calendar className="w-2.5 h-2.5" />{new Date(sd).toLocaleDateString('es-ES', { month: 'short', year: '2-digit' })} — {new Date(ed).toLocaleDateString('es-ES', { month: 'short', year: '2-digit' })}</span> : '—'}</td>
                 <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-orange">{totalEstCost > 0 ? `${fmt(totalEstCost)}€` : '—'}</td>
                 <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-blue">{totalSale > 0 ? `${fmt(totalSale)}€` : '—'}</td>
@@ -262,6 +271,7 @@ export function ProjectsPanel() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><L>Nombre *</L><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>
                 {modal === 'create' && <div className="col-span-2"><L>Slug</L><input value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} placeholder={form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>}
+                <div className="col-span-2"><L>Cliente</L><select value={form.cliente_id} onChange={e => setForm({ ...form, cliente_id: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text"><option value="">— Sin cliente —</option>{clientes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                 <div><L>Tipo</L><select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text">{TIPOS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
                 <div><L>Estado</L><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text"><option value="active">Activo</option><option value="paused">Pausado</option><option value="closed">Cerrado</option></select></div>
                 <div><L>Inicio</L><input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>
