@@ -181,8 +181,8 @@ export function ProjectPage() {
 
   // Auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const stateRef = useRef({ notes, actions, risks, tasks, obj: { text: objective } })
-  useEffect(() => { stateRef.current = { notes, actions, risks, tasks, obj: { text: objective } } }, [notes, actions, risks, tasks, objective])
+  const stateRef = useRef({ notes, actions, risks, tasks, obj: { text: objective }, currentPhase: retroPhase })
+  useEffect(() => { stateRef.current = { notes, actions, risks, tasks, obj: { text: objective }, currentPhase: retroPhase } }, [notes, actions, risks, tasks, objective, retroPhase])
 
   const triggerSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -216,6 +216,9 @@ export function ProjectPage() {
           setRisks((d.risks || []) as Risk[])
           setTasks((d.tasks || []) as TaskItem[])
           setObjective(((d.obj as Record<string, string>)?.text) || '')
+          // Restore active retro phase from DB (persisted on each phase change).
+          // Latecomers and refreshes get the current phase, not phase 0.
+          setRetroPhase((d.currentPhase as number) || 0)
         }
       }
       setLoading(false)
@@ -247,7 +250,24 @@ export function ProjectPage() {
   const toggleRiskMitigated = (id: string) => { const next = risks.map(r => r.id === id ? { ...r, status: r.status === 'mitigated' ? 'open' : 'mitigated' } : r); setRisks(next); broadcastState('risks', next) }
   const deleteRisk = (id: string) => { const next = risks.filter(r => r.id !== id); setRisks(next); broadcastState('risks', next) }
   const toggleTask = (i: number) => { const next = tasks.map((t, idx) => idx === i ? { ...t, done: !t.done } : t); setTasks(next); broadcastState('tasks', next) }
-  const changeRetroPhase = (p: number) => { setRetroPhase(p); broadcastPhase(p) }
+  const changeRetroPhase = (p: number) => {
+    setRetroPhase(p)
+    broadcastPhase(p)
+    // Persist phase to DB so latecomers and refresh recover the active phase.
+    // Done inline (not via the debounced triggerSave) so the phase is saved
+    // immediately. Other state (notes, actions, risks) keeps using the
+    // debounced autosave through stateRef.current.
+    if (retroId) {
+      supabase
+        .from('retros')
+        .update({
+          data: { ...stateRef.current, currentPhase: p },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', retroId)
+        .then(() => { /* fire-and-forget; broadcast already updated peers */ })
+    }
+  }
 
   if (loading) return <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center"><div className="animate-pulse text-sm text-revelio-subtle dark:text-revelio-dark-subtle">Cargando proyecto...</div></div>
   if (!room) return <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center flex-col gap-3"><FolderOpen className="w-10 h-10 text-revelio-border" /><p className="text-sm text-revelio-subtle dark:text-revelio-dark-subtle">Proyecto no encontrado</p><Link to="/" className="text-xs text-revelio-blue hover:underline">Volver</Link></div>
@@ -276,8 +296,8 @@ export function ProjectPage() {
               </button>
               <div className="h-px bg-revelio-border/50 dark:bg-revelio-dark-border/50 my-1.5" />
               {RETRO_PHASES.map((p, i) => (
-                <button key={i} onClick={() => changeRetroPhase(i)} disabled={!user?.is_superuser && i !== retroPhase}
-                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-medium transition-colors text-left ${retroPhase === i ? 'bg-revelio-violet/10 text-revelio-violet' : i < retroPhase ? 'text-revelio-green' : 'text-revelio-subtle dark:text-revelio-dark-subtle'} ${!user?.is_superuser && i !== retroPhase ? 'opacity-40' : 'hover:bg-revelio-bg dark:hover:bg-revelio-dark-border'}`}>
+                <button key={i} onClick={() => changeRetroPhase(i)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-medium transition-colors text-left ${retroPhase === i ? 'bg-revelio-violet/10 text-revelio-violet' : i < retroPhase ? 'text-revelio-green' : 'text-revelio-subtle dark:text-revelio-dark-subtle'} hover:bg-revelio-bg dark:hover:bg-revelio-dark-border`}>
                   <p.icon className="w-3.5 h-3.5" /> <span>{p.num} {p.label}</span>
                 </button>
               ))}
