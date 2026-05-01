@@ -28,7 +28,7 @@ interface Risk { id: string; text: string; title: string; status: string; prob: 
 interface Note { id: string; text: string; category: string; userName: string; userId: string; votes: string[]; createdAt: string }
 interface TaskItem { text: string; done: boolean }
 
-type Tab = 'resumen' | 'seguimiento' | 'riesgos' | 'equipo' | 'economico'
+type Tab = 'resumen' | 'seguimiento' | 'riesgos' | 'equipo' | 'economico' | 'retro'
 
 const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard; requiresSuperuser?: boolean }[] = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
@@ -36,6 +36,7 @@ const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard; requiresSupe
   { id: 'riesgos', label: 'Riesgos', icon: AlertTriangle },
   { id: 'equipo', label: 'Equipo', icon: Users },
   { id: 'economico', label: 'Económico', icon: TrendingUp, requiresSuperuser: true },
+  { id: 'retro', label: 'Retro', icon: BarChart3 },
 ]
 
 const RETRO_PHASES = [
@@ -95,7 +96,10 @@ export function ProjectPage() {
   useEffect(() => {
     if (tabFromUrl && !validIds.includes(tabFromUrl)) navigate(`/project/${slug}/resumen`, { replace: true })
   }, [tabFromUrl, slug, validIds, navigate])
-  const [inRetro, setInRetro] = useState(false)
+  // inRetro is now derived from URL: tab === 'retro'. Kept as alias to
+  // minimise diff churn elsewhere in this large file.
+  const inRetro = tab === 'retro'
+  const setInRetro = (v: boolean) => setTab(v ? 'retro' : 'resumen')
   const [retroPhase, setRetroPhase] = useState(0)
   const [retroId, setRetroId] = useState<string | null>(null)
 
@@ -264,16 +268,11 @@ export function ProjectPage() {
                   <t.icon className="w-3.5 h-3.5" /> {t.label}
                 </button>
               ))}
-              <div className="h-px bg-revelio-border/50 dark:bg-revelio-dark-border/50 my-1.5" />
-              <button onClick={() => setInRetro(true)}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-medium text-revelio-violet bg-revelio-violet/5 hover:bg-revelio-violet/10 transition-colors text-left">
-                <BarChart3 className="w-3.5 h-3.5" /> Retro
-              </button>
             </>
           ) : (
             <>
               <button onClick={() => setInRetro(false)} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-medium text-revelio-blue hover:bg-revelio-blue/5 transition-colors text-left">
-                <CornerUpLeft className="w-3.5 h-3.5" /> Volver a proyecto
+                <CornerUpLeft className="w-3.5 h-3.5" /> Salir de retro
               </button>
               <div className="h-px bg-revelio-border/50 dark:bg-revelio-dark-border/50 my-1.5" />
               {RETRO_PHASES.map((p, i) => (

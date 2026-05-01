@@ -12,7 +12,6 @@ import { LogrosPage } from '@/pages/LogrosPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { ProjectPage } from '@/pages/ProjectPage'
 import { SplashPage } from '@/pages/SplashPage'
-import { RetroPage } from '@/pages/RetroPage'
 import { TeamOverview } from '@/pages/TeamOverview'
 import { TimeTrackerPage } from '@/pages/TimeTrackerPage'
 import { ProjectsOverview } from '@/pages/ProjectsOverview'
@@ -56,7 +55,6 @@ export function App() {
       {/* Full-screen pages (no sidebar) */}
       <Route element={<ProtectedRoute><FullScreenLayout /></ProtectedRoute>}>
         <Route path="/project/:slug" element={<ProjectPage />} />
-        <Route path="/project/:slug/retro" element={<RetroPage />} />
         <Route path="/project/:slug/:tab" element={<ProjectPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
