@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { CommandPalette } from '@/components/common/CommandPalette'
 import { useAuth } from '@/context/AuthContext'
-import { FullScreenLayout } from '@/layouts/FullScreenLayout'
 import { MainLayout } from '@/layouts/MainLayout'
 import { AdminPage } from '@/pages/AdminPage'
 import { ClientPortal } from '@/pages/ClientPortal'
@@ -41,7 +40,9 @@ export function App() {
       <Routes>
       <Route path="/welcome" element={<SplashPage />} />
       <Route path="/login" element={<LoginPage />} />
-      {/* App pages with sidebar */}
+      {/* All app pages under MainLayout. Sidebar is contextual:
+          shown for global nav; hidden inside /project/* and /admin/* where
+          each page has its own sidebar. */}
       <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
         <Route path="/" element={<HomePage />} />
         <Route path="/proyectos" element={<ProjectsOverview />} />
@@ -51,9 +52,6 @@ export function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/fichaje" element={<TimeTrackerPage />} />
         <Route path="/persona/:id" element={<ConsultantProfilePage />} />
-      </Route>
-      {/* Full-screen pages (no sidebar) */}
-      <Route element={<ProtectedRoute><FullScreenLayout /></ProtectedRoute>}>
         <Route path="/project/:slug" element={<ProjectPage />} />
         <Route path="/project/:slug/:tab" element={<ProjectPage />} />
         <Route path="/admin" element={<AdminPage />} />

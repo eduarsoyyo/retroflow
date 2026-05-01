@@ -106,10 +106,12 @@ export function MainLayout() {
 
   const isActive = (path: string) => location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
   const isHome = location.pathname === '/'
+  const inProjectOrAdmin = location.pathname.startsWith('/project/') || location.pathname.startsWith('/admin')
 
   return (
     <div className="h-screen flex bg-revelio-bg dark:bg-revelio-dark-bg">
-      {/* ═══ SIDEBAR — desktop ═══ */}
+      {/* ═══ SIDEBAR GLOBAL — only outside project/admin ═══ */}
+      {!inProjectOrAdmin && (
       <aside className="hidden sm:flex flex-col w-[200px] bg-white dark:bg-revelio-dark-card border-r border-revelio-border dark:border-revelio-dark-border flex-shrink-0">
         {/* Logo */}
         <Link to="/" className="px-4 py-4 flex items-center gap-2">
@@ -145,11 +147,18 @@ export function MainLayout() {
           </Link>
         </div>
       </aside>
+      )}
 
       {/* ═══ MAIN AREA ═══ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="h-12 flex items-center justify-between px-4 bg-white dark:bg-revelio-dark-card border-b border-revelio-border dark:border-revelio-dark-border flex-shrink-0 gap-3">
+          {/* Logo (only when sidebar is hidden) */}
+          {inProjectOrAdmin && (
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-lg font-bold text-revelio-blue" style={{ fontFamily: 'Comfortaa, sans-serif' }}>revelio</span>
+            </Link>
+          )}
           {/* Mobile hamburger */}
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border">
             {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -220,7 +229,7 @@ export function MainLayout() {
         )}
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className={`flex-1 ${inProjectOrAdmin ? 'overflow-hidden' : 'overflow-y-auto p-4 sm:p-6'}`}>
           <Outlet />
         </main>
       </div>
