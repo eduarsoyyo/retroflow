@@ -5,7 +5,7 @@ import {
   FolderOpen, Shield, BarChart3, ClipboardCheck, MessageSquare, MessageCircle,
   ThumbsUp, Plus, Send, Trash2, CornerUpLeft, PartyPopper, History, Calendar as CalendarIcon, Umbrella,
 } from 'lucide-react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardPanel } from '@/components/project/DashboardPanel'
 import { FinancePanel } from '@/components/project/FinancePanel'
 import { FTEsPanel } from '@/components/project/FTEsPanel'
@@ -28,14 +28,14 @@ interface Risk { id: string; text: string; title: string; status: string; prob: 
 interface Note { id: string; text: string; category: string; userName: string; userId: string; votes: string[]; createdAt: string }
 interface TaskItem { text: string; done: boolean }
 
-type Tab = 'resumen' | 'seguimiento' | 'riesgos' | 'equipo' | 'finanzas'
+type Tab = 'resumen' | 'seguimiento' | 'riesgos' | 'equipo' | 'economico'
 
-const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
+const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard; requiresSuperuser?: boolean }[] = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
   { id: 'seguimiento', label: 'Seguimiento', icon: ListChecks },
   { id: 'riesgos', label: 'Riesgos', icon: AlertTriangle },
   { id: 'equipo', label: 'Equipo', icon: Users },
-  { id: 'finanzas', label: 'Finanzas', icon: TrendingUp },
+  { id: 'economico', label: 'Económico', icon: TrendingUp, requiresSuperuser: true },
 ]
 
 const RETRO_PHASES = [
@@ -75,7 +75,8 @@ const PRIO_LABEL: Record<string, string> = { critical: 'Crítica', high: 'Alta',
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
 
 export function ProjectPage() {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, tab: tabFromUrl } = useParams<{ slug: string; tab?: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [room, setRoom] = useState<Room | null>(null)
   const [members, setMembers] = useState<Member[]>([])
@@ -85,7 +86,15 @@ export function ProjectPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [objective, setObjective] = useState('')
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('resumen')
+  // Tab is derived from URL. Invalid or restricted tabs fall back to 'resumen'.
+  const visibleTabs = useMemo(() => TABS.filter(t => !t.requiresSuperuser || user?.is_superuser), [user?.is_superuser])
+  const validIds = useMemo(() => visibleTabs.map(t => t.id) as string[], [visibleTabs])
+  const tab: Tab = (tabFromUrl && validIds.includes(tabFromUrl) ? tabFromUrl : 'resumen') as Tab
+  const setTab = (newTab: Tab) => navigate(`/project/${slug}/${newTab}`)
+  // Redirect /project/:slug/<unknown> to /project/:slug/resumen
+  useEffect(() => {
+    if (tabFromUrl && !validIds.includes(tabFromUrl)) navigate(`/project/${slug}/resumen`, { replace: true })
+  }, [tabFromUrl, slug, validIds, navigate])
   const [inRetro, setInRetro] = useState(false)
   const [retroPhase, setRetroPhase] = useState(0)
   const [retroId, setRetroId] = useState<string | null>(null)
@@ -249,7 +258,7 @@ export function ProjectPage() {
         <nav className="flex-1 px-2 py-2 space-y-0.5">
           {!inRetro ? (
             <>
-              {TABS.map(t => (
+              {visibleTabs.map(t => (
                 <button key={t.id} onClick={() => setTab(t.id)}
                   className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-medium transition-colors text-left ${tab === t.id ? 'bg-revelio-blue/10 text-revelio-blue' : 'text-revelio-subtle dark:text-revelio-dark-subtle hover:bg-revelio-bg dark:hover:bg-revelio-dark-border'}`}>
                   <t.icon className="w-3.5 h-3.5" /> {t.label}
@@ -691,7 +700,7 @@ export function ProjectPage() {
           )}
 
           {/* FINANZAS */}
-          {tab === 'finanzas' && (
+          {tab === 'economico' && (
             <FinancePanel
               team={teamMembers}
               sala={slug || ''}

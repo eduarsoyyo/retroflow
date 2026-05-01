@@ -17,14 +17,12 @@ import { TeamOverview } from '@/pages/TeamOverview'
 import { TimeTrackerPage } from '@/pages/TimeTrackerPage'
 import { ProjectsOverview } from '@/pages/ProjectsOverview'
 import { RisksOverview } from '@/pages/RisksOverview'
-
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <LoadingScreen />
   if (!user) return <Navigate to="/welcome" replace />
   return <>{children}</>
 }
-
 function LoadingScreen() {
   return (
     <div className="flex h-screen items-center justify-center bg-gradient-to-br from-[#007AFF] via-[#3B82F6] to-[#5856D6]">
@@ -37,7 +35,6 @@ function LoadingScreen() {
     </div>
   )
 }
-
 export function App() {
   return (
     <>
@@ -60,6 +57,7 @@ export function App() {
       <Route element={<ProtectedRoute><FullScreenLayout /></ProtectedRoute>}>
         <Route path="/project/:slug" element={<ProjectPage />} />
         <Route path="/project/:slug/retro" element={<RetroPage />} />
+        <Route path="/project/:slug/:tab" element={<ProjectPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
       <Route path="/portal/:slug" element={<ClientPortal />} />

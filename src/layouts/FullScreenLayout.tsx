@@ -22,10 +22,9 @@ export function FullScreenLayout() {
   // ─── Project context for top bar ────────────────────────────────────────
   // Same logic as in MainLayout. Duplicated on purpose; will be unified
   // with a shared ProjectContext when we merge layouts (see backlog).
-  const projectMatch = useMatch('/project/:slug')
-  const retroMatch = useMatch('/project/:slug/retro')
-  const projectSlug = projectMatch?.params.slug || retroMatch?.params.slug
-  const isRetro = !!retroMatch
+  const projectMatch = useMatch('/project/:slug/*')
+  const projectSlug = projectMatch?.params.slug
+  const isRetro = !!projectSlug && location.pathname === `/project/${projectSlug}/retro`
   const [projectRoom, setProjectRoom] = useState<Room | null>(null)
   const [projectCliente, setProjectCliente] = useState<Cliente | null>(null)
 

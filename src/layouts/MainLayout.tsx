@@ -33,14 +33,14 @@ export function MainLayout() {
   useEffect(() => { if (user?.id) setThemeUserId(user.id) }, [user?.id, setThemeUserId])
 
   // ─── Project context for top bar ─────────────────────────────────────────
-  // When the user is on /project/:slug or /project/:slug/retro, load room +
-  // cliente to display in the global top bar. Two queries hit on every
-  // navigation; this is a known duplication with ProjectPage's own load and
-  // will be deduplicated when we introduce a shared ProjectContext.
-  const projectMatch = useMatch('/project/:slug')
-  const retroMatch = useMatch('/project/:slug/retro')
-  const projectSlug = projectMatch?.params.slug || retroMatch?.params.slug
-  const isRetro = !!retroMatch
+  // When the user is on /project/:slug or any sub-path (eg /project/:slug/equipo,
+  // /project/:slug/retro), load room + cliente to display in the global top bar.
+  // Two queries hit on every navigation; this is a known duplication with
+  // ProjectPage's own load and will be deduplicated when we introduce a
+  // shared ProjectContext.
+  const projectMatch = useMatch('/project/:slug/*')
+  const projectSlug = projectMatch?.params.slug
+  const isRetro = !!projectSlug && location.pathname === `/project/${projectSlug}/retro`
   const [projectRoom, setProjectRoom] = useState<Room | null>(null)
   const [projectCliente, setProjectCliente] = useState<Cliente | null>(null)
 
