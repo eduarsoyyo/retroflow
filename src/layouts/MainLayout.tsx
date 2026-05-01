@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Home, BarChart3, Users, Clock, AlertTriangle, User, Trophy, Settings, LogOut, ChevronDown, Moon, Sun, Menu, X } from 'lucide-react'
+import { Home, BarChart3, Users, Clock, AlertTriangle, User, Trophy, Settings, LogOut, ChevronDown, Menu, X } from 'lucide-react'
 import { Outlet, Link, useNavigate, useLocation, useMatch } from 'react-router-dom'
 import { ClockWidget, isClockRunning } from '@/components/common/ClockWidget'
 import { NotificationBell } from '@/components/common/NotificationBell'
@@ -24,7 +24,7 @@ export function MainLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const { isDark, toggle: toggleTheme, setUserId: setThemeUserId } = useTheme()
+  const { setUserId: setThemeUserId } = useTheme()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -186,9 +186,6 @@ export function MainLayout() {
           {/* Right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <ClockWidget userId={user?.id} />
-            <button onClick={toggleTheme} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border transition-colors">
-              {isDark ? <Sun className="w-4 h-4 text-revelio-orange" /> : <Moon className="w-4 h-4 text-revelio-subtle" />}
-            </button>
             <NotificationBell userId={user?.id} />
             {!isHome && (
               <Link to="/" title="Inicio" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border transition-colors">
