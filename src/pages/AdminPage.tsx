@@ -4,7 +4,7 @@ import {
   Calendar, GitBranch, GitMerge, Settings, ChevronDown, ChevronRight,
   Activity, Users, CheckCircle, TrendingUp, Clock, CheckSquare, Zap,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CalendarPanel } from '@/components/admin/CalendarPanel'
 import { ConfigPanel } from '@/components/admin/ConfigPanel'
 import { CrossProjectPanel } from '@/components/admin/CrossProjectPanel'
@@ -23,6 +23,8 @@ import type { Room, Member } from '@/types'
 
 // ── Types ──
 type AdminTab = 'dashboard' | 'intelligence' | 'engagement' | 'activity' | 'proyectos' | 'riesgos' | 'usuarios' | 'roles' | 'calendarios' | 'organigrama' | 'cross' | 'timeline' | 'config'
+
+const VALID_TABS: AdminTab[] = ['dashboard', 'intelligence', 'engagement', 'activity', 'proyectos', 'riesgos', 'usuarios', 'roles', 'calendarios', 'organigrama', 'cross', 'timeline', 'config']
 
 interface NavItem {
   id: AdminTab
@@ -68,9 +70,14 @@ interface Risk { id: string; status: string; prob?: string; impact?: string; esc
 
 export function AdminPage() {
   const { user } = useAuth()
-  const [tab, setTab] = useState<AdminTab>(() => {
-    try { return (localStorage.getItem('rv2-admin-tab') as AdminTab) || 'dashboard' } catch { return 'dashboard' }
-  })
+  const navigate = useNavigate()
+  const { tab: tabFromUrl } = useParams<{ tab?: string }>()
+  // Tab is derived from URL. Invalid tabs fall back to 'dashboard'.
+  const tab: AdminTab = (tabFromUrl && (VALID_TABS as string[]).includes(tabFromUrl) ? tabFromUrl : 'dashboard') as AdminTab
+  // Redirect /admin/<unknown> to /admin/dashboard
+  useEffect(() => {
+    if (tabFromUrl && !(VALID_TABS as string[]).includes(tabFromUrl)) navigate('/admin/dashboard', { replace: true })
+  }, [tabFromUrl, navigate])
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['usuarios', 'proyectos']))
   const [rooms, setRooms] = useState<Room[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -80,13 +87,7 @@ export function AdminPage() {
   const [orgData, setOrgData] = useState<Array<Record<string, unknown>>>([])
 
   const setTabPersist = (t: AdminTab) => {
-    // Dashboard subtabs: redirect to correct tab
-    if (['intelligence', 'engagement', 'activity'].includes(t)) {
-      setTab(t)
-    } else {
-      setTab(t)
-    }
-    try { localStorage.setItem('rv2-admin-tab', t) } catch {}
+    navigate(`/admin/${t}`)
   }
 
   useEffect(() => {

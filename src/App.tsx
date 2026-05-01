@@ -57,6 +57,7 @@ export function App() {
         <Route path="/project/:slug" element={<ProjectPage />} />
         <Route path="/project/:slug/:tab" element={<ProjectPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/:tab" element={<AdminPage />} />
       </Route>
       <Route path="/portal/:slug" element={<ClientPortal />} />
       <Route path="*" element={<Navigate to="/" replace />} />
