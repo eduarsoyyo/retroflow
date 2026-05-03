@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from 'react'
 import {
   BarChart3, FolderOpen, List, AlertTriangle, UserCheck, Shield,
   Calendar, GitBranch, GitMerge, Settings, ChevronDown, ChevronRight,
-  Activity, Users, CheckCircle, TrendingUp, Clock, CheckSquare, Zap,
+  Activity, Users, CheckCircle, TrendingUp, Clock, CheckSquare, Zap, Building2,
 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CalendarPanel } from '@/components/admin/CalendarPanel'
+import { ClientesPanel } from '@/components/admin/ClientesPanel'
 import { ConfigPanel } from '@/components/admin/ConfigPanel'
 import { CrossProjectPanel } from '@/components/admin/CrossProjectPanel'
 import { EscaladoPanel } from '@/components/admin/EscaladoPanel'
@@ -22,9 +23,9 @@ import { getEngagementMetrics, type EngagementMetrics } from '@/lib/usage'
 import type { Room, Member } from '@/types'
 
 // ── Types ──
-type AdminTab = 'dashboard' | 'intelligence' | 'engagement' | 'activity' | 'proyectos' | 'riesgos' | 'usuarios' | 'roles' | 'calendarios' | 'organigrama' | 'cross' | 'timeline' | 'config'
+type AdminTab = 'dashboard' | 'intelligence' | 'engagement' | 'activity' | 'proyectos' | 'riesgos' | 'clientes' | 'usuarios' | 'roles' | 'calendarios' | 'organigrama' | 'cross' | 'timeline' | 'config'
 
-const VALID_TABS: AdminTab[] = ['dashboard', 'intelligence', 'engagement', 'activity', 'proyectos', 'riesgos', 'usuarios', 'roles', 'calendarios', 'organigrama', 'cross', 'timeline', 'config']
+const VALID_TABS: AdminTab[] = ['dashboard', 'intelligence', 'engagement', 'activity', 'proyectos', 'riesgos', 'clientes', 'usuarios', 'roles', 'calendarios', 'organigrama', 'cross', 'timeline', 'config']
 
 interface NavItem {
   id: AdminTab
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
       { id: 'riesgos', icon: AlertTriangle, label: 'Riesgos y Escalado' },
     ],
   },
+  { id: 'clientes', icon: Building2, label: 'Clientes' },
   {
     id: 'usuarios', icon: Users, label: 'RRHH',
     children: [
@@ -458,6 +460,7 @@ export function AdminPage() {
         {tab === 'cross' && <CrossProjectPanel />}
         {tab === 'timeline' && <PeopleTimeline />}
         {tab === 'organigrama' && <OrgChartPanel />}
+        {tab === 'clientes' && <ClientesPanel />}
         {tab === 'config' && <ConfigPanel />}
       </div>
     </div>
