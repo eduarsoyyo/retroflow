@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { Bold, Italic, List, Link2, Code, Heading2 } from 'lucide-react'
 
 // ── Rich text display (renders HTML safely) ──
@@ -22,6 +22,21 @@ interface RichEditorProps {
 
 export function RichEditor({ value, onChange, placeholder, className, minHeight = 80 }: RichEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
+
+  // Sync external value -> innerHTML only when it actually differs.
+  // Why this is necessary: contentEditable + dangerouslySetInnerHTML on every
+  // render destroys the text nodes (and the caret position) on each keystroke,
+  // because each onInput triggers a parent re-render that re-feeds the same
+  // value back. The result: the caret jumps to position 0 after every key,
+  // and the user appears to be typing "in reverse" (e.g. "hola" comes out
+  // as "aloh"). By sync'ing only when the incoming value diverges from the
+  // current DOM content, we avoid touching the DOM during local edits.
+  useEffect(() => {
+    const el = editorRef.current
+    if (!el) return
+    const incoming = value || ''
+    if (el.innerHTML !== incoming) el.innerHTML = incoming
+  }, [value])
 
   const exec = useCallback((cmd: string, val?: string) => {
     document.execCommand(cmd, false, val)
@@ -61,11 +76,10 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight 
         </button>
       </div>
 
-      {/* Editable area */}
+      {/* Editable area — uncontrolled in render, sync'd via useEffect above. */}
       <div ref={editorRef} contentEditable suppressContentEditableWarning
         className="px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text [&_b]:font-semibold [&_i]:italic [&_a]:text-[#007AFF] [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-1 [&_pre]:bg-[#F2F2F7] [&_pre]:dark:bg-[#3A3A3C] [&_pre]:rounded [&_pre]:px-2 [&_pre]:py-1 [&_pre]:text-[#AF52DE] [&_pre]:font-mono [&_pre]:text-[10px] [&_pre]:my-1 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1"
         style={{ minHeight }}
-        dangerouslySetInnerHTML={{ __html: value || '' }}
         onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
         onFocus={() => { if (editorRef.current && !editorRef.current.innerHTML && placeholder) editorRef.current.dataset.empty = 'true' }}
         data-placeholder={placeholder}
