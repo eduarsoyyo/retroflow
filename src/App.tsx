@@ -3,6 +3,7 @@ import { CommandPalette } from '@/components/common/CommandPalette'
 import { useAuth } from '@/context/AuthContext'
 import { MainLayout } from '@/layouts/MainLayout'
 import { AdminPage } from '@/pages/AdminPage'
+import { ClienteDetailPage } from '@/pages/ClienteDetailPage'
 import { ClientPortal } from '@/pages/ClientPortal'
 import { ConsultantProfilePage } from '@/pages/ConsultantProfilePage'
 import { HomePage } from '@/pages/HomePage'
@@ -55,6 +56,7 @@ export function App() {
         <Route path="/project/:slug" element={<ProjectPage />} />
         <Route path="/project/:slug/:tab" element={<ProjectPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/clientes/:slug" element={<ClienteDetailPage />} />
         <Route path="/admin/:tab" element={<AdminPage />} />
       </Route>
       <Route path="/portal/:slug" element={<ClientPortal />} />
