@@ -126,17 +126,15 @@ export function ProjectPage() {
   const [timer, setTimer] = useState(300) // 5 min default
   const [timerRunning, setTimerRunning] = useState(false)
   const timerStartedAt = useRef<number | null>(null)
-  const [ghostMode, setGhostMode] = useState(false)
 
   // Realtime
-  const { online, broadcastState, broadcastPhase, broadcastTimer: bcTimer } = useRetroRealtime({
+  const { online, cursors, broadcastState, broadcastPhase, broadcastTimer: bcTimer, broadcastCursor } = useRetroRealtime({
     userId: user?.id || '',
     userName: user?.name || '',
     userAvatar: user?.avatar || '👤',
     userColor: user?.color || '#007AFF',
     sala: slug || '',
     enabled: inRetro && !!user,
-    ghost: ghostMode,
     onStateReceived: (key, data) => {
       if (key === 'notes') setNotes(data as Note[])
       else if (key === 'actions') setActions(data as Action[])
@@ -182,6 +180,24 @@ export function ProjectPage() {
   // Auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stateRef = useRef({ notes, actions, risks, tasks, obj: { text: objective }, currentPhase: retroPhase })
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  // Track local mouse position and broadcast normalised coords (0..1).
+  // Throttling lives inside the hook (50ms) so we just emit raw events here.
+  // Only active in retro mode; outside retro we don't broadcast cursors.
+  useEffect(() => {
+    if (!inRetro) return
+    const onMove = (e: MouseEvent) => {
+      const el = containerRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const xPct = (e.clientX - rect.left) / rect.width
+      const yPct = (e.clientY - rect.top) / rect.height
+      if (xPct < 0 || xPct > 1 || yPct < 0 || yPct > 1) return
+      broadcastCursor(xPct, yPct)
+    }
+    document.addEventListener('mousemove', onMove)
+    return () => document.removeEventListener('mousemove', onMove)
+  }, [inRetro, broadcastCursor])
   useEffect(() => { stateRef.current = { notes, actions, risks, tasks, obj: { text: objective }, currentPhase: retroPhase } }, [notes, actions, risks, tasks, objective, retroPhase])
 
   const triggerSave = useCallback(() => {
@@ -275,7 +291,32 @@ export function ProjectPage() {
   const rp = RETRO_PHASES[retroPhase]!
 
   return (
-    <div className="flex h-[calc(100vh-3rem)]">
+    <div ref={containerRef} className="relative flex h-[calc(100vh-3rem)]">
+      {/* ═══ REMOTE CURSORS (only in retro) ═══ */}
+      {inRetro && cursors.length > 0 && containerRef.current && (() => {
+        const rect = containerRef.current.getBoundingClientRect()
+        return (
+          <div className="absolute inset-0 pointer-events-none z-50">
+            {cursors.map(c => {
+              const x = c.xPct * rect.width
+              const y = c.yPct * rect.height
+              return (
+                <div key={c.userId} className="absolute transition-transform duration-75" style={{ transform: `translate(${x}px, ${y}px)` }}>
+                  {/* Arrow */}
+                  <svg width="16" height="16" viewBox="0 0 16 16" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
+                    <path d="M2 2 L2 13 L5 10 L8 14 L10 13 L7 9 L11 9 Z" fill={c.color} stroke="white" strokeWidth="1" />
+                  </svg>
+                  {/* Avatar + name pill */}
+                  <div className="flex items-center gap-1 mt-0.5 ml-2 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-white whitespace-nowrap" style={{ background: c.color }}>
+                    <span className="text-[11px]">{c.avatar}</span>
+                    <span>{c.name}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
       {/* ═══ PROJECT SIDEBAR ═══ */}
       <aside className="w-[180px] flex-shrink-0 border-r border-revelio-border dark:border-revelio-dark-border bg-white dark:bg-revelio-dark-card flex flex-col">
         {/* Nav items */}
@@ -310,12 +351,6 @@ export function ProjectPage() {
                   ))}
                 </div>
               </div>
-              {/* Ghost mode */}
-              {user?.is_superuser && (
-                <button onClick={() => setGhostMode(!ghostMode)} className={`w-full mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] ${ghostMode ? 'text-revelio-subtle opacity-50' : 'text-revelio-blue'}`}>
-                  {ghostMode ? '👻 Fantasma' : '👁️ Visible'}
-                </button>
-              )}
             </>
           )}
         </nav>
