@@ -9,7 +9,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardPanel } from '@/components/project/DashboardPanel'
 import { EconomicoTab } from '@/components/project/EconomicoTab'
 import { FTEsPanel } from '@/components/project/FTEsPanel'
-import { RisksPanel } from '@/components/project/RisksPanel'
+import { RiesgosTab } from '@/components/project/RiesgosTab'
 import { TaskDetailModal } from '@/components/project/TaskDetailModal'
 import { TimelineView } from '@/components/project/TimelineView'
 import { VacationsPanel } from '@/components/project/VacationsPanel'
@@ -709,11 +709,11 @@ export function ProjectPage() {
 
           {/* RIESGOS */}
           {tab === 'riesgos' && (
-            <RisksPanel
-              risks={risks as Array<{ id: string; title: string; text?: string; description?: string; type: 'riesgo' | 'problema' | 'oportunidad'; status: string; prob?: string; impact?: string; owner?: string; createdAt: string; escalation?: { level?: string; by?: string; date?: string; reason?: string }; [k: string]: unknown }>}
-              onUpdate={next => { setRisks(next as typeof risks); broadcastState('risks', next) }}
+            <RiesgosTab
+              risks={risks}
+              workItems={workItems}
               currentUser={user?.name || ''}
-              items={workItems.map(a => ({ id: a.id, text: a.text }))}
+              onUpdate={next => { setRisks(next); broadcastState('risks', next) }}
             />
           )}
 
