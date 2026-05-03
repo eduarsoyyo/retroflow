@@ -30,12 +30,8 @@ import { RiskHeatmap } from '@/components/retro/RiskHeatmap'
 import { Empty, uid } from './_shared'
 import { soundCreate, soundSuccess, soundDelete } from '@/lib/sounds'
 
-// Local types — duplicated from ProjectPage for now. Pending refactor:
-// move shared types to src/types/project.ts.
-interface Action { id: string; text: string; status: string; owner: string; date: string; priority: string; createdAt: string; [k: string]: unknown }
-interface Risk { id: string; text: string; title: string; status: string; prob: string; impact: string; type: string; owner: string; escalation?: { level?: string }; createdAt: string }
-interface Note { id: string; text: string; category: string; userName: string; userId: string; votes: string[]; createdAt: string }
-interface TaskItem { text: string; done: boolean }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action, Risk, Note, TaskItem } from '@/types/project'
 
 interface CurrentUser { id: string; name: string }
 

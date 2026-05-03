@@ -14,9 +14,8 @@ import { FTEsPanel } from './FTEsPanel'
 import { VacationsPanel } from './VacationsPanel'
 import { Empty } from './_shared'
 
-// Local types — duplicated from ProjectPage for now. Pending refactor:
-// move shared types to src/types/project.ts.
-interface Action { id: string; text: string; status: string; owner: string; date: string; priority: string; createdAt: string; [k: string]: unknown }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action } from '@/types/project'
 
 type EquipoView = 'team' | 'ftes' | 'vac'
 

@@ -19,11 +19,8 @@ import { useRetroRealtime } from '@/hooks/useRetroRealtime'
 import type { Room, Member } from '@/types'
 import { RetroHistory } from '@/components/retro/RetroHistory'
 
-// ── Types ──
-interface Action { id: string; text: string; status: string; owner: string; date: string; priority: string; createdAt: string; [k: string]: unknown }
-interface Risk { id: string; text: string; title: string; status: string; prob: string; impact: string; type: string; owner: string; escalation?: { level?: string }; createdAt: string }
-interface Note { id: string; text: string; category: string; userName: string; userId: string; votes: string[]; createdAt: string }
-interface TaskItem { text: string; done: boolean }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action, Risk, Note, TaskItem } from '@/types/project'
 
 type Tab = 'resumen' | 'seguimiento' | 'riesgos' | 'equipo' | 'economico' | 'retro'
 

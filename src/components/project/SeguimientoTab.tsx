@@ -14,10 +14,8 @@ import { TimelineView } from './TimelineView'
 import { Empty, uid } from './_shared'
 import { soundDrop, soundSlide } from '@/lib/sounds'
 
-// Local types — duplicated from ProjectPage for now. Pending refactor:
-// move shared types to src/types/project.ts.
-interface Action { id: string; text: string; status: string; owner: string; date: string; priority: string; createdAt: string; [k: string]: unknown }
-interface Risk { id: string; text: string; title: string; status: string; prob: string; impact: string; type: string; owner: string; escalation?: { level?: string }; createdAt: string }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action, Risk } from '@/types/project'
 
 // Visual mappings — only used here; kept local for cohesion.
 const STATUS_LABEL: Record<string, string> = { todo: 'Pendiente', backlog: 'Backlog', doing: 'En curso', in_progress: 'En curso', inprogress: 'En curso', done: 'Hecho', blocked: 'Bloqueado' }

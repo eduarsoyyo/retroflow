@@ -7,20 +7,8 @@ import {
 import { RichEditor, RichTextDisplay } from '@/components/common/RichText'
 import { soundCreate, soundDelete } from '@/lib/sounds'
 import type { Member } from '@/types'
-
-interface Action {
-  id: string; text: string; status: string; owner: string; date: string
-  priority: string; createdAt: string; description?: string; type?: string
-  epicLink?: string; startDate?: string; storyPoints?: number | string | null
-  hours?: number | null; checklist?: string; source?: string; riskId?: string | null
-  blockedBy?: string[]; blocks?: string[]
-  baselineStart?: string; baselineEnd?: string
-  milestoneDate?: string
-  comments?: Comment[]
-  [k: string]: unknown
-}
-
-interface Comment { id: string; author: string; text: string; date: string; isDecision?: boolean }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action, Comment } from '@/types/project'
 
 interface CheckItem { id: string; text: string; done: boolean }
 

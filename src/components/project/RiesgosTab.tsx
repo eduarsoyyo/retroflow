@@ -4,10 +4,8 @@
 // heatmap dentro del tab, etc, viven aquí.
 import { RisksPanel } from './RisksPanel'
 
-// Local types — duplicated from ProjectPage for now. Pending refactor:
-// move shared types to src/types/project.ts.
-interface Action { id: string; text: string; status: string; owner: string; date: string; priority: string; createdAt: string; [k: string]: unknown }
-interface Risk { id: string; text: string; title: string; status: string; prob: string; impact: string; type: string; owner: string; escalation?: { level?: string }; createdAt: string }
+// Domain types: shared shapes from src/types/project.ts.
+import type { Action, Risk } from '@/types/project'
 
 // Shape RisksPanel expects internally (keeps the inline type from old code).
 type RisksPanelRisk = {
