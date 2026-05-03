@@ -10,3 +10,8 @@ export function Empty({ message }: { message: string }) {
     </div>
   )
 }
+
+// Cheap unique-ish id, used as fallback when DB doesn't allocate it.
+// Not cryptographically random; OK for client-side temporary ids.
+export const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36)
+
