@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardPanel } from '@/components/project/DashboardPanel'
-import { FinancePanel } from '@/components/project/FinancePanel'
+import { EconomicoTab } from '@/components/project/EconomicoTab'
 import { FTEsPanel } from '@/components/project/FTEsPanel'
 import { RisksPanel } from '@/components/project/RisksPanel'
 import { TaskDetailModal } from '@/components/project/TaskDetailModal'
@@ -755,11 +755,7 @@ export function ProjectPage() {
 
           {/* FINANZAS */}
           {tab === 'economico' && (
-            <FinancePanel
-              team={teamMembers}
-              sala={slug || ''}
-              roomData={room ? { billing_type: (room as unknown as Record<string, unknown>).billing_type as string || 'fixed', budget: Number((room as unknown as Record<string, unknown>).budget) || 0, sell_rate: Number((room as unknown as Record<string, unknown>).sell_rate) || 0, fixed_price: Number((room as unknown as Record<string, unknown>).fixed_price) || 0, planned_hours: Number((room as unknown as Record<string, unknown>).planned_hours) || 0, services: ((room as unknown as Record<string, unknown>).services as Array<{ id: string; name: string; from: string; to: string; cost: number; margin_pct: number; risk_pct: number }>) || [] } : undefined}
-            />
+            <EconomicoTab slug={slug || ''} team={teamMembers} room={room} />
           )}
         </>}
 
