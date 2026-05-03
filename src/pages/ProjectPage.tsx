@@ -3,16 +3,15 @@ import {
   LayoutDashboard, ListChecks, AlertTriangle, Users,
   CheckSquare, Clock, TrendingUp, ChevronLeft,
   FolderOpen, Shield, BarChart3, ClipboardCheck, MessageSquare, MessageCircle,
-  ThumbsUp, Plus, Send, Trash2, CornerUpLeft, PartyPopper, History, Calendar as CalendarIcon, Umbrella,
+  ThumbsUp, Plus, Send, Trash2, CornerUpLeft, PartyPopper, History,
 } from 'lucide-react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { EconomicoTab } from '@/components/project/EconomicoTab'
-import { FTEsPanel } from '@/components/project/FTEsPanel'
+import { EquipoTab } from '@/components/project/EquipoTab'
 import { ResumenTab } from '@/components/project/ResumenTab'
 import { RiesgosTab } from '@/components/project/RiesgosTab'
 import { TaskDetailModal } from '@/components/project/TaskDetailModal'
 import { TimelineView } from '@/components/project/TimelineView'
-import { VacationsPanel } from '@/components/project/VacationsPanel'
 import { Celebration } from '@/components/retro/Celebration'
 import { RiskHeatmap } from '@/components/retro/RiskHeatmap'
 import { useAuth } from '@/context/AuthContext'
@@ -116,7 +115,6 @@ export function ProjectPage() {
   const [showCelebration, setShowCelebration] = useState(false)
   const [detailAction, setDetailAction] = useState<Action | null>(null)
   const [showHistory, setShowHistory] = useState(false)
-  const [equipoView, setEquipoView] = useState<'team' | 'ftes' | 'vac'>('team')
   const [seguiView, setSeguiView] = useState<'list' | 'board' | 'timeline' | 'epics'>('list')
   const [tlZoom, setTlZoom] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
   const [tlOffset, setTlOffset] = useState(0)
@@ -718,38 +716,7 @@ export function ProjectPage() {
 
           {/* EQUIPO */}
           {tab === 'equipo' && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle">{teamMembers.length} persona{teamMembers.length !== 1 ? 's' : ''}</p>
-                <div className="flex bg-revelio-bg dark:bg-revelio-dark-border rounded-lg overflow-hidden">
-                  <button onClick={() => setEquipoView('team')} className={`px-2.5 py-1 text-[10px] font-semibold flex items-center gap-1 ${equipoView === 'team' ? 'bg-revelio-blue text-white' : 'text-revelio-subtle dark:text-revelio-dark-subtle'}`}><Users className="w-3 h-3" /> Equipo</button>
-                  <button onClick={() => setEquipoView('ftes')} className={`px-2.5 py-1 text-[10px] font-semibold flex items-center gap-1 ${equipoView === 'ftes' ? 'bg-revelio-blue text-white' : 'text-revelio-subtle dark:text-revelio-dark-subtle'}`}><CalendarIcon className="w-3 h-3" /> FTEs</button>
-                  <button onClick={() => setEquipoView('vac')} className={`px-2.5 py-1 text-[10px] font-semibold flex items-center gap-1 ${equipoView === 'vac' ? 'bg-revelio-blue text-white' : 'text-revelio-subtle dark:text-revelio-dark-subtle'}`}><Umbrella className="w-3 h-3" /> Vac</button>
-                </div>
-              </div>
-
-              {equipoView === 'team' && (
-                <>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {teamMembers.map(m => {
-                      const myActs = acts.filter(a => a.owner === m.name); const myDone = myActs.filter(a => a.status === 'done' || a.status === 'archived').length
-                      const isOnVac = (m.vacations || []).some((v: unknown) => { const vr = v as { from?: string; to?: string }; return vr.from && vr.from <= today && (!vr.to || vr.to >= today) })
-                      return (
-                        <div key={m.id} className="rounded-lg border border-revelio-border dark:border-revelio-dark-border bg-white dark:bg-revelio-dark-card px-3 py-2.5 flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style={{ background: m.color || '#007AFF' }}>{m.avatar || '👤'}</div>
-                          <div className="flex-1 min-w-0"><p className="text-xs font-medium text-revelio-text dark:text-revelio-dark-text truncate">{m.name}</p><p className="text-[9px] text-revelio-subtle dark:text-revelio-dark-subtle">{m.role_label || '—'}</p></div>
-                          {isOnVac ? <span className="text-[9px] font-semibold text-revelio-orange bg-revelio-orange/10 px-1.5 py-0.5 rounded">Vac</span> : myActs.length > 0 ? <span className="text-[9px] text-revelio-subtle dark:text-revelio-dark-subtle">{myDone}/{myActs.length}</span> : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {teamMembers.length === 0 && <Empty message="Nadie asignado." />}
-                </>
-              )}
-
-              {equipoView === 'ftes' && <FTEsPanel team={teamMembers} sala={slug || ''} />}
-              {equipoView === 'vac' && <VacationsPanel team={teamMembers} />}
-            </div>
+            <EquipoTab slug={slug || ''} team={teamMembers} actions={acts} />
           )}
 
           {/* FINANZAS */}
