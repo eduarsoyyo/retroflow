@@ -119,6 +119,20 @@ export interface PortfolioPnL {
   projects: Array<Pick<ProjectFinance, 'slug' | 'name' | 'totalRevenue' | 'totalCost' | 'margin' | 'marginPct'>>
 }
 
+/**
+ * Same shape as PortfolioPnL but restricted to projects belonging to a
+ * single cliente (rooms.cliente_id = clienteId). Used by the cliente
+ * detail page to show aggregated finance.
+ *
+ * If the cliente has no projects yet the totals are zero and `projects`
+ * is an empty array — the caller decides how to render that case.
+ */
+export interface ClientePnL extends PortfolioPnL {
+  clienteId: string
+  /** Number of projects included in the aggregation (excluding archived/cancelled). */
+  projectCount: number
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Internal helpers — local to this service.
 // If any of these grow or get reused, promote them to domain/finance.
@@ -486,6 +500,60 @@ export async function loadAllProjectsPnL(year: number, mode: CostMode = 'actual'
 
   const margin = totalRevenue - totalCost
   return {
+    year,
+    mode,
+    totalRevenue,
+    totalCost,
+    margin,
+    marginPct: pct(margin, totalRevenue),
+    projects: projects.sort((a, b) => b.totalRevenue - a.totalRevenue),
+  }
+}
+
+/**
+ * Aggregated P&L for all projects belonging to a single cliente.
+ *
+ * Like `loadAllProjectsPnL` but filtered by `rooms.cliente_id = clienteId`.
+ * Excludes archived and cancelled projects. If a project's calculation
+ * fails, it is skipped silently (same behaviour as loadAllProjectsPnL).
+ *
+ * Used by the cliente detail page (`/admin/clientes/:slug`) to show
+ * aggregated finance across all the cliente's projects.
+ */
+export async function loadClientePnL(
+  clienteId: string,
+  year: number,
+  mode: CostMode = 'actual',
+): Promise<ClientePnL> {
+  const rooms = await fetchRooms()
+  const clienteRooms = rooms.filter(r => r.cliente_id === clienteId)
+  const projects: PortfolioPnL['projects'] = []
+  let totalRevenue = 0
+  let totalCost = 0
+
+  for (const r of clienteRooms) {
+    if (r.status === 'archived' || r.status === 'cancelled') continue
+    try {
+      const p = await loadProjectFinance(r.slug, year, mode)
+      projects.push({
+        slug: p.slug,
+        name: p.name,
+        totalRevenue: p.totalRevenue,
+        totalCost: p.totalCost,
+        margin: p.margin,
+        marginPct: p.marginPct,
+      })
+      totalRevenue += p.totalRevenue
+      totalCost += p.totalCost
+    } catch {
+      continue
+    }
+  }
+
+  const margin = totalRevenue - totalCost
+  return {
+    clienteId,
+    projectCount: projects.length,
     year,
     mode,
     totalRevenue,

@@ -22,6 +22,7 @@ import { fetchClienteBySlug, deleteCliente, fetchClientes } from '@/data/cliente
 import { fetchRoomsByCliente } from '@/data/rooms'
 import type { Cliente, Room } from '@/types'
 import { ClienteFormModal, ClienteDeleteModal } from '@/components/admin/ClienteFormModal'
+import { ClienteFinanceSummary } from '@/components/admin/ClienteFinanceSummary'
 
 export function ClienteDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -188,6 +189,9 @@ export function ClienteDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Aggregated finance */}
+      <ClienteFinanceSummary clienteId={cliente.id} />
 
       {/* Projects list */}
       <div>
