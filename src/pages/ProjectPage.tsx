@@ -80,7 +80,15 @@ export function ProjectPage() {
     userAvatar: user?.avatar || '👤',
     userColor: user?.color || '#007AFF',
     sala: slug || '',
-    enabled: inRetro && !!user,
+    // Channel stays open on any project tab, not just /retro.
+    // Why: changes to actions / risks / tasks made in Seguimiento or Riesgos
+    // need to propagate to other users viewing the same project, even if no
+    // one is on the Retro tab. Phase / timer events still arrive on every
+    // tab; the corresponding setRetroPhase / setTimer calls are harmless
+    // when the user isn't viewing retro because that state is only consumed
+    // there. Pending: rename hook to useProjectRealtime when we tackle the
+    // sala→proyecto rename pass.
+    enabled: !!user && !!slug,
     onStateReceived: (key, data) => {
       if (key === 'notes') setNotes(data as Note[])
       else if (key === 'actions') setActions(data as Action[])
