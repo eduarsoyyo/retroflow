@@ -6,9 +6,9 @@ import {
   ThumbsUp, Plus, Send, Trash2, CornerUpLeft, PartyPopper, History, Calendar as CalendarIcon, Umbrella,
 } from 'lucide-react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { DashboardPanel } from '@/components/project/DashboardPanel'
 import { EconomicoTab } from '@/components/project/EconomicoTab'
 import { FTEsPanel } from '@/components/project/FTEsPanel'
+import { ResumenTab } from '@/components/project/ResumenTab'
 import { RiesgosTab } from '@/components/project/RiesgosTab'
 import { TaskDetailModal } from '@/components/project/TaskDetailModal'
 import { TimelineView } from '@/components/project/TimelineView'
@@ -388,11 +388,10 @@ export function ProjectPage() {
 
           {/* RESUMEN */}
           {tab === 'resumen' && (
-            <DashboardPanel
+            <ResumenTab
               actions={actions}
               risks={risks}
               team={teamMembers}
-              today={today}
               onTabChange={t => setTab(t as Tab)}
             />
           )}
