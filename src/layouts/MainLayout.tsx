@@ -107,6 +107,11 @@ export function MainLayout() {
   const isActive = (path: string) => location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
   const isHome = location.pathname === '/'
   const inProjectOrAdmin = location.pathname.startsWith('/project/') || location.pathname.startsWith('/admin')
+  // Flat admin sub-pages like /admin/clientes/:slug have no internal
+  // scroll of their own — they expect the layout's <main> to scroll.
+  // Detect them by a 3-segment path under /admin (admin/X/Y). Keep this
+  // updated when new flat sub-pages appear.
+  const adminFlatDetail = /^\/admin\/[^/]+\/[^/]+/.test(location.pathname)
 
   return (
     <div className="h-screen flex bg-revelio-bg dark:bg-revelio-dark-bg">
@@ -226,7 +231,7 @@ export function MainLayout() {
         )}
 
         {/* Content */}
-        <main className={`flex-1 ${inProjectOrAdmin ? 'overflow-hidden' : 'overflow-y-auto p-4 sm:p-6'}`}>
+        <main className={`flex-1 ${inProjectOrAdmin && !adminFlatDetail ? 'overflow-hidden' : 'overflow-y-auto p-4 sm:p-6'}`}>
           <Outlet />
         </main>
       </div>

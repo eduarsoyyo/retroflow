@@ -120,17 +120,49 @@ export interface PortfolioPnL {
 }
 
 /**
- * Same shape as PortfolioPnL but restricted to projects belonging to a
- * single cliente (rooms.cliente_id = clienteId). Used by the cliente
- * detail page to show aggregated finance.
+ * Aggregated P&L for all projects of a single cliente.
  *
- * If the cliente has no projects yet the totals are zero and `projects`
- * is an empty array — the caller decides how to render that case.
+ * Why it doesn't extend `PortfolioPnL`: the cliente view needs richer
+ * per-project info (status, planned end date for "out-of-schedule"
+ * indicators) and a monthly aggregate breakdown for charts. Instead of
+ * polluting PortfolioPnL with optional fields used only here, ClientePnL
+ * declares its own shape.
+ *
+ * If the cliente has no projects yet the totals are zero, `projects` is
+ * an empty array, and `months` contains 12 zeroed entries.
  */
-export interface ClientePnL extends PortfolioPnL {
+export interface ClientePnL {
   clienteId: string
-  /** Number of projects included in the aggregation (excluding archived/cancelled). */
+  /** Number of projects included in the aggregation (excludes archived/cancelled). */
   projectCount: number
+  year: number
+  mode: CostMode
+  totalRevenue: number
+  totalCost: number
+  margin: number
+  marginPct: number
+  /** Per-month aggregate (always 12 entries, Jan..Dec) summed across all projects. */
+  months: MonthlyPnL[]
+  /** One row per project, sorted by descending revenue. */
+  projects: ClientePnLProject[]
+}
+
+/**
+ * One project line inside a ClientePnL. Carries the financial figures
+ * plus a couple of fields needed for health indicators (status,
+ * planned_end). All fields are read-only; the page just renders them.
+ */
+export interface ClientePnLProject {
+  slug: string
+  name: string
+  totalRevenue: number
+  totalCost: number
+  margin: number
+  marginPct: number
+  /** Project status (active / paused / closed / archived / ...). Optional because the column is nullable. */
+  status?: string | null
+  /** Planned end date for the project, ISO `yyyy-mm-dd`. Used to flag out-of-schedule projects. */
+  plannedEnd?: string | null
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -527,9 +559,13 @@ export async function loadClientePnL(
 ): Promise<ClientePnL> {
   const rooms = await fetchRooms()
   const clienteRooms = rooms.filter(r => r.cliente_id === clienteId)
-  const projects: PortfolioPnL['projects'] = []
+  const projects: ClientePnLProject[] = []
   let totalRevenue = 0
   let totalCost = 0
+
+  // Monthly aggregate: 12 zero buckets (Jan..Dec) summed across projects.
+  const monthlyRev = new Array<number>(12).fill(0)
+  const monthlyCost = new Array<number>(12).fill(0)
 
   for (const r of clienteRooms) {
     if (r.status === 'archived' || r.status === 'cancelled') continue
@@ -542,12 +578,35 @@ export async function loadClientePnL(
         totalCost: p.totalCost,
         margin: p.margin,
         marginPct: p.marginPct,
+        status: r.status ?? null,
+        // `planned_end` is the contractual end date; falls back to
+        // `actual_end` for legacy rooms that only filled the latter.
+        plannedEnd: r.planned_end ?? r.end_date ?? null,
       })
       totalRevenue += p.totalRevenue
       totalCost += p.totalCost
+      // Aggregate monthly buckets
+      for (let i = 0; i < 12; i++) {
+        monthlyRev[i]! += p.months[i]?.revenue ?? 0
+        monthlyCost[i]! += p.months[i]?.cost ?? 0
+      }
     } catch {
       continue
     }
+  }
+
+  // Build months[] from aggregated buckets
+  const months: MonthlyPnL[] = []
+  for (let i = 0; i < 12; i++) {
+    const rev = monthlyRev[i]!
+    const cost = monthlyCost[i]!
+    months.push({
+      month: i,
+      revenue: rev,
+      cost,
+      margin: rev - cost,
+      marginPct: pct(rev - cost, rev),
+    })
   }
 
   const margin = totalRevenue - totalCost
@@ -560,6 +619,7 @@ export async function loadClientePnL(
     totalCost,
     margin,
     marginPct: pct(margin, totalRevenue),
+    months,
     projects: projects.sort((a, b) => b.totalRevenue - a.totalRevenue),
   }
 }
