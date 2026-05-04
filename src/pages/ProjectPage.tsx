@@ -15,7 +15,7 @@ import { SeguimientoTab } from '@/components/project/SeguimientoTab'
 import { TaskDetailModal } from '@/components/project/TaskDetailModal'
 import { useAuth } from '@/context/AuthContext'
 import { supabase } from '@/data/supabase'
-import { useRetroRealtime } from '@/hooks/useRetroRealtime'
+import { useProjectRealtime } from '@/hooks/useProjectRealtime'
 import type { Room, Member } from '@/types'
 import { RetroHistory } from '@/components/retro/RetroHistory'
 
@@ -71,20 +71,19 @@ export function ProjectPage() {
   const timerStartedAt = useRef<number | null>(null)
 
   // Realtime
-  const { online, cursors, broadcastState, broadcastPhase, broadcastTimer: bcTimer, broadcastCursor } = useRetroRealtime({
+  const { online, cursors, broadcastState, broadcastPhase, broadcastTimer: bcTimer, broadcastCursor } = useProjectRealtime({
     userId: user?.id || '',
     userName: user?.name || '',
     userAvatar: user?.avatar || '👤',
     userColor: user?.color || '#007AFF',
-    sala: slug || '',
+    slug: slug || '',
     // Channel stays open on any project tab, not just /retro.
     // Why: changes to actions / risks / tasks made in Seguimiento or Riesgos
     // need to propagate to other users viewing the same project, even if no
     // one is on the Retro tab. Phase / timer events still arrive on every
     // tab; the corresponding setRetroPhase / setTimer calls are harmless
     // when the user isn't viewing retro because that state is only consumed
-    // there. Pending: rename hook to useProjectRealtime when we tackle the
-    // sala→proyecto rename pass.
+    // there.
     enabled: !!user && !!slug,
     onStateReceived: (key, data) => {
       if (key === 'notes') setNotes(data as Note[])
