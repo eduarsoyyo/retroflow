@@ -20,12 +20,7 @@ import { useEffect, useState } from 'react'
 import { TrendingUp, TrendingDown, Euro, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { loadClientePnL, type ClientePnL, type CostMode } from '@/services/finance'
-
-// Local formatters — pending: extract to src/lib/format.ts when other
-// components also need them (today only this file does).
-const eurFmt = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
-const formatEuro = (n: number) => eurFmt.format(Number.isFinite(n) ? n : 0)
-const formatPercent = (n: number) => `${(Number.isFinite(n) ? n : 0).toFixed(1).replace('.', ',')}%`
+import { formatEuro, formatPercent } from '@/lib/format'
 
 interface ClienteFinanceSummaryProps {
   clienteId: string
