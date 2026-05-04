@@ -229,7 +229,19 @@ export function ProjectsPanel() {
       <div className="rounded-card border border-revelio-border dark:border-revelio-dark-border bg-white dark:bg-revelio-dark-card overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="bg-revelio-bg dark:bg-revelio-dark-border">{['Proyecto', 'Periodo', 'Coste est.', 'Venta', 'Coste real', 'Desviacion', 'M. objetivo', 'M. real', 'Equipo', 'Consumido', ''].map(h => <th key={h} className="px-2 py-2 text-center text-[10px] font-bold text-revelio-subtle dark:text-revelio-dark-subtle uppercase">{h}</th>)}</tr></thead>
+          <thead><tr className="bg-revelio-bg dark:bg-revelio-dark-border">{[
+            { label: 'Proyecto', title: 'Nombre del proyecto y cliente' },
+            { label: 'Periodo', title: 'Período planificado del proyecto' },
+            { label: 'Coste oferta', title: 'Suma del coste de los servicios contratados con el cliente' },
+            { label: 'Venta', title: 'Importe total facturable al cliente según contrato (incluye margen y riesgo)' },
+            { label: 'Consumo YTD', title: 'Coste real consumido en el año hasta hoy (acumulado a fecha actual). Para ver el coste anual completo según planning, abrir el detalle del proyecto.' },
+            { label: 'Desviación', title: 'Diferencia porcentual entre el consumo YTD y el coste oferta proporcional al período transcurrido' },
+            { label: 'M. oferta', title: 'Margen porcentual ofertado al cliente (según contrato)' },
+            { label: 'M. proyectado', title: 'Margen porcentual proyectado a fin de año basado en el ritmo de consumo actual' },
+            { label: 'Equipo', title: 'Número de personas asignadas al proyecto' },
+            { label: 'Consumido', title: 'Porcentaje del coste oferta ya consumido' },
+            { label: '', title: '' },
+          ].map(h => <th key={h.label || 'actions'} title={h.title} className="px-2 py-2 text-center text-[10px] font-bold text-revelio-subtle dark:text-revelio-dark-subtle uppercase">{h.label}</th>)}</tr></thead>
           <tbody>{rooms.map((r, i) => {
             const tc = members.filter(m => (m.rooms || []).includes(r.slug)).length
             const svcs = getServices(r)
