@@ -261,6 +261,7 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
             <Bar
               dataKey="ingresos"
               name="Ingresos"
+              fill="#007AFF"
               radius={[3, 3, 0, 0]}
               onClick={handleBarClick}
               style={{ cursor: 'pointer' }}
@@ -272,6 +273,7 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
             <Bar
               dataKey="coste"
               name="Coste"
+              fill="#FF9500"
               radius={[3, 3, 0, 0]}
               onClick={handleBarClick}
               style={{ cursor: 'pointer' }}
