@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import { supabase } from '@/data/supabase'
 import { dailyTheoreticalHours, type Calendar } from '@/domain/calendar'
-import { monthlyRevenueFromServices, memberCostHour, fmtEur, fmt, pct } from '@/domain/finance'
+import { monthlyRevenueFromServices, memberCostHour, totalEstCostFromServices, fmtEur, fmt, pct } from '@/domain/finance'
 import type { ServiceContract } from '@/domain/finance'
 import { exportPnLPDF, exportPnLExcel } from '@/lib/exports'
 import type { Member } from '@/types'
@@ -34,7 +34,6 @@ const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 
 
 export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
   const [view, setView] = useState<'pnl' | 'simulator' | 'forecast'>('pnl')
-  const [period, setPeriod] = useState<'mensual' | 'anual'>('mensual')
   const [yr, setYr] = useState(new Date().getFullYear())
   const [orgData, setOrgData] = useState<OrgEntry[]>([])
   const [calendarios, setCalendarios] = useState<Calendar[]>([])
@@ -171,6 +170,21 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
     }
   }, [monthlyData, services, yr])
 
+  // ─── Contract view (Por contrato) ──────────────────────────────────────────
+  // Coste oferta = suma directa de services[].cost (lo ofertado al cliente,
+  // no el cálculo planning). Margen oferta = ingresos - coste oferta.
+  // Esta vista coexiste con la vista Real (planning) que ya calcula `pnl`.
+  const contract = useMemo(() => {
+    const totCost = totalEstCostFromServices(services)
+    const totRev = pnl.totRev // revenue is the same in both views
+    const totMargin = totRev - totCost
+    return {
+      totCost,
+      totMargin,
+      totMarginPct: pct(totMargin, totRev),
+    }
+  }, [services, pnl.totRev])
+
   const forecast = useMemo(() => {
     const cm = new Date().getMonth()
     const ytdRev = pnl.months.slice(0, cm).reduce((s, m) => s + m.revenue, 0)
@@ -268,20 +282,68 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
         >
           <ChevronRight className="w-4 h-4" />
         </button>
-        <button
-          onClick={() => setPeriod(period === 'mensual' ? 'anual' : 'mensual')}
-          className={`px-3 py-1 rounded text-xs font-medium transition ${
-            period === 'mensual' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-          }`}
-        >
-          {period === 'mensual' ? 'Mensual' : 'Anual'}
-        </button>
       </div>
 
-      {/* P&L View */}
+      {/* P&L View — annual KPIs on top + monthly detail below */}
       {view === 'pnl' && (
-        <div className="space-y-4">
-          {period === 'mensual' && (
+        <div className="space-y-6">
+          {/* Annual KPIs: contract row + real row. Order chosen for
+              left-to-right reading: Venta → Coste → Margen, then below
+              repeat the same order for Real with a Desviación inline. */}
+          <div className="space-y-4">
+            {services.length > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-2">
+                  Por contrato
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="text-xs font-semibold text-text-secondary mb-2">Venta</div>
+                    <div className="text-2xl font-bold text-green-600">{fmtEur(pnl.totRev)}</div>
+                  </div>
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="text-xs font-semibold text-text-secondary mb-2">Coste oferta</div>
+                    <div className="text-2xl font-bold text-gray-700">{fmtEur(contract.totCost)}</div>
+                  </div>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="text-xs font-semibold text-text-secondary mb-2">Margen oferta</div>
+                    <div className="text-2xl font-bold text-blue-600">{fmtEur(contract.totMargin)} · {contract.totMarginPct}%</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-2">
+                Real (planning {yr})
+              </div>
+              {/* Order: Coste real → Desviación → Margen real.
+                  Reading flow: "this is the real cost"
+                              → "here's how far it strays from the offer"
+                              → "and this is the resulting margin". */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="text-xs font-semibold text-text-secondary mb-2">Coste real</div>
+                  <div className="text-2xl font-bold text-orange-600">{fmtEur(pnl.totCost)}</div>
+                </div>
+                {services.length > 0 ? (
+                  <div className={`p-4 border rounded-lg ${pnl.totCost <= contract.totCost ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="text-xs font-semibold text-text-secondary mb-2">Desviación vs oferta</div>
+                    <div className={`text-2xl font-bold ${pnl.totCost <= contract.totCost ? 'text-green-600' : 'text-red-600'}`}>{fmtEur(pnl.totCost - contract.totCost)}</div>
+                  </div>
+                ) : <div />}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-xs font-semibold text-text-secondary mb-2">Margen real</div>
+                  <div className="text-2xl font-bold text-blue-600">{fmtEur(pnl.totMargin)} · {pnl.totMarginPct}%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Monthly detail */}
+          <div>
+            <div className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-2">
+              Detalle mensual
+            </div>
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -318,28 +380,7 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                 </tfoot>
               </table>
             </div>
-          )}
-
-          {period === 'anual' && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="text-xs font-semibold text-text-secondary mb-2">Venta Total</div>
-                <div className="text-2xl font-bold text-green-600">{fmtEur(pnl.totRev)}</div>
-              </div>
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="text-xs font-semibold text-text-secondary mb-2">Coste real</div>
-                <div className="text-2xl font-bold text-red-600">{fmtEur(pnl.totCost)}</div>
-              </div>
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-xs font-semibold text-text-secondary mb-2">Margen real</div>
-                <div className="text-2xl font-bold text-blue-600">{fmtEur(pnl.totMargin)}</div>
-              </div>
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                <div className="text-xs font-semibold text-text-secondary mb-2">Margen %</div>
-                <div className="text-2xl font-bold text-purple-600">{pnl.totMarginPct}%</div>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 
