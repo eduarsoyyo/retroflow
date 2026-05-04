@@ -225,7 +225,7 @@ describe('loadProjectFinance — actual mode', () => {
     expect(r.members[0]!.memberId).toBe('u1')
   })
 
-  it('does not load time_entries in theoretical mode', async () => {
+  it('does not load time_entries in incurred mode', async () => {
     mockMembers = [makeMember('u1', 'Eva', ['vwfs'])]
     mockRooms = [
       makeRoom('vwfs', 'VWFS', {
@@ -234,12 +234,12 @@ describe('loadProjectFinance — actual mode', () => {
     ]
     const { loadProjectFinance } = await import('@/services/finance')
     const dataModule = await import('@/data/time-entries')
-    const r = await loadProjectFinance('vwfs', 2026, 'theoretical')
+    const r = await loadProjectFinance('vwfs', 2026, 'incurred')
     expect(dataModule.fetchTimeEntries).not.toHaveBeenCalled()
     expect(r.totalCost).toBeGreaterThan(0)
   })
 
-  it('theoretical mode: cost ≈ effective_hours × dedication × cost_hour', async () => {
+  it('incurred mode: cost ≈ effective_hours × dedication × cost_hour', async () => {
     const m = makeMember('u1', 'Eva', ['vwfs'], 36_000)
     mockMembers = [m]
     mockRooms = [
@@ -248,7 +248,7 @@ describe('loadProjectFinance — actual mode', () => {
       }),
     ]
     const { loadProjectFinance } = await import('@/services/finance')
-    const r = await loadProjectFinance('vwfs', 2026, 'theoretical')
+    const r = await loadProjectFinance('vwfs', 2026, 'incurred')
     expect(r.totalCost).toBeGreaterThan(15_000)
     expect(r.totalCost).toBeLessThan(35_000)
     const monthsWithCost = r.months.filter((mm) => mm.cost > 0).length
@@ -281,7 +281,7 @@ describe('loadProjectForecast', () => {
     expect(r.contractedRevenue).toBe(80_000)
     expect(r.contractedCost).toBe(60_000)
     expect(r.contractedMarginPct).toBe(25)
-    expect(r.mode).toBe('theoretical')
+    expect(r.mode).toBe('incurred')
   })
 })
 

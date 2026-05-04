@@ -128,18 +128,18 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
                 Real
               </p>
               <div className="grid grid-cols-3 gap-3">
-                <KpiCard label="Coste real" value={formatEuro(data.planning.totalCost)} accent="orange" />
+                <KpiCard label="Coste real" value={formatEuro(data.incurred.totalCost)} accent="orange" />
                 <KpiCard
                   label="Margen real"
-                  value={`${formatEuro(data.planning.margin)} · ${formatPercent(data.planning.marginPct)}`}
-                  accent={data.planning.margin >= 0 ? 'green' : 'red'}
-                  icon={data.planning.margin >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  value={`${formatEuro(data.incurred.margin)} · ${formatPercent(data.incurred.marginPct)}`}
+                  accent={data.incurred.margin >= 0 ? 'green' : 'red'}
+                  icon={data.incurred.margin >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 />
                 <KpiCard
                   label="Desviación vs oferta"
-                  value={formatEuro(data.planning.totalCost - data.contract.totalCost)}
-                  accent={data.planning.totalCost <= data.contract.totalCost ? 'green' : 'red'}
-                  icon={data.planning.totalCost <= data.contract.totalCost ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                  value={formatEuro(data.incurred.totalCost - data.contract.totalCost)}
+                  accent={data.incurred.totalCost <= data.contract.totalCost ? 'green' : 'red'}
+                  icon={data.incurred.totalCost <= data.contract.totalCost ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
                 />
               </div>
             </div>
@@ -148,7 +148,7 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
           {/* Monthly chart */}
           <MonthlyChart
             contractMonths={data.contract.months}
-            planningMonths={data.planning.months}
+            planningMonths={data.incurred.months}
             selectedMonth={selectedMonth}
             onSelectMonth={setSelectedMonth}
           />
@@ -158,9 +158,9 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
             <MonthDrillPanel
               month={selectedMonth}
               contractMonth={data.contract.months[selectedMonth]}
-              planningMonth={data.planning.months[selectedMonth]}
+              planningMonth={data.incurred.months[selectedMonth]}
               contractContribs={data.contract.monthlyByProject[selectedMonth]?.contributions ?? []}
-              planningContribs={data.planning.monthlyByProject[selectedMonth]?.contributions ?? []}
+              planningContribs={data.incurred.monthlyByProject[selectedMonth]?.contributions ?? []}
               onClose={() => setSelectedMonth(null)}
             />
           )}
@@ -186,7 +186,7 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
                   </thead>
                   <tbody>
                     {data.contract.projects.map(p => {
-                      const planningProject = data.planning.projects.find(pp => pp.slug === p.slug)
+                      const planningProject = data.incurred.projects.find(pp => pp.slug === p.slug)
                       const planningCost = planningProject?.totalCost ?? 0
                       const planningMargin = p.totalRevenue - planningCost
                       const planningMarginPct = p.totalRevenue > 0 ? (planningMargin / p.totalRevenue) * 100 : 0

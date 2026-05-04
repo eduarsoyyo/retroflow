@@ -54,16 +54,18 @@ import type {
 
 /**
  * How the cost side of finance is computed.
- *   - 'actual'      → from real time_entries (clocked hours × cost rate).
- *                     Currently unused at the cliente view because nobody
- *                     clocks here yet, but kept for FinancePanel and future.
- *   - 'theoretical' → from planning (member_assigns × calendar × rate).
- *                     What the project costs if executed as planned.
- *   - 'contract'    → from rooms.services[].cost. What was offered to the
- *                     client. Same number that drives `services[].cost`
- *                     in the project setup; prorated month by month.
+ *   - 'actual'   → from real time_entries (clocked hours × cost rate).
+ *                  Currently unused at the cliente view because nobody
+ *                  clocks here yet, but kept for FinancePanel and future.
+ *   - 'incurred' → coste real incurrido por las personas asignadas al
+ *                  proyecto: salario × dedicación × calendario × tarifa.
+ *                  Is what the project really costs based on who's on it
+ *                  and how their time is distributed. UI label: "Real".
+ *   - 'contract' → from rooms.services[].cost. What was offered to the
+ *                  client (cost of the contract). UI label: "Por contrato".
+ *                  Prorated month by month using service start/end dates.
  */
-export type CostMode = 'actual' | 'theoretical' | 'contract'
+export type CostMode = 'actual' | 'incurred' | 'contract'
 
 export interface MonthlyPnL {
   /** 0-indexed month (0 = January) */
@@ -296,7 +298,7 @@ function actualCostByMonth(
 
 /**
  * Compute theoretical full-year cost for a member on a project.
- * Used when mode='theoretical' or as a forecast anchor.
+ * Used when mode='incurred' or as a forecast anchor.
  *   cost = effective_hours × dedication × current_cost_hour
  * Returns 0 if member has no calendar or no rate.
  */
@@ -386,7 +388,7 @@ function memberCalendar(m: Member, calendarsById: Record<string, Calendario>): C
  *
  * @param slug - Room slug (e.g. 'vwfs', 'endesa')
  * @param year - Calendar year
- * @param mode - 'actual' uses real time_entries (default); 'theoretical' uses calendar × dedication
+ * @param mode - 'actual' uses real time_entries (default); 'incurred' uses calendar × dedication; 'contract' uses services[].cost
  *
  * Throws if the room doesn't exist.
  */
@@ -442,8 +444,8 @@ export async function loadProjectFinance(
         cost: total,
       })
     }
-  } else if (mode === 'theoretical') {
-    // theoretical: calendar × dedication × current cost hour
+  } else if (mode === 'incurred') {
+    // incurred: real cost of staff = calendar × dedication × current cost hour
     for (const m of members) {
       const cal = memberCalendar(m, calendariosById)
       const ded = dedicationFor(m.id, assigns, year)
@@ -504,7 +506,7 @@ export async function loadProjectFinance(
 
 /**
  * Forecast for a project — full-year projection using theoretical hours.
- * Equivalent to loadProjectFinance(slug, year, 'theoretical') but with
+ * Equivalent to loadProjectFinance(slug, year, 'incurred') but with
  * extra fields useful for forecasting dashboards.
  */
 export async function loadProjectForecast(slug: string, year: number): Promise<ProjectFinance & {
@@ -512,7 +514,7 @@ export async function loadProjectForecast(slug: string, year: number): Promise<P
   contractedCost: number
   contractedMarginPct: number
 }> {
-  const base = await loadProjectFinance(slug, year, 'theoretical')
+  const base = await loadProjectFinance(slug, year, 'incurred')
 
   const rooms = await fetchRooms()
   const room = rooms.find((r) => r.slug === slug)
@@ -721,15 +723,17 @@ export async function loadClientePnL(
 }
 
 /**
- * Dual P&L for a cliente: BOTH "by contract" and "by planning" views in
+ * Dual P&L for a cliente: BOTH "by contract" and "incurred" views in
  * one shot.
  *
  *   - contract: cost based on `rooms.services[].cost` — what was offered
  *               to the client. Margin = revenue - contract cost.
- *   - planning: cost based on `member_assigns × calendar × hourly rate` —
- *               what the project costs if executed as planned. Margin
+ *               UI label: "Por contrato".
+ *   - incurred: cost based on `member_assigns × calendar × hourly rate` —
+ *               real cost of the staff actually on the project. Margin
  *               vs the same revenue lets the SM see whether they're
  *               above or below the offered cost.
+ *               UI label: "Real".
  *
  * Both use the same revenue (always from services); the only difference
  * is the cost side.
@@ -741,15 +745,15 @@ export interface ClientePnLDual {
   clienteId: string
   year: number
   contract: ClientePnL
-  planning: ClientePnL
+  incurred: ClientePnL
 }
 
 export async function loadClientePnLDual(clienteId: string, year: number): Promise<ClientePnLDual> {
-  const [contract, planning] = await Promise.all([
+  const [contract, incurred] = await Promise.all([
     loadClientePnL(clienteId, year, 'contract'),
-    loadClientePnL(clienteId, year, 'theoretical'),
+    loadClientePnL(clienteId, year, 'incurred'),
   ])
-  return { clienteId, year, contract, planning }
+  return { clienteId, year, contract, incurred }
 }
 
 /**
