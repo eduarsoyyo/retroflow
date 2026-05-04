@@ -13,14 +13,18 @@
 // clienteId. It fetches independently and shows its own loading state.
 import { useEffect, useState } from 'react'
 import {
-  TrendingUp, TrendingDown, Euro, AlertCircle,
+  TrendingUp, TrendingDown, Euro, AlertCircle, X,
   AlertTriangle, AlertOctagon, Pause, CalendarClock,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
-import { loadClientePnL, type ClientePnL, type ClientePnLProject, type CostMode } from '@/services/finance'
+import {
+  loadClientePnL,
+  type ClientePnL, type ClientePnLProject, type CostMode,
+  type MonthlyByProject,
+} from '@/services/finance'
 import { formatEuro, formatPercent } from '@/lib/format'
 
 interface ClienteFinanceSummaryProps {
@@ -42,10 +46,13 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
   const [data, setData] = useState<ClientePnL | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Selected month for drill-down. null = no panel shown. Reset to null
+  // whenever year/mode changes so the user doesn't see stale data.
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setSelectedMonth(null)
     loadClientePnL(clienteId, year, mode)
       .then(d => { if (!cancelled) setData(d) })
       .catch(e => { if (!cancelled) setError((e as Error).message || 'Error cargando datos financieros') })
@@ -127,7 +134,21 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
           </div>
 
           {/* Monthly chart */}
-          <MonthlyChart months={data.months} />
+          <MonthlyChart
+            months={data.months}
+            selectedMonth={selectedMonth}
+            onSelectMonth={setSelectedMonth}
+          />
+
+          {/* Drill-down panel for the selected month */}
+          {selectedMonth !== null && (
+            <MonthDrillPanel
+              month={selectedMonth}
+              monthly={data.months[selectedMonth]}
+              contributions={data.monthlyByProject[selectedMonth]?.contributions ?? []}
+              onClose={() => setSelectedMonth(null)}
+            />
+          )}
 
           {/* Per-project breakdown */}
           {data.projects.length > 0 && (
@@ -182,11 +203,20 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
 
 interface MonthlyChartProps {
   months: ClientePnL['months']
+  /** 0..11 of the month currently selected for drill-down, or null. */
+  selectedMonth: number | null
+  /**
+   * Toggle handler: clicking the same month closes the drill-down,
+   * clicking a different one switches to it.
+   */
+  onSelectMonth: (month: number | null) => void
 }
 
-function MonthlyChart({ months }: MonthlyChartProps) {
-  // Transform for Recharts: one row per month, two series.
+function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProps) {
+  // Transform for Recharts: one row per month, two series, plus the
+  // 0-indexed month so the click handler can identify which bar.
   const chartData = months.map(m => ({
+    month: m.month,
     name: MONTH_LABELS[m.month] ?? '?',
     ingresos: Math.round(m.revenue),
     coste: Math.round(m.cost),
@@ -201,10 +231,20 @@ function MonthlyChart({ months }: MonthlyChartProps) {
     )
   }
 
+  // Click handler shared by both bar series. Toggles selection: same
+  // month again closes the drill-down. Recharts types the onClick payload
+  // as BarRectangleItem (without our custom `month` field), so we narrow
+  // inside instead of typing the parameter directly.
+  const handleBarClick = (entry: unknown) => {
+    const m = (entry as { month?: number }).month
+    if (typeof m !== 'number') return
+    onSelectMonth(selectedMonth === m ? null : m)
+  }
+
   return (
     <div className="mt-1 mb-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-2">
-        Mensual: ingresos vs coste
+        Mensual: ingresos vs coste <span className="text-revelio-subtle/60 normal-case font-normal italic">— click en una barra para ver detalle</span>
       </p>
       <div className="w-full" style={{ height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -218,11 +258,133 @@ function MonthlyChart({ months }: MonthlyChartProps) {
               contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E5EA' }}
             />
             <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="circle" iconSize={8} />
-            <Bar dataKey="ingresos" name="Ingresos" fill="#007AFF" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="coste" name="Coste" fill="#FF9500" radius={[3, 3, 0, 0]} />
+            <Bar
+              dataKey="ingresos"
+              name="Ingresos"
+              radius={[3, 3, 0, 0]}
+              onClick={handleBarClick}
+              style={{ cursor: 'pointer' }}
+            >
+              {chartData.map(d => (
+                <Cell key={`ing-${d.month}`} fill={selectedMonth === d.month ? '#0051A8' : '#007AFF'} />
+              ))}
+            </Bar>
+            <Bar
+              dataKey="coste"
+              name="Coste"
+              radius={[3, 3, 0, 0]}
+              onClick={handleBarClick}
+              style={{ cursor: 'pointer' }}
+            >
+              {chartData.map(d => (
+                <Cell key={`cost-${d.month}`} fill={selectedMonth === d.month ? '#C46900' : '#FF9500'} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Month drill-down panel — projects contributing to the selected month
+// ───────────────────────────────────────────────────────────────────────────
+
+interface MonthDrillPanelProps {
+  month: number
+  monthly: ClientePnL['months'][number] | undefined
+  contributions: MonthlyByProject['contributions']
+  onClose: () => void
+}
+
+const FULL_MONTH_LABELS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+function MonthDrillPanel({ month, monthly, contributions, onClose }: MonthDrillPanelProps) {
+  const label = FULL_MONTH_LABELS[month] ?? `Mes ${month + 1}`
+  return (
+    <div className="mt-3 rounded-lg border border-revelio-blue/20 bg-revelio-blue/5 p-4">
+      {/* Header with title + close button */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-revelio-blue dark:text-revelio-dark-text">
+          Detalle de {label}
+        </h3>
+        <button
+          onClick={onClose}
+          className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-revelio-blue/10 text-revelio-subtle"
+          title="Cerrar"
+          aria-label="Cerrar detalle"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Month totals (KPI strip) */}
+      {monthly && (
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <DrillKpi label="Ingresos" value={formatEuro(monthly.revenue)} />
+          <DrillKpi label="Coste" value={formatEuro(monthly.cost)} />
+          <DrillKpi
+            label="Margen"
+            value={formatEuro(monthly.margin)}
+            tone={monthly.margin >= 0 ? 'green' : 'red'}
+          />
+        </div>
+      )}
+
+      {/* Per-project contributions */}
+      {contributions.length === 0 ? (
+        <p className="text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle italic text-center py-2">
+          No hay contribuciones registradas en este mes.
+        </p>
+      ) : (
+        <div className="rounded-lg bg-white dark:bg-revelio-dark-card border border-revelio-border/40 dark:border-revelio-dark-border/40 overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-revelio-bg/40 dark:bg-revelio-dark-border/40">
+                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Proyecto</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Ingresos</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contributions.map(c => {
+                const negative = c.margin < 0
+                return (
+                  <tr key={c.slug} className="border-t border-revelio-border/30 dark:border-revelio-dark-border/30">
+                    <td className="px-3 py-1.5 dark:text-revelio-dark-text">
+                      <Link to={`/project/${c.slug}`} className="hover:text-revelio-blue font-medium">{c.name}</Link>
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[11px] dark:text-revelio-dark-text">{formatEuro(c.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{formatEuro(c.cost)}</td>
+                    <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${negative ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(c.margin)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface DrillKpiProps {
+  label: string
+  value: string
+  tone?: 'green' | 'red'
+}
+
+function DrillKpi({ label, value, tone }: DrillKpiProps) {
+  const color = tone === 'green' ? 'text-revelio-green' : tone === 'red' ? 'text-revelio-red' : 'dark:text-revelio-dark-text'
+  return (
+    <div className="rounded-lg bg-white dark:bg-revelio-dark-card border border-revelio-border/40 dark:border-revelio-dark-border/40 px-3 py-2">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-0.5">{label}</p>
+      <p className={`text-xs font-bold ${color}`}>{value}</p>
     </div>
   )
 }

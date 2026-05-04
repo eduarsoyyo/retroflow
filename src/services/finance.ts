@@ -143,8 +143,31 @@ export interface ClientePnL {
   marginPct: number
   /** Per-month aggregate (always 12 entries, Jan..Dec) summed across all projects. */
   months: MonthlyPnL[]
+  /**
+   * Per-month breakdown by project. For drill-down: `monthlyByProject[i]`
+   * is an array of `{ slug, name, revenue, cost }` describing what each
+   * project contributed to month `i` (0 = January). Empty contributions
+   * (revenue + cost === 0) are omitted to keep the UI clean.
+   */
+  monthlyByProject: MonthlyByProject[]
   /** One row per project, sorted by descending revenue. */
   projects: ClientePnLProject[]
+}
+
+/**
+ * Per-month-per-project contribution. One entry exists for every project
+ * with non-zero figures in that month.
+ */
+export interface MonthlyByProject {
+  /** 0-indexed month (0 = January) — same convention as MonthlyPnL. */
+  month: number
+  contributions: Array<{
+    slug: string
+    name: string
+    revenue: number
+    cost: number
+    margin: number
+  }>
 }
 
 /**
@@ -566,6 +589,10 @@ export async function loadClientePnL(
   // Monthly aggregate: 12 zero buckets (Jan..Dec) summed across projects.
   const monthlyRev = new Array<number>(12).fill(0)
   const monthlyCost = new Array<number>(12).fill(0)
+  // Per-month-per-project contributions for drill-down. Initialise 12
+  // empty arrays; we'll push one entry per project that had non-zero
+  // figures in that month.
+  const monthlyContribs: MonthlyByProject['contributions'][] = Array.from({ length: 12 }, () => [])
 
   for (const r of clienteRooms) {
     if (r.status === 'archived' || r.status === 'cancelled') continue
@@ -585,10 +612,22 @@ export async function loadClientePnL(
       })
       totalRevenue += p.totalRevenue
       totalCost += p.totalCost
-      // Aggregate monthly buckets
+      // Aggregate monthly buckets + per-project contributions
       for (let i = 0; i < 12; i++) {
-        monthlyRev[i]! += p.months[i]?.revenue ?? 0
-        monthlyCost[i]! += p.months[i]?.cost ?? 0
+        const rev = p.months[i]?.revenue ?? 0
+        const cost = p.months[i]?.cost ?? 0
+        monthlyRev[i]! += rev
+        monthlyCost[i]! += cost
+        // Skip noise: empty contributions don't appear in drill-down.
+        if (rev !== 0 || cost !== 0) {
+          monthlyContribs[i]!.push({
+            slug: p.slug,
+            name: p.name,
+            revenue: rev,
+            cost,
+            margin: rev - cost,
+          })
+        }
       }
     } catch {
       continue
@@ -597,6 +636,7 @@ export async function loadClientePnL(
 
   // Build months[] from aggregated buckets
   const months: MonthlyPnL[] = []
+  const monthlyByProject: MonthlyByProject[] = []
   for (let i = 0; i < 12; i++) {
     const rev = monthlyRev[i]!
     const cost = monthlyCost[i]!
@@ -606,6 +646,12 @@ export async function loadClientePnL(
       cost,
       margin: rev - cost,
       marginPct: pct(rev - cost, rev),
+    })
+    // Sort contributions by revenue desc so the drill-down panel shows
+    // top contributors first.
+    monthlyByProject.push({
+      month: i,
+      contributions: monthlyContribs[i]!.sort((a, b) => b.revenue - a.revenue),
     })
   }
 
@@ -620,6 +666,7 @@ export async function loadClientePnL(
     margin,
     marginPct: pct(margin, totalRevenue),
     months,
+    monthlyByProject,
     projects: projects.sort((a, b) => b.totalRevenue - a.totalRevenue),
   }
 }
