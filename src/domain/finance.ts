@@ -308,25 +308,14 @@ export function ausDaysApproved(absences: AbsenceData[], memberId: string, yr: n
     .reduce((s, a) => s + a.days, 0)
 }
 
-// ── Formatting Helpers ──
+// ── Helpers ──
 
-/** Format number with Spanish locale (1.234,5) */
-export function fmtN(n: number): string {
-  const [int, dec] = n.toFixed(1).split('.')
-  return `${int!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${dec}`
-}
-
-/** Format number as euros (1.234€) */
-export function fmtEur(n: number): string {
-  return n.toLocaleString('es-ES', { maximumFractionDigits: 0 }) + '€'
-}
-
-/** Format number compact (no decimals, Spanish locale) */
-export function fmt(n: number): string {
-  return n.toLocaleString('es-ES', { maximumFractionDigits: 0 })
-}
-
-/** Percentage helper */
+/**
+ * Percentage helper. Returns rounded `(a / b) × 100`. Safe for `b === 0`.
+ *
+ * Note: this is a pure ratio helper, NOT a formatter. For display in UI
+ * use `formatPercent` from `lib/format.ts`.
+ */
 export function pct(a: number, b: number): number {
   return b === 0 ? 0 : Math.round((a / b) * 100)
 }

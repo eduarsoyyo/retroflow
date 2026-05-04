@@ -5,9 +5,10 @@ import { supabase } from '@/data/supabase'
 import { fetchClientes } from '@/data/clientes'
 import {
   saleFromServiceContract, totalSaleFromServices, totalEstCostFromServices,
-  avgMarginFromServices, memberCostHour, memberProjectCost, fmt,
+  avgMarginFromServices, memberCostHour, memberProjectCost,
   type ServiceContract, type CalendarData, type AbsenceData, type LegacyCostRate,
 } from '@/domain/finance'
+import { formatNumberCompact } from '@/lib/format'
 import { soundCreate, soundDelete } from '@/lib/sounds'
 import type { Room, Member, Cliente } from '@/types'
 
@@ -261,9 +262,9 @@ export function ProjectsPanel() {
               <tr key={r.slug} className={`border-t border-revelio-border dark:border-revelio-dark-border/50 ${i % 2 ? 'bg-revelio-bg/50 dark:bg-revelio-dark-border/20' : ''} hover:bg-revelio-blue/5`}>
                 <td className="px-2 py-2.5 text-left"><Link to={`/project/${r.slug}`} className="font-medium text-revelio-text dark:text-revelio-dark-text hover:text-revelio-blue text-xs">{r.name}</Link><div className="text-[10px] text-revelio-subtle dark:text-revelio-dark-subtle">{cli ? <><span className="font-medium">{cli.name}</span> · </> : ''}<span className="capitalize">{r.tipo}</span></div></td>
                 <td className="px-2 py-2.5 text-center text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{sd && ed ? <span className="flex items-center justify-center gap-0.5"><Calendar className="w-2.5 h-2.5" />{new Date(sd).toLocaleDateString('es-ES', { month: 'short', year: '2-digit' })} — {new Date(ed).toLocaleDateString('es-ES', { month: 'short', year: '2-digit' })}</span> : '—'}</td>
-                <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-orange">{totalEstCost > 0 ? `${fmt(totalEstCost)}€` : '—'}</td>
-                <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-blue">{totalSale > 0 ? `${fmt(totalSale)}€` : '—'}</td>
-                <td className="px-2 py-2.5 text-center text-[11px] font-semibold" style={{ color: realCost > totalEstCost && (totalEstCost > 0 && realCost > 0) ? '#FF3B30' : '#FF9500' }}>{realCost > 0 ? `${fmt(realCost)}€` : '—'}</td>
+                <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-orange">{totalEstCost > 0 ? `${formatNumberCompact(totalEstCost)}€` : '—'}</td>
+                <td className="px-2 py-2.5 text-center text-[11px] font-semibold text-revelio-blue">{totalSale > 0 ? `${formatNumberCompact(totalSale)}€` : '—'}</td>
+                <td className="px-2 py-2.5 text-center text-[11px] font-semibold" style={{ color: realCost > totalEstCost && (totalEstCost > 0 && realCost > 0) ? '#FF3B30' : '#FF9500' }}>{realCost > 0 ? `${formatNumberCompact(realCost)}€` : '—'}</td>
                 <td className="px-2 py-2.5 text-center text-[11px] font-bold">{totalEstCost > 0 ? <span style={{ color: deviation > 5 ? '#FF3B30' : deviation < -5 ? '#34C759' : '#8E8E93' }}>{deviation > 0 ? '+' : ''}{deviation}%</span> : '—'}</td>
                 <td className="px-2 py-2.5 text-center text-[11px]"><span className={`font-bold ${targetMargin >= 20 ? 'text-revelio-green' : targetMargin >= 10 ? 'text-revelio-orange' : 'text-revelio-red'}`}>{totalSale > 0 ? `${targetMargin}%` : '—'}</span></td>
                 <td className="px-2 py-2.5 text-center text-[11px]"><span className={`font-bold ${realMargin >= 20 ? 'text-revelio-green' : realMargin >= 10 ? 'text-revelio-orange' : 'text-revelio-red'}`}>{totalSale > 0 ? `${realMargin}%` : '—'}</span></td>
@@ -323,10 +324,10 @@ export function ProjectsPanel() {
                       </div>
                       {sv.cost > 0 && (
                         <div className="flex gap-3 text-[11px]">
-                          <span className="text-revelio-subtle">Coste: <span className="font-bold text-revelio-orange">{fmt(sv.cost)}€</span></span>
-                          <span className="text-revelio-subtle">Margen: <span className="font-bold text-revelio-green">+{fmt(marginAbs)}€</span></span>
-                          {riskAbs > 0 && <span className="text-revelio-subtle">Riesgo: <span className="font-bold text-revelio-violet">+{fmt(riskAbs)}€</span></span>}
-                          <span className="text-revelio-subtle">Venta: <span className="font-bold text-revelio-blue">{fmt(sale)}€</span></span>
+                          <span className="text-revelio-subtle">Coste: <span className="font-bold text-revelio-orange">{formatNumberCompact(sv.cost)}€</span></span>
+                          <span className="text-revelio-subtle">Margen: <span className="font-bold text-revelio-green">+{formatNumberCompact(marginAbs)}€</span></span>
+                          {riskAbs > 0 && <span className="text-revelio-subtle">Riesgo: <span className="font-bold text-revelio-violet">+{formatNumberCompact(riskAbs)}€</span></span>}
+                          <span className="text-revelio-subtle">Venta: <span className="font-bold text-revelio-blue">{formatNumberCompact(sale)}€</span></span>
                         </div>
                       )}
                     </div>
@@ -338,9 +339,9 @@ export function ProjectsPanel() {
                   const tMargin = tSale - tCost; const tPct = tSale > 0 ? Math.round((tMargin / tSale) * 100) : 0
                   return (
                     <div className="rounded-lg bg-white dark:bg-revelio-dark-card border border-revelio-border/50 dark:border-revelio-dark-border/50 p-3 mt-2">
-                      <div className="flex justify-between text-xs mb-1"><span className="text-revelio-subtle">Coste total</span><span className="font-bold text-revelio-orange">{fmt(tCost)}€</span></div>
-                      <div className="flex justify-between text-xs mb-1"><span className="text-revelio-subtle">Margen + Riesgo ({tPct}%)</span><span className="font-bold text-revelio-green">+{fmt(tMargin)}€</span></div>
-                      <div className="flex justify-between text-xs border-t border-revelio-border/30 dark:border-revelio-dark-border/30 pt-1.5"><span className="font-semibold dark:text-revelio-dark-text">Venta total</span><span className="font-bold text-revelio-blue text-sm">{fmt(tSale)}€</span></div>
+                      <div className="flex justify-between text-xs mb-1"><span className="text-revelio-subtle">Coste total</span><span className="font-bold text-revelio-orange">{formatNumberCompact(tCost)}€</span></div>
+                      <div className="flex justify-between text-xs mb-1"><span className="text-revelio-subtle">Margen + Riesgo ({tPct}%)</span><span className="font-bold text-revelio-green">+{formatNumberCompact(tMargin)}€</span></div>
+                      <div className="flex justify-between text-xs border-t border-revelio-border/30 dark:border-revelio-dark-border/30 pt-1.5"><span className="font-semibold dark:text-revelio-dark-text">Venta total</span><span className="font-bold text-revelio-blue text-sm">{formatNumberCompact(tSale)}€</span></div>
                     </div>
                   )
                 })()}

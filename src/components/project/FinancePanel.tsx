@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import { supabase } from '@/data/supabase'
 import { dailyTheoreticalHours, type Calendar } from '@/domain/calendar'
-import { monthlyRevenueFromServices, memberCostHour, totalEstCostFromServices, fmtEur, fmt, pct } from '@/domain/finance'
+import { monthlyRevenueFromServices, memberCostHour, totalEstCostFromServices, pct } from '@/domain/finance'
+import { formatEuro, formatNumberCompact } from '@/lib/format'
 import type { ServiceContract } from '@/domain/finance'
 import { exportPnLPDF, exportPnLExcel } from '@/lib/exports'
 import type { Member } from '@/types'
@@ -299,15 +300,15 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div className="text-xs font-semibold text-text-secondary mb-2">Venta</div>
-                    <div className="text-2xl font-bold text-green-600">{fmtEur(pnl.totRev)}</div>
+                    <div className="text-2xl font-bold text-green-600">{formatEuro(pnl.totRev)}</div>
                   </div>
                   <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                     <div className="text-xs font-semibold text-text-secondary mb-2">Coste oferta</div>
-                    <div className="text-2xl font-bold text-gray-700">{fmtEur(contract.totCost)}</div>
+                    <div className="text-2xl font-bold text-gray-700">{formatEuro(contract.totCost)}</div>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="text-xs font-semibold text-text-secondary mb-2">Margen oferta</div>
-                    <div className="text-2xl font-bold text-blue-600">{fmtEur(contract.totMargin)} · {contract.totMarginPct}%</div>
+                    <div className="text-2xl font-bold text-blue-600">{formatEuro(contract.totMargin)} · {contract.totMarginPct}%</div>
                   </div>
                 </div>
               </div>
@@ -323,17 +324,17 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
                   <div className="text-xs font-semibold text-text-secondary mb-2">Coste real</div>
-                  <div className="text-2xl font-bold text-orange-600">{fmtEur(pnl.totCost)}</div>
+                  <div className="text-2xl font-bold text-orange-600">{formatEuro(pnl.totCost)}</div>
                 </div>
                 {services.length > 0 ? (
                   <div className={`p-4 border rounded-lg ${pnl.totCost <= contract.totCost ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                     <div className="text-xs font-semibold text-text-secondary mb-2">Desviación vs oferta</div>
-                    <div className={`text-2xl font-bold ${pnl.totCost <= contract.totCost ? 'text-green-600' : 'text-red-600'}`}>{fmtEur(pnl.totCost - contract.totCost)}</div>
+                    <div className={`text-2xl font-bold ${pnl.totCost <= contract.totCost ? 'text-green-600' : 'text-red-600'}`}>{formatEuro(pnl.totCost - contract.totCost)}</div>
                   </div>
                 ) : <div />}
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-xs font-semibold text-text-secondary mb-2">Margen real</div>
-                  <div className="text-2xl font-bold text-blue-600">{fmtEur(pnl.totMargin)} · {pnl.totMarginPct}%</div>
+                  <div className="text-2xl font-bold text-blue-600">{formatEuro(pnl.totMargin)} · {pnl.totMarginPct}%</div>
                 </div>
               </div>
             </div>
@@ -360,10 +361,10 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                   {pnl.months.map((m, i) => (
                     <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition">
                       <td className="px-4 py-3 text-text-primary">{MONTHS[i]}</td>
-                      <td className="px-4 py-3 text-right text-text-secondary">{fmt(m.hours)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-green-600">{fmtEur(m.revenue)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-red-600">{fmtEur(m.cost)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-text-primary">{fmtEur(m.margin)}</td>
+                      <td className="px-4 py-3 text-right text-text-secondary">{formatNumberCompact(m.hours)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-green-600">{formatEuro(m.revenue)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-red-600">{formatEuro(m.cost)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-text-primary">{formatEuro(m.margin)}</td>
                       <td className="px-4 py-3 text-right text-text-secondary">{m.marginPct}%</td>
                     </tr>
                   ))}
@@ -371,10 +372,10 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
                 <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-bold">
                   <tr>
                     <td className="px-4 py-3 text-text-primary">TOTAL</td>
-                    <td className="px-4 py-3 text-right text-text-primary">{fmt(pnl.totHours)}</td>
-                    <td className="px-4 py-3 text-right text-green-600">{fmtEur(pnl.totRev)}</td>
-                    <td className="px-4 py-3 text-right text-red-600">{fmtEur(pnl.totCost)}</td>
-                    <td className="px-4 py-3 text-right text-text-primary">{fmtEur(pnl.totMargin)}</td>
+                    <td className="px-4 py-3 text-right text-text-primary">{formatNumberCompact(pnl.totHours)}</td>
+                    <td className="px-4 py-3 text-right text-green-600">{formatEuro(pnl.totRev)}</td>
+                    <td className="px-4 py-3 text-right text-red-600">{formatEuro(pnl.totCost)}</td>
+                    <td className="px-4 py-3 text-right text-text-primary">{formatEuro(pnl.totMargin)}</td>
                     <td className="px-4 py-3 text-right text-text-primary">{pnl.totMarginPct}%</td>
                   </tr>
                 </tfoot>
@@ -399,15 +400,15 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Venta:</span>
-                <span className="font-semibold text-green-600">{fmtEur(forecast.ytdRev)}</span>
+                <span className="font-semibold text-green-600">{formatEuro(forecast.ytdRev)}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Coste:</span>
-                <span className="font-semibold text-red-600">{fmtEur(forecast.ytdCost)}</span>
+                <span className="font-semibold text-red-600">{formatEuro(forecast.ytdCost)}</span>
               </div>
               <div className="flex justify-between text-xs border-t pt-2">
                 <span className="text-text-secondary">Margen:</span>
-                <span className="font-semibold text-blue-600">{fmtEur(forecast.ytdMargin)}</span>
+                <span className="font-semibold text-blue-600">{formatEuro(forecast.ytdMargin)}</span>
               </div>
             </div>
           </div>
@@ -417,15 +418,15 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Venta:</span>
-                <span className="font-semibold text-green-600">{fmtEur(forecast.remRev)}</span>
+                <span className="font-semibold text-green-600">{formatEuro(forecast.remRev)}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Coste:</span>
-                <span className="font-semibold text-red-600">{fmtEur(forecast.remCost)}</span>
+                <span className="font-semibold text-red-600">{formatEuro(forecast.remCost)}</span>
               </div>
               <div className="flex justify-between text-xs border-t pt-2">
                 <span className="text-text-secondary">Margen:</span>
-                <span className="font-semibold text-blue-600">{fmtEur(forecast.remMargin)}</span>
+                <span className="font-semibold text-blue-600">{formatEuro(forecast.remMargin)}</span>
               </div>
             </div>
           </div>
@@ -435,15 +436,15 @@ export function FinancePanel({ team, sala, roomData }: FinancePanelProps) {
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Venta:</span>
-                <span className="font-semibold text-green-600">{fmtEur(forecast.eoyRev)}</span>
+                <span className="font-semibold text-green-600">{formatEuro(forecast.eoyRev)}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">Coste:</span>
-                <span className="font-semibold text-red-600">{fmtEur(forecast.eoyCost)}</span>
+                <span className="font-semibold text-red-600">{formatEuro(forecast.eoyCost)}</span>
               </div>
               <div className="flex justify-between text-xs border-t pt-2">
                 <span className="text-text-secondary">Margen:</span>
-                <span className="font-semibold text-blue-600">{fmtEur(forecast.eoyMargin)}</span>
+                <span className="font-semibold text-blue-600">{formatEuro(forecast.eoyMargin)}</span>
               </div>
             </div>
           </div>

@@ -21,8 +21,6 @@ import {
   vacDaysApproved,
   ausDaysApproved,
   memberProjectCost,
-  fmtN,
-  fmtEur,
   pct,
   DEFAULT_SS_MULTIPLIER,
   type CalendarData,
@@ -413,25 +411,9 @@ describe('memberProjectCost', () => {
 })
 
 // ── Formatting Tests ──
-
-describe('fmtN', () => {
-  it('formats with Spanish locale (dot thousands, comma decimal)', () => {
-    expect(fmtN(1234.5)).toBe('1.234,5')
-  })
-
-  it('formats small numbers', () => {
-    expect(fmtN(0)).toBe('0,0')
-  })
-})
-
-describe('fmtEur', () => {
-  it('formats as euros', () => {
-    const result = fmtEur(12345)
-    expect(result).toContain('12')
-    expect(result).toContain('345')
-    expect(result).toContain('€')
-  })
-})
+// Los formatters fmtN, fmtEur, fmt han sido movidos a `src/lib/format.ts`
+// como `formatNumber`, `formatEuro`, `formatNumberCompact`. Ver
+// `src/lib/format.test.ts` para sus tests.
 
 describe('pct', () => {
   it('calculates percentage', () => {

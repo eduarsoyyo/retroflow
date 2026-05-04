@@ -34,9 +34,6 @@ import {
   businessDaysInRange,
   vacDaysApproved,
   ausDaysApproved,
-  fmtN,
-  fmtEur,
-  fmt,
   pct,
   type CostRate,
   type LegacyCostRate,
@@ -713,69 +710,12 @@ describe('ausDaysApproved', () => {
 // FORMATTING HELPERS
 // ============================================================
 
-describe('fmtN', () => {
-  it('debería formatear con un decimal y separador miles', () => {
-    expect(fmtN(1234.5)).toBe('1.234,5')
-  })
-
-  it('debería redondear a 1 decimal', () => {
-    expect(fmtN(1234.567)).toBe('1.234,6')
-  })
-
-  it('debería manejar 0', () => {
-    expect(fmtN(0)).toBe('0,0')
-  })
-
-  it('debería formatear millones', () => {
-    expect(fmtN(1234567.89)).toBe('1.234.567,9')
-  })
-})
-
-describe('fmtEur', () => {
-  it('debería incluir el símbolo euro', () => {
-    expect(fmtEur(1234)).toMatch(/€$/)
-  })
-
-  it('debería redondear a entero (sin decimales)', () => {
-    const result = fmtEur(1234.567)
-    expect(result).not.toContain(',')
-    expect(result).not.toContain('.5')
-    expect(result).toMatch(/€$/)
-  })
-
-  it('debería incluir los dígitos correctos para 1234', () => {
-    expect(fmtEur(1234).replace(/\D/g, '')).toBe('1234')
-  })
-
-  it('debería formatear millones', () => {
-    expect(fmtEur(1234567).replace(/\D/g, '')).toBe('1234567')
-  })
-
-  it('debería formatear 0', () => {
-    expect(fmtEur(0).replace(/\D/g, '')).toBe('0')
-    expect(fmtEur(0)).toMatch(/€$/)
-  })
-})
-
-describe('fmt', () => {
-  it('no debería incluir símbolo euro', () => {
-    expect(fmt(1234)).not.toContain('€')
-  })
-
-  it('debería redondear a entero (sin decimales)', () => {
-    const result = fmt(1234.567)
-    expect(result).not.toContain(',')
-  })
-
-  it('debería incluir los dígitos correctos', () => {
-    expect(fmt(1234).replace(/\D/g, '')).toBe('1234')
-    expect(fmt(1234.567).replace(/\D/g, '')).toBe('1235')
-  })
-
-  it('debería formatear 0', () => {
-    expect(fmt(0)).toBe('0')
-  })
-})
+// ============================================================
+// FORMATTING HELPERS
+// ============================================================
+// Los formatters fmtN, fmtEur, fmt han sido movidos a `src/lib/format.ts`
+// como `formatNumber`, `formatEuro`, `formatNumberCompact`. Ver
+// `src/lib/format.test.ts` para sus tests.
 
 describe('pct', () => {
   it('debería calcular porcentaje', () => {

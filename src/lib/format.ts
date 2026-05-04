@@ -65,18 +65,3 @@ export function formatHours(n: number): string {
   if (!Number.isFinite(n)) return '0,0 h'
   return `${formatNumber(n)} h`
 }
-
-// ─── Legacy aliases ───────────────────────────────────────────────────────
-//
-// These names were used in `src/domain/finance.ts` before formatters were
-// extracted to this module. Keeping them as aliases avoids a breaking
-// migration for existing callers; new code should use the long names.
-
-/** @deprecated Use `formatNumber` instead. */
-export const fmtN = formatNumber
-
-/** @deprecated Use `formatEuro` instead. */
-export const fmtEur = formatEuro
-
-/** @deprecated Use `formatNumberCompact` instead. */
-export const fmt = formatNumberCompact
