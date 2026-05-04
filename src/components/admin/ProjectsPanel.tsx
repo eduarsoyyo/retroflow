@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Edit, Trash2, ExternalLink, Users, DollarSign, Calendar, X, Upload, Download, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/data/supabase'
@@ -47,6 +47,15 @@ export function ProjectsPanel() {
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [importingProjects, setImportingProjects] = useState(false)
   const [importProjectResult, setImportProjectResult] = useState<string | null>(null)
+
+  // Selector list: only active clientes, plus the one currently assigned
+  // to the project being edited (so an inactive cliente already on a
+  // legacy project doesn't disappear when reopening the form). When the
+  // user changes the value to another, the inactive option drops out.
+  const clientesForSelect = useMemo(
+    () => clientes.filter(c => c.status === 'active' || c.status == null || c.id === form.cliente_id),
+    [clientes, form.cliente_id],
+  )
 
   const today = new Date().toISOString().slice(0, 10)
   const yr = new Date().getFullYear()
@@ -271,7 +280,7 @@ export function ProjectsPanel() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><L>Nombre *</L><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>
                 {modal === 'create' && <div className="col-span-2"><L>Slug</L><input value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} placeholder={form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>}
-                <div className="col-span-2"><L>Cliente</L><select value={form.cliente_id} onChange={e => setForm({ ...form, cliente_id: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text"><option value="">— Sin cliente —</option>{clientes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                <div className="col-span-2"><L>Cliente</L><select value={form.cliente_id} onChange={e => setForm({ ...form, cliente_id: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text"><option value="">— Sin cliente —</option>{clientesForSelect.map(c => <option key={c.id} value={c.id}>{c.name}{c.status === 'inactive' ? ' (inactivo)' : ''}</option>)}</select></div>
                 <div><L>Tipo</L><select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text">{TIPOS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
                 <div><L>Estado</L><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none bg-white dark:bg-revelio-dark-bg dark:text-revelio-dark-text"><option value="active">Activo</option><option value="paused">Pausado</option><option value="closed">Cerrado</option></select></div>
                 <div><L>Inicio</L><input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div>
