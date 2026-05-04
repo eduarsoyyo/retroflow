@@ -41,8 +41,6 @@ function makeEntry(overrides: Partial<OrgChartEntry>): OrgChartEntry {
     sala: 'vwfs',
     member_id: 'm1',
     manager_id: null,
-    role: '',
-    level: 0,
     dedication: 1,
     start_date: '',
     end_date: '',

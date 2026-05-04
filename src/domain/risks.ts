@@ -1,12 +1,19 @@
-import type { Risk } from '@/types'
+// Stable risk numbering across the lifetime of a session.
+//
+// Used to display "Riesgo #N" labels consistently in the UI: each risk id
+// is mapped to a 1-based counter the first time it's seen, and that mapping
+// is kept until the page is reloaded or `resetRiskNumbers()` is called.
+//
+// Rule from project instructions: NEVER use indexOf+1 manually for risk
+// numbering — it changes when items are added/removed/reordered. This
+// counter is stable.
+//
+// Note: this module is intentionally self-contained — no imports from
+// `@/types`. Risk numbering only needs an id, not the full Risk shape.
 
 let _riskCounter = 0
 const _riskMap = new Map<string, number>()
 
-/**
- * Stable risk numbering — NEVER use indexOf+1 manually.
- * Rule #8 from project instructions.
- */
 export function riskNumber(riskId: string): number {
   if (_riskMap.has(riskId)) return _riskMap.get(riskId)!
   _riskCounter++
@@ -17,8 +24,4 @@ export function riskNumber(riskId: string): number {
 export function resetRiskNumbers(): void {
   _riskCounter = 0
   _riskMap.clear()
-}
-
-export function sortByPriority(risks: Risk[]): Risk[] {
-  return [...risks].sort((a, b) => b.criticality - a.criticality)
 }
