@@ -52,7 +52,18 @@ import type {
 // Public types — what the components consume
 // ═════════════════════════════════════════════════════════════════════════════
 
-export type CostMode = 'actual' | 'theoretical'
+/**
+ * How the cost side of finance is computed.
+ *   - 'actual'      → from real time_entries (clocked hours × cost rate).
+ *                     Currently unused at the cliente view because nobody
+ *                     clocks here yet, but kept for FinancePanel and future.
+ *   - 'theoretical' → from planning (member_assigns × calendar × rate).
+ *                     What the project costs if executed as planned.
+ *   - 'contract'    → from rooms.services[].cost. What was offered to the
+ *                     client. Same number that drives `services[].cost`
+ *                     in the project setup; prorated month by month.
+ */
+export type CostMode = 'actual' | 'theoretical' | 'contract'
 
 export interface MonthlyPnL {
   /** 0-indexed month (0 = January) */
@@ -329,6 +340,36 @@ function toServiceContracts(svcs: ServiceContractEntry[] | null | undefined): Se
   return (svcs ?? []) as ServiceContract[]
 }
 
+/**
+ * Cost of the contracted services in a given month — same prorating
+ * logic as `monthlyRevenueFromServices` but using `service.cost` directly
+ * (no margin / risk markup applied).
+ *
+ * For each service active in month `m`, distributes its `cost` evenly
+ * across the months it covers. Services outside the year contribute 0.
+ *
+ * Returns euros; caller must round if needed.
+ */
+function monthlyContractCost(services: ServiceContract[], year: number, monthIdx: number): number {
+  let total = 0
+  const monthStart = new Date(year, monthIdx, 1)
+  const monthEnd = new Date(year, monthIdx + 1, 0)
+
+  for (const s of services) {
+    const from = new Date(s.from)
+    const to = new Date(s.to)
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) continue
+    if (to < monthStart || from > monthEnd) continue
+
+    // Total months covered by the service (inclusive). Avoids divide-by-0.
+    const fromYM = from.getFullYear() * 12 + from.getMonth()
+    const toYM = to.getFullYear() * 12 + to.getMonth()
+    const totalMonths = Math.max(1, toYM - fromYM + 1)
+    total += (s.cost ?? 0) / totalMonths
+  }
+  return total
+}
+
 /** Read the calendar of a member from the indexed map, mapped to domain shape. */
 function memberCalendar(m: Member, calendarsById: Record<string, Calendario>): CalendarData | null {
   if (!m.calendario_id) return null
@@ -401,7 +442,7 @@ export async function loadProjectFinance(
         cost: total,
       })
     }
-  } else {
+  } else if (mode === 'theoretical') {
     // theoretical: calendar × dedication × current cost hour
     for (const m of members) {
       const cal = memberCalendar(m, calendariosById)
@@ -420,6 +461,14 @@ export async function loadProjectFinance(
         cost,
       })
     }
+  } else {
+    // contract: cost from rooms.services[].cost, prorated like the
+    // revenue. No member breakdown — this view is the offer the client
+    // signed for, not who's executing it.
+    for (let m = 0; m < 12; m++) {
+      monthlyCost[m]! += monthlyContractCost(services, year, m)
+    }
+    totalCost = monthlyCost.reduce((s, x) => s + x, 0)
   }
 
   const margin = totalRevenue - totalCost
@@ -669,6 +718,38 @@ export async function loadClientePnL(
     monthlyByProject,
     projects: projects.sort((a, b) => b.totalRevenue - a.totalRevenue),
   }
+}
+
+/**
+ * Dual P&L for a cliente: BOTH "by contract" and "by planning" views in
+ * one shot.
+ *
+ *   - contract: cost based on `rooms.services[].cost` — what was offered
+ *               to the client. Margin = revenue - contract cost.
+ *   - planning: cost based on `member_assigns × calendar × hourly rate` —
+ *               what the project costs if executed as planned. Margin
+ *               vs the same revenue lets the SM see whether they're
+ *               above or below the offered cost.
+ *
+ * Both use the same revenue (always from services); the only difference
+ * is the cost side.
+ *
+ * Two parallel calls to `loadClientePnL` keep things simple. If this
+ * becomes a hot path we can refactor to load rooms once and dispatch.
+ */
+export interface ClientePnLDual {
+  clienteId: string
+  year: number
+  contract: ClientePnL
+  planning: ClientePnL
+}
+
+export async function loadClientePnLDual(clienteId: string, year: number): Promise<ClientePnLDual> {
+  const [contract, planning] = await Promise.all([
+    loadClientePnL(clienteId, year, 'contract'),
+    loadClientePnL(clienteId, year, 'theoretical'),
+  ])
+  return { clienteId, year, contract, planning }
 }
 
 /**

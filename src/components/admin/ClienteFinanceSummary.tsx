@@ -1,13 +1,24 @@
 // ClienteFinanceSummary — Aggregated finance for a cliente.
 //
 // Sections, top to bottom:
-//   1. Header with year selector + mode toggle (Real / Teórico).
-//   2. KPI cards: Ingresos, Coste real, Margen €, Margen %.
-//   3. Monthly chart: Ingresos vs Coste, 12 month bars.
-//   4. Per-project table with health indicator column.
+//   1. Header with year selector (no Real/Teórico toggle anymore).
+//   2. Two KPI rows side by side:
+//        a. By contract: revenue, contract cost, contract margin.
+//        b. By planning: planning cost, margin vs revenue, % margin.
+//   3. Monthly chart with 3 series:
+//        - Ingresos (revenue, blue)
+//        - Coste contrato (gray)
+//        - Coste planning (orange)
+//      The gap between gray and orange is what tells the SM whether the
+//      project is staying within budget or overrunning.
+//   4. Per-project table with both views side by side and the health
+//      indicator column.
+//   5. Drill-down panel below the chart for a clicked month, showing
+//      per-project contributions for both contract and planning.
 //
-// Costs use mode='actual' by default (real time entries) — this matches
-// what FinancePanel shows on the per-project view, so numbers reconcile.
+// Why no toggle: a SM needs to see at-a-glance whether the planning is
+// inside the offered contract or not. Toggling between two modes hides
+// that comparison. Single view + 3 series + 6 KPIs gives full picture.
 //
 // The component is loose-coupled from ClienteDetailPage: it only needs
 // clienteId. It fetches independently and shows its own loading state.
@@ -21,8 +32,8 @@ import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import {
-  loadClientePnL,
-  type ClientePnL, type ClientePnLProject, type CostMode,
+  loadClientePnLDual,
+  type ClientePnL, type ClientePnLProject, type ClientePnLDual,
   type MonthlyByProject,
 } from '@/services/finance'
 import { formatEuro, formatPercent } from '@/lib/format'
@@ -32,8 +43,6 @@ interface ClienteFinanceSummaryProps {
 }
 
 const CURRENT_YEAR = new Date().getFullYear()
-// Show last 4 years (current + 3 back). Most projects don't go further;
-// expand the range when historical needs grow.
 const YEAR_OPTIONS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3]
 
 const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -42,58 +51,37 @@ const today = new Date().toISOString().slice(0, 10)
 
 export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps) {
   const [year, setYear] = useState(CURRENT_YEAR)
-  const [mode, setMode] = useState<CostMode>('actual')
-  const [data, setData] = useState<ClientePnL | null>(null)
+  const [data, setData] = useState<ClientePnLDual | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Selected month for drill-down. null = no panel shown. Reset to null
-  // whenever year/mode changes so the user doesn't see stale data.
+  // Selected month for drill-down. null = no panel shown. Reset on year
+  // change so the user doesn't see stale data.
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError(null); setSelectedMonth(null)
-    loadClientePnL(clienteId, year, mode)
+    loadClientePnLDual(clienteId, year)
       .then(d => { if (!cancelled) setData(d) })
       .catch(e => { if (!cancelled) setError((e as Error).message || 'Error cargando datos financieros') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [clienteId, year, mode])
+  }, [clienteId, year])
 
   return (
     <div className="rounded-card border border-revelio-border dark:border-revelio-dark-border bg-white dark:bg-revelio-dark-card p-6">
-      {/* Header with year + mode selectors */}
+      {/* Header with year selector */}
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h2 className="text-sm font-semibold dark:text-revelio-dark-text flex items-center gap-2">
           <Euro className="w-4 h-4 text-revelio-blue" /> Resumen financiero
         </h2>
-        <div className="flex items-center gap-2">
-          {/* Year selector */}
-          <select
-            value={year}
-            onChange={e => setYear(Number(e.target.value))}
-            className="px-2 py-1 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-[11px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text"
-          >
-            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          {/* Mode toggle */}
-          <div className="flex bg-revelio-bg dark:bg-revelio-dark-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setMode('actual')}
-              className={`px-2.5 py-1 text-[10px] font-semibold ${mode === 'actual' ? 'bg-revelio-blue text-white' : 'text-revelio-subtle dark:text-revelio-dark-subtle'}`}
-              title="Coste real basado en horas fichadas"
-            >
-              Real
-            </button>
-            <button
-              onClick={() => setMode('theoretical')}
-              className={`px-2.5 py-1 text-[10px] font-semibold ${mode === 'theoretical' ? 'bg-revelio-blue text-white' : 'text-revelio-subtle dark:text-revelio-dark-subtle'}`}
-              title="Coste teórico basado en calendario × dedicación"
-            >
-              Teórico
-            </button>
-          </div>
-        </div>
+        <select
+          value={year}
+          onChange={e => setYear(Number(e.target.value))}
+          className="px-2 py-1 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-[11px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text"
+        >
+          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
 
       {loading && (
@@ -108,34 +96,59 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
         </div>
       )}
 
-      {!loading && !error && data && data.projectCount === 0 && (
+      {!loading && !error && data && data.contract.projectCount === 0 && (
         <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle italic py-2">
           No hay proyectos activos del cliente en {year} para calcular el agregado financiero.
         </p>
       )}
 
-      {!loading && !error && data && data.projectCount > 0 && (
+      {!loading && !error && data && data.contract.projectCount > 0 && (
         <>
-          {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <KpiCard label="Ingresos" value={formatEuro(data.totalRevenue)} accent="blue" />
-            <KpiCard label="Coste real" value={formatEuro(data.totalCost)} accent="orange" />
-            <KpiCard
-              label="Margen"
-              value={formatEuro(data.margin)}
-              accent={data.margin >= 0 ? 'green' : 'red'}
-              icon={data.margin >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            />
-            <KpiCard
-              label="Margen %"
-              value={formatPercent(data.marginPct)}
-              accent={data.marginPct >= 0 ? 'green' : 'red'}
-            />
+          {/* KPI rows: contract on top, planning below */}
+          <div className="space-y-2 mb-5">
+            {/* Por contrato */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-1.5">
+                Por contrato
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <KpiCard label="Ingresos" value={formatEuro(data.contract.totalRevenue)} accent="blue" />
+                <KpiCard label="Coste oferta" value={formatEuro(data.contract.totalCost)} accent="gray" />
+                <KpiCard
+                  label="Margen oferta"
+                  value={`${formatEuro(data.contract.margin)} · ${formatPercent(data.contract.marginPct)}`}
+                  accent={data.contract.margin >= 0 ? 'green' : 'red'}
+                  icon={data.contract.margin >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                />
+              </div>
+            </div>
+            {/* Real */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-1.5">
+                Real
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <KpiCard label="Coste real" value={formatEuro(data.planning.totalCost)} accent="orange" />
+                <KpiCard
+                  label="Margen real"
+                  value={`${formatEuro(data.planning.margin)} · ${formatPercent(data.planning.marginPct)}`}
+                  accent={data.planning.margin >= 0 ? 'green' : 'red'}
+                  icon={data.planning.margin >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                />
+                <KpiCard
+                  label="Desviación vs oferta"
+                  value={formatEuro(data.planning.totalCost - data.contract.totalCost)}
+                  accent={data.planning.totalCost <= data.contract.totalCost ? 'green' : 'red'}
+                  icon={data.planning.totalCost <= data.contract.totalCost ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Monthly chart */}
           <MonthlyChart
-            months={data.months}
+            contractMonths={data.contract.months}
+            planningMonths={data.planning.months}
             selectedMonth={selectedMonth}
             onSelectMonth={setSelectedMonth}
           />
@@ -144,45 +157,61 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
           {selectedMonth !== null && (
             <MonthDrillPanel
               month={selectedMonth}
-              monthly={data.months[selectedMonth]}
-              contributions={data.monthlyByProject[selectedMonth]?.contributions ?? []}
+              contractMonth={data.contract.months[selectedMonth]}
+              planningMonth={data.planning.months[selectedMonth]}
+              contractContribs={data.contract.monthlyByProject[selectedMonth]?.contributions ?? []}
+              planningContribs={data.planning.monthlyByProject[selectedMonth]?.contributions ?? []}
               onClose={() => setSelectedMonth(null)}
             />
           )}
 
           {/* Per-project breakdown */}
-          {data.projects.length > 0 && (
+          {data.contract.projects.length > 0 && (
             <div className="mt-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-2">
-                Por proyecto ({data.projects.length})
+                Por proyecto ({data.contract.projects.length})
               </p>
-              <div className="rounded-lg border border-revelio-border dark:border-revelio-dark-border overflow-hidden">
+              <div className="rounded-lg border border-revelio-border dark:border-revelio-dark-border overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-revelio-bg/40 dark:bg-revelio-dark-border/40">
                       <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Proyecto</th>
                       <th className="px-3 py-1.5 text-center text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Salud</th>
                       <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Ingresos</th>
-                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste</th>
-                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen</th>
-                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">%</th>
+                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste oferta</th>
+                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen oferta</th>
+                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste real</th>
+                      <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen real</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.projects.map(p => {
-                      const negativeMargin = p.margin < 0
+                    {data.contract.projects.map(p => {
+                      const planningProject = data.planning.projects.find(pp => pp.slug === p.slug)
+                      const planningCost = planningProject?.totalCost ?? 0
+                      const planningMargin = p.totalRevenue - planningCost
+                      const planningMarginPct = p.totalRevenue > 0 ? (planningMargin / p.totalRevenue) * 100 : 0
+                      const contractNeg = p.margin < 0
+                      const planningNeg = planningMargin < 0
+                      // For health indicator we use the planning view (most realistic)
+                      const projectForHealth: ClientePnLProject = {
+                        ...p,
+                        totalCost: planningCost,
+                        margin: planningMargin,
+                        marginPct: planningMarginPct,
+                      }
                       return (
                         <tr key={p.slug} className="border-t border-revelio-border/40 dark:border-revelio-dark-border/40">
                           <td className="px-3 py-1.5 dark:text-revelio-dark-text">
                             <Link to={`/project/${p.slug}`} className="hover:text-revelio-blue font-medium">{p.name}</Link>
                           </td>
                           <td className="px-3 py-1.5 text-center">
-                            <HealthCell project={p} />
+                            <HealthCell project={projectForHealth} />
                           </td>
                           <td className="px-3 py-1.5 text-right font-mono text-[11px] dark:text-revelio-dark-text">{formatEuro(p.totalRevenue)}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{formatEuro(p.totalCost)}</td>
-                          <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${negativeMargin ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(p.margin)}</td>
-                          <td className={`px-3 py-1.5 text-right font-mono text-[11px] ${negativeMargin ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatPercent(p.marginPct)}</td>
+                          <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${contractNeg ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(p.margin)} · {formatPercent(p.marginPct)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-orange">{formatEuro(planningCost)}</td>
+                          <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${planningNeg ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(planningMargin)} · {formatPercent(planningMarginPct)}</td>
                         </tr>
                       )
                     })}
@@ -198,31 +227,30 @@ export function ClienteFinanceSummary({ clienteId }: ClienteFinanceSummaryProps)
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Monthly chart — Ingresos vs Coste, two bars per month
+// Monthly chart — 3 series: Ingresos, Coste contrato, Coste planning
 // ───────────────────────────────────────────────────────────────────────────
 
 interface MonthlyChartProps {
-  months: ClientePnL['months']
+  contractMonths: ClientePnL['months']
+  planningMonths: ClientePnL['months']
   /** 0..11 of the month currently selected for drill-down, or null. */
   selectedMonth: number | null
-  /**
-   * Toggle handler: clicking the same month closes the drill-down,
-   * clicking a different one switches to it.
-   */
+  /** Toggle handler: same month closes, different switches. */
   onSelectMonth: (month: number | null) => void
 }
 
-function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProps) {
-  // Transform for Recharts: one row per month, two series, plus the
-  // 0-indexed month so the click handler can identify which bar.
-  const chartData = months.map(m => ({
+function MonthlyChart({ contractMonths, planningMonths, selectedMonth, onSelectMonth }: MonthlyChartProps) {
+  // Merge contract and planning by month index. Contract revenue == planning
+  // revenue (revenue is the same in both views), so we read it from contract.
+  const chartData = contractMonths.map((m, i) => ({
     month: m.month,
     name: MONTH_LABELS[m.month] ?? '?',
     ingresos: Math.round(m.revenue),
-    coste: Math.round(m.cost),
+    costeContrato: Math.round(m.cost),
+    costePlanning: Math.round(planningMonths[i]?.cost ?? 0),
   }))
 
-  const allZero = chartData.every(d => d.ingresos === 0 && d.coste === 0)
+  const allZero = chartData.every(d => d.ingresos === 0 && d.costeContrato === 0 && d.costePlanning === 0)
   if (allZero) {
     return (
       <p className="text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle italic text-center py-3">
@@ -231,10 +259,8 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
     )
   }
 
-  // Click handler shared by both bar series. Toggles selection: same
-  // month again closes the drill-down. Recharts types the onClick payload
-  // as BarRectangleItem (without our custom `month` field), so we narrow
-  // inside instead of typing the parameter directly.
+  // Recharts types onClick payload as BarRectangleItem (without our custom
+  // `month` field), so we narrow inside instead of typing the parameter.
   const handleBarClick = (entry: unknown) => {
     const m = (entry as { month?: number }).month
     if (typeof m !== 'number') return
@@ -244,9 +270,10 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
   return (
     <div className="mt-1 mb-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-2">
-        Mensual: ingresos vs coste <span className="text-revelio-subtle/60 normal-case font-normal italic">— click en una barra para ver detalle</span>
+        Mensual: ingresos, coste contrato y coste real
+        <span className="text-revelio-subtle/60 normal-case font-normal italic"> — click en una barra para ver detalle</span>
       </p>
-      <div className="w-full" style={{ height: 180 }}>
+      <div className="w-full" style={{ height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E5E5EA" vertical={false} />
@@ -258,28 +285,19 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
               contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #E5E5EA' }}
             />
             <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="circle" iconSize={8} />
-            <Bar
-              dataKey="ingresos"
-              name="Ingresos"
-              fill="#007AFF"
-              radius={[3, 3, 0, 0]}
-              onClick={handleBarClick}
-              style={{ cursor: 'pointer' }}
-            >
+            <Bar dataKey="ingresos" name="Ingresos" fill="#007AFF" radius={[3, 3, 0, 0]} onClick={handleBarClick} style={{ cursor: 'pointer' }}>
               {chartData.map(d => (
                 <Cell key={`ing-${d.month}`} fill={selectedMonth === d.month ? '#0051A8' : '#007AFF'} />
               ))}
             </Bar>
-            <Bar
-              dataKey="coste"
-              name="Coste"
-              fill="#FF9500"
-              radius={[3, 3, 0, 0]}
-              onClick={handleBarClick}
-              style={{ cursor: 'pointer' }}
-            >
+            <Bar dataKey="costeContrato" name="Coste contrato" fill="#86868B" radius={[3, 3, 0, 0]} onClick={handleBarClick} style={{ cursor: 'pointer' }}>
               {chartData.map(d => (
-                <Cell key={`cost-${d.month}`} fill={selectedMonth === d.month ? '#C46900' : '#FF9500'} />
+                <Cell key={`con-${d.month}`} fill={selectedMonth === d.month ? '#525258' : '#86868B'} />
+              ))}
+            </Bar>
+            <Bar dataKey="costePlanning" name="Coste real" fill="#FF9500" radius={[3, 3, 0, 0]} onClick={handleBarClick} style={{ cursor: 'pointer' }}>
+              {chartData.map(d => (
+                <Cell key={`plan-${d.month}`} fill={selectedMonth === d.month ? '#C46900' : '#FF9500'} />
               ))}
             </Bar>
           </BarChart>
@@ -295,8 +313,10 @@ function MonthlyChart({ months, selectedMonth, onSelectMonth }: MonthlyChartProp
 
 interface MonthDrillPanelProps {
   month: number
-  monthly: ClientePnL['months'][number] | undefined
-  contributions: MonthlyByProject['contributions']
+  contractMonth: ClientePnL['months'][number] | undefined
+  planningMonth: ClientePnL['months'][number] | undefined
+  contractContribs: MonthlyByProject['contributions']
+  planningContribs: MonthlyByProject['contributions']
   onClose: () => void
 }
 
@@ -305,11 +325,35 @@ const FULL_MONTH_LABELS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
-function MonthDrillPanel({ month, monthly, contributions, onClose }: MonthDrillPanelProps) {
+function MonthDrillPanel({
+  month, contractMonth, planningMonth,
+  contractContribs, planningContribs, onClose,
+}: MonthDrillPanelProps) {
   const label = FULL_MONTH_LABELS[month] ?? `Mes ${month + 1}`
+
+  // Build a unified list of projects: union of slugs in contract+planning.
+  // Each row shows what the project contributed to revenue (contract),
+  // contract cost, planning cost, both margins.
+  const slugs = new Set<string>()
+  for (const c of contractContribs) slugs.add(c.slug)
+  for (const p of planningContribs) slugs.add(p.slug)
+  const contractBySlug = new Map(contractContribs.map(c => [c.slug, c]))
+  const planningBySlug = new Map(planningContribs.map(p => [p.slug, p]))
+  const rows = Array.from(slugs).map(slug => {
+    const c = contractBySlug.get(slug)
+    const p = planningBySlug.get(slug)
+    const name = c?.name ?? p?.name ?? slug
+    const revenue = c?.revenue ?? p?.revenue ?? 0
+    const contractCost = c?.cost ?? 0
+    const planningCost = p?.cost ?? 0
+    const contractMargin = revenue - contractCost
+    const planningMargin = revenue - planningCost
+    return { slug, name, revenue, contractCost, planningCost, contractMargin, planningMargin }
+  }).sort((a, b) => b.revenue - a.revenue)
+
   return (
     <div className="mt-3 rounded-lg border border-revelio-blue/20 bg-revelio-blue/5 p-4">
-      {/* Header with title + close button */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-revelio-blue dark:text-revelio-dark-text">
           Detalle de {label}
@@ -324,46 +368,52 @@ function MonthDrillPanel({ month, monthly, contributions, onClose }: MonthDrillP
         </button>
       </div>
 
-      {/* Month totals (KPI strip) */}
-      {monthly && (
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <DrillKpi label="Ingresos" value={formatEuro(monthly.revenue)} />
-          <DrillKpi label="Coste" value={formatEuro(monthly.cost)} />
+      {/* Month totals */}
+      {(contractMonth || planningMonth) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+          <DrillKpi label="Ingresos" value={formatEuro(contractMonth?.revenue ?? 0)} />
+          <DrillKpi label="Coste oferta" value={formatEuro(contractMonth?.cost ?? 0)} />
+          <DrillKpi label="Coste real" value={formatEuro(planningMonth?.cost ?? 0)} />
           <DrillKpi
-            label="Margen"
-            value={formatEuro(monthly.margin)}
-            tone={monthly.margin >= 0 ? 'green' : 'red'}
+            label="Margen real"
+            value={formatEuro((contractMonth?.revenue ?? 0) - (planningMonth?.cost ?? 0))}
+            tone={(contractMonth?.revenue ?? 0) - (planningMonth?.cost ?? 0) >= 0 ? 'green' : 'red'}
           />
         </div>
       )}
 
-      {/* Per-project contributions */}
-      {contributions.length === 0 ? (
+      {/* Rows */}
+      {rows.length === 0 ? (
         <p className="text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle italic text-center py-2">
           No hay contribuciones registradas en este mes.
         </p>
       ) : (
-        <div className="rounded-lg bg-white dark:bg-revelio-dark-card border border-revelio-border/40 dark:border-revelio-dark-border/40 overflow-hidden">
+        <div className="rounded-lg bg-white dark:bg-revelio-dark-card border border-revelio-border/40 dark:border-revelio-dark-border/40 overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-revelio-bg/40 dark:bg-revelio-dark-border/40">
                 <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Proyecto</th>
                 <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Ingresos</th>
-                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste</th>
-                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste oferta</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Coste real</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen oferta</th>
+                <th className="px-3 py-1.5 text-right text-[10px] font-semibold text-revelio-subtle dark:text-revelio-dark-subtle uppercase tracking-wider">Margen real</th>
               </tr>
             </thead>
             <tbody>
-              {contributions.map(c => {
-                const negative = c.margin < 0
+              {rows.map(r => {
+                const cNeg = r.contractMargin < 0
+                const pNeg = r.planningMargin < 0
                 return (
-                  <tr key={c.slug} className="border-t border-revelio-border/30 dark:border-revelio-dark-border/30">
+                  <tr key={r.slug} className="border-t border-revelio-border/30 dark:border-revelio-dark-border/30">
                     <td className="px-3 py-1.5 dark:text-revelio-dark-text">
-                      <Link to={`/project/${c.slug}`} className="hover:text-revelio-blue font-medium">{c.name}</Link>
+                      <Link to={`/project/${r.slug}`} className="hover:text-revelio-blue font-medium">{r.name}</Link>
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-[11px] dark:text-revelio-dark-text">{formatEuro(c.revenue)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{formatEuro(c.cost)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${negative ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(c.margin)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[11px] dark:text-revelio-dark-text">{formatEuro(r.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-subtle dark:text-revelio-dark-subtle">{formatEuro(r.contractCost)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-[11px] text-revelio-orange">{formatEuro(r.planningCost)}</td>
+                    <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${cNeg ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(r.contractMargin)}</td>
+                    <td className={`px-3 py-1.5 text-right font-mono text-[11px] font-semibold ${pNeg ? 'text-revelio-red' : 'text-revelio-green'}`}>{formatEuro(r.planningMargin)}</td>
                   </tr>
                 )
               })}
@@ -392,8 +442,7 @@ function DrillKpi({ label, value, tone }: DrillKpiProps) {
 }
 
 /**
- * Compact euro formatter for chart axis ticks. Avoids long labels like
- * "1.234.567 €" which would overlap on small screens.
+ * Compact euro formatter for chart axis ticks.
  */
 function formatEuroShort(v: number): string {
   if (!Number.isFinite(v)) return '0€'
@@ -410,19 +459,7 @@ interface HealthCellProps {
   project: ClientePnLProject
 }
 
-/**
- * Health indicators in priority order (most severe first):
- *   1. Margen negativo  → red AlertOctagon
- *   2. Pausado          → orange Pause
- *   3. Fuera de plazo   → orange CalendarClock
- *   4. Margen bajo      → yellow AlertTriangle (under 10%)
- *   5. Saludable        → no icon
- *
- * Only the highest-priority issue is shown, so the column doesn't get
- * crowded with multiple icons per row.
- */
 function HealthCell({ project }: HealthCellProps) {
-  // 1. Negative margin
   if (project.margin < 0) {
     return (
       <span title="En pérdidas: margen negativo" className="inline-flex">
@@ -430,7 +467,6 @@ function HealthCell({ project }: HealthCellProps) {
       </span>
     )
   }
-  // 2. Paused
   if (project.status === 'paused') {
     return (
       <span title="Proyecto pausado" className="inline-flex">
@@ -438,7 +474,6 @@ function HealthCell({ project }: HealthCellProps) {
       </span>
     )
   }
-  // 3. Out-of-schedule (today past the planned end date)
   if (project.plannedEnd && project.plannedEnd < today && project.status !== 'closed') {
     return (
       <span title={`Fuera de plazo (planificado hasta ${project.plannedEnd})`} className="inline-flex">
@@ -446,7 +481,6 @@ function HealthCell({ project }: HealthCellProps) {
       </span>
     )
   }
-  // 4. Low margin (0..10%)
   if (project.totalRevenue > 0 && project.marginPct < 10) {
     return (
       <span title={`Margen bajo: ${project.marginPct.toFixed(1)}%`} className="inline-flex">
@@ -454,7 +488,6 @@ function HealthCell({ project }: HealthCellProps) {
       </span>
     )
   }
-  // 5. Healthy — no icon (visual silence is a feature)
   return <span className="text-revelio-subtle/40">—</span>
 }
 
@@ -465,7 +498,7 @@ function HealthCell({ project }: HealthCellProps) {
 interface KpiCardProps {
   label: string
   value: string
-  accent: 'blue' | 'orange' | 'green' | 'red'
+  accent: 'blue' | 'orange' | 'green' | 'red' | 'gray'
   icon?: React.ReactNode
 }
 
@@ -474,6 +507,7 @@ const ACCENT_BG: Record<KpiCardProps['accent'], string> = {
   orange: 'bg-revelio-orange/10',
   green: 'bg-revelio-green/10',
   red: 'bg-revelio-red/10',
+  gray: 'bg-revelio-subtle/10',
 }
 
 const ACCENT_TEXT: Record<KpiCardProps['accent'], string> = {
@@ -481,6 +515,7 @@ const ACCENT_TEXT: Record<KpiCardProps['accent'], string> = {
   orange: 'text-revelio-orange',
   green: 'text-revelio-green',
   red: 'text-revelio-red',
+  gray: 'text-revelio-subtle',
 }
 
 function KpiCard({ label, value, accent, icon }: KpiCardProps) {
@@ -489,7 +524,7 @@ function KpiCard({ label, value, accent, icon }: KpiCardProps) {
       <p className="text-[9px] font-semibold uppercase tracking-wider text-revelio-subtle dark:text-revelio-dark-subtle mb-1">
         {label}
       </p>
-      <p className={`text-base font-bold flex items-center gap-1 ${ACCENT_TEXT[accent]}`}>
+      <p className={`text-sm font-bold flex items-center gap-1 ${ACCENT_TEXT[accent]}`}>
         {icon}{value}
       </p>
     </div>
