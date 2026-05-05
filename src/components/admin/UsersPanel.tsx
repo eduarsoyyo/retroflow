@@ -4,6 +4,8 @@ import { authAdmin } from '@/data/authAdmin'
 import type { Member } from '@/types'
 import { Plus, Edit, Trash2, Search, DollarSign, X, Upload, Download, List, Palmtree, Clock, TrendingUp, Check } from 'lucide-react'
 import { soundCreate, soundDelete } from '@/lib/sounds'
+import { costRateFromSalary } from '@/domain/finance'
+import { exportTemplate, importTemplate } from '@/lib/exports'
 
 const uid = () => crypto.randomUUID()
 const AVATARS = ['👤','🧙','🧙‍♀️','🦁','🐍','🦅','🦡','⚡','🌟','🔮','🏰','📚','🧪','🦋','🐉','🎯','🛡️','🌊','🔥','🌿','💎','🦊','🐺','🦉','🐝','🐙','🦄','🐧','🐻','🐬','🦈','🐢','🦇','🌸','🍀','🌙','☀️','🌈','🎲','🎭','🚀','🎸','🎨','🏆','🎪','🧬','🔬','💻','🎮','🎧','📱','🛸','🌍','🗡️','🏹','🧲','🔑','🗝️','🎩','👑']
@@ -19,18 +21,24 @@ interface CalFull { id: string; name: string; convenio_hours: number; daily_hour
 interface UserForm { name: string; username: string; password: string; email: string; company: string; role_label: string; avatar: string; color: string; is_superuser: boolean; calendario_id: string; cost_rates: CostRate[]; hire_date: string; contract_type: string; convenio: string; projects: ProjectAssign[]; responsable_id: string; vacation_carryover: number }
 const emptyForm: UserForm = { name: '', username: '', password: '', email: '', company: 'ALTEN', role_label: '', avatar: '👤', color: '#007AFF', is_superuser: false, calendario_id: '', cost_rates: [], hire_date: '', contract_type: 'indefinido', convenio: '', projects: [], responsable_id: '', vacation_carryover: 0 }
 
+// Resolves current cost/hour from a member's cost_rates history.
+// Picks the entry whose [from, to] window contains today (yyyy-mm); falls
+// back to the most recent if none matches. Delegates the actual €/h
+// formula to domain/finance#costRateFromSalary so this component never
+// duplicates the salary→€/h calculation.
 function getCurrentRate(rates: CostRate[], convenioHours: number = 1800): number {
   if (!rates || rates.length === 0) return 0
   const now = new Date().toISOString().slice(0, 7)
   const sorted = [...rates].sort((a, b) => b.from.localeCompare(a.from))
   const current = sorted.find(r => r.from <= now && (!r.to || r.to >= now)) || sorted[0]
   if (!current) return 0
-  // Soporta dos formatos: {rate} o {salary, multiplier}
+  // Supports two storage formats: {rate} (legacy direct €/h) or
+  // {salary, multiplier} (preferred; computed via domain).
   const c = current as CostRate & { salary?: number; multiplier?: number }
   if (typeof c.rate === 'number' && c.rate > 0) return c.rate
   if (typeof c.salary === 'number' && c.salary > 0) {
     const mult = typeof c.multiplier === 'number' ? c.multiplier : 1.33
-    return Math.round((c.salary * mult / convenioHours) * 100) / 100
+    return costRateFromSalary(c.salary, mult, convenioHours)
   }
   return 0
 }
@@ -193,17 +201,19 @@ export function UsersPanel() {
   }
 
   const downloadTemplate = async () => {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.aoa_to_sheet([['nombre*','email*','usuario','contraseña','empresa','rol','contrato','fecha_alta','coste_hora','calendario','responsable_email','vacaciones_pendientes','telefono'],['Juan Pérez','juan@empresa.com','jperez','revelio2026','ALTEN','Consultor','indefinido','2024-01-15','25','Madrid 2026','jefe@empresa.com','3','666123456']])
-    ws['!cols'] = [{wch:22},{wch:28},{wch:12},{wch:14},{wch:10},{wch:18},{wch:12},{wch:12},{wch:10},{wch:16},{wch:24},{wch:20},{wch:12}]
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Usuarios'); XLSX.writeFile(wb, 'plantilla_usuarios_revelio.xlsx')
+    await exportTemplate({
+      sheetName: 'Usuarios',
+      filename: 'plantilla_usuarios_revelio',
+      headers: ['nombre*','email*','usuario','contraseña','empresa','rol','contrato','fecha_alta','coste_hora','calendario','responsable_email','vacaciones_pendientes','telefono'],
+      exampleRows: [['Juan Pérez','juan@empresa.com','jperez','revelio2026','ALTEN','Consultor','indefinido','2024-01-15','25','Madrid 2026','jefe@empresa.com','3','666123456']],
+      colWidths: [22,28,12,14,10,18,12,12,10,16,24,20,12],
+    })
   }
   const handleImportExcel = async (file: File) => {
     setImporting(true); setImportResult(null)
     try {
-      const XLSX = await import('xlsx'); const buf = await file.arrayBuffer(); const wb = XLSX.read(buf, { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]!]; if (!ws) throw new Error('Hoja vacía')
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws); let created = 0; const errors: string[] = []
+      const rows = await importTemplate<Record<string, unknown>>(file)
+      let created = 0; const errors: string[] = []
       for (const row of rows) {
         const name = String(row['nombre'] || row['name'] || '').trim(); if (!name) continue
         const email = String(row['email'] || '').trim(); const id = crypto.randomUUID()
@@ -424,7 +434,7 @@ export function UsersPanel() {
         </div>)}
         {tab === 'costes' && (<div className="space-y-4"><div><div className="flex items-center justify-between mb-2"><L>Coste empresa (€/hora)</L><button onClick={() => setForm({...form,cost_rates:[...form.cost_rates,{from:new Date().toISOString().slice(0,7),salary:0,multiplier:1.33}]})} className="text-[9px] text-revelio-blue font-medium flex items-center gap-0.5"><Plus className="w-3 h-3" /> Periodo</button></div>
           {form.cost_rates.length===0 && <p className="text-[10px] text-revelio-subtle bg-revelio-bg dark:bg-revelio-dark-border rounded-lg px-3 py-2">Sin costes definidos.</p>}
-          {form.cost_rates.map((cr,i) => { const cr2 = cr as CostRate & { salary?: number; multiplier?: number }; const cal = form.calendario_id ? calendarios.find(c => c.id === form.calendario_id) : null; const convH = cal?.convenio_hours || 1800; const sal = cr2.salary || 0; const mult = cr2.multiplier ?? 1.33; const costH = sal > 0 ? Math.round((sal * mult / convH) * 100) / 100 : (cr2.rate || 0); return (<div key={i} className="flex gap-2 items-center mb-2 bg-revelio-bg dark:bg-revelio-dark-border rounded-lg px-3 py-2"><div className="flex-1 grid grid-cols-12 gap-2"><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Desde</label><input type="month" value={cr.from} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,from:e.target.value};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Hasta</label><input type="month" value={cr.to||''} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,to:e.target.value||undefined};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" placeholder="actual" /></div><div className="col-span-3"><label className="text-[8px] text-revelio-subtle">Salario bruto anual (€)</label><input type="number" value={sal||''} onChange={e=>{const n=[...form.cost_rates];const ni:any={...n[i]!,salary:Number(e.target.value)};delete ni.rate;n[i]=ni;setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text text-right font-bold" step={1000} placeholder="52000" /></div><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Multiplicador</label><input type="number" value={mult} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,multiplier:Number(e.target.value)};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text text-right" step={0.01} placeholder="1.33" /></div><div className="col-span-3"><label className="text-[8px] text-revelio-subtle">Coste/h</label><div className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] bg-revelio-bg/30 dark:bg-revelio-dark-border/30 text-right font-bold text-revelio-green">{costH}€</div></div></div><button onClick={()=>setForm({...form,cost_rates:form.cost_rates.filter((_,j)=>j!==i)})} className="text-revelio-subtle hover:text-revelio-red"><X className="w-3 h-3" /></button></div>) })}
+          {form.cost_rates.map((cr,i) => { const cr2 = cr as CostRate & { salary?: number; multiplier?: number }; const cal = form.calendario_id ? calendarios.find(c => c.id === form.calendario_id) : null; const convH = cal?.convenio_hours || 1800; const sal = cr2.salary || 0; const mult = cr2.multiplier ?? 1.33; const costH = sal > 0 ? costRateFromSalary(sal, mult, convH) : (cr2.rate || 0); return (<div key={i} className="flex gap-2 items-center mb-2 bg-revelio-bg dark:bg-revelio-dark-border rounded-lg px-3 py-2"><div className="flex-1 grid grid-cols-12 gap-2"><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Desde</label><input type="month" value={cr.from} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,from:e.target.value};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" /></div><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Hasta</label><input type="month" value={cr.to||''} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,to:e.target.value||undefined};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" placeholder="actual" /></div><div className="col-span-3"><label className="text-[8px] text-revelio-subtle">Salario bruto anual (€)</label><input type="number" value={sal||''} onChange={e=>{const n=[...form.cost_rates];const ni:any={...n[i]!,salary:Number(e.target.value)};delete ni.rate;n[i]=ni;setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text text-right font-bold" step={1000} placeholder="52000" /></div><div className="col-span-2"><label className="text-[8px] text-revelio-subtle">Multiplicador</label><input type="number" value={mult} onChange={e=>{const n=[...form.cost_rates];n[i]={...n[i]!,multiplier:Number(e.target.value)};setForm({...form,cost_rates:n})}} className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text text-right" step={0.01} placeholder="1.33" /></div><div className="col-span-3"><label className="text-[8px] text-revelio-subtle">Coste/h</label><div className="w-full rounded border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-[10px] bg-revelio-bg/30 dark:bg-revelio-dark-border/30 text-right font-bold text-revelio-green">{costH}€</div></div></div><button onClick={()=>setForm({...form,cost_rates:form.cost_rates.filter((_,j)=>j!==i)})} className="text-revelio-subtle hover:text-revelio-red"><X className="w-3 h-3" /></button></div>) })}
           {form.cost_rates.length>0 && <div className="bg-revelio-green/5 border border-revelio-green/20 rounded-lg px-3 py-2"><p className="text-[9px] font-semibold dark:text-revelio-dark-text flex items-center gap-1"><DollarSign className="w-3 h-3 text-revelio-green" /> Coste actual: <span className="text-revelio-green font-bold">{getCurrentRate(form.cost_rates)}€/h</span></p></div>}
         </div></div>)}
         {tab === 'contrato' && (<div className="space-y-3">

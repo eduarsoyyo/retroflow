@@ -100,6 +100,77 @@ export async function exportExcel(sheets: SheetData[], filename: string): Promis
   XLSX.writeFile(wb, `${filename.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.xlsx`)
 }
 
+// ── Bulk-import templates ──────────────────────────────────────────────────
+//
+// Distinct from `exportExcel`: templates are blank-or-near-blank workbooks
+// with column headers + a couple of example rows, meant to be filled in by
+// an admin and re-uploaded for bulk creation (users, projects, etc).
+//
+// The split between `exportTemplate` and `importTemplate` mirrors how
+// admins use them — download → fill in Excel/LibreOffice → upload.
+
+interface TemplateOptions {
+  /** Worksheet tab name (truncated to 31 chars by Excel). */
+  sheetName: string
+  /** Output filename without extension (will be slugified). */
+  filename: string
+  /** First row of the sheet — column headers. */
+  headers: string[]
+  /** Rows of example data shown to the admin. Can be empty. */
+  exampleRows: (string | number)[][]
+  /**
+   * Per-column widths in characters. If omitted, widths are auto-fitted
+   * to the content (same algorithm as exportExcel).
+   */
+  colWidths?: number[]
+}
+
+/**
+ * Generate and download a bulk-import template (.xlsx).
+ *
+ * Used by admin panels (UsersPanel, ProjectsPanel, ...) so that admins
+ * can download a sheet with the right column shape, fill it in, and
+ * re-upload via `importTemplate` for bulk creation.
+ */
+export async function exportTemplate(opts: TemplateOptions): Promise<void> {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet([opts.headers, ...opts.exampleRows])
+
+  if (opts.colWidths && opts.colWidths.length > 0) {
+    ws['!cols'] = opts.colWidths.map(w => ({ wch: w }))
+  } else {
+    // Auto-fit: same algorithm as exportExcel.
+    ws['!cols'] = opts.headers.map((h, i) => {
+      const maxLen = Math.max(h.length, ...opts.exampleRows.map(r => String(r[i] || '').length))
+      return { wch: Math.min(Math.max(maxLen + 2, 8), 30) }
+    })
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, opts.sheetName.slice(0, 31))
+  XLSX.writeFile(wb, `${opts.filename.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.xlsx`)
+}
+
+/**
+ * Read an uploaded .xlsx file and return its first sheet as an array of
+ * row objects, keyed by column header.
+ *
+ * Used by admin panels to consume the templates produced by
+ * `exportTemplate` after the admin fills them in.
+ *
+ * Throws if the file has no sheets or the first sheet is empty.
+ */
+export async function importTemplate<T = Record<string, unknown>>(file: File): Promise<T[]> {
+  const XLSX = await import('xlsx')
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array' })
+  const firstName = wb.SheetNames[0]
+  if (!firstName) throw new Error('El fichero no contiene hojas.')
+  const ws = wb.Sheets[firstName]
+  if (!ws) throw new Error('Hoja vacía.')
+  return XLSX.utils.sheet_to_json<T>(ws)
+}
+
 // ── Pre-built exports ──
 
 export async function exportPnLPDF(projectName: string, year: number, months: Array<{ revenue: number; cost: number; margin: number; hours: number }>, people: Array<{ name: string; months: Array<{ cost: number; hours: number }> }>): Promise<void> {

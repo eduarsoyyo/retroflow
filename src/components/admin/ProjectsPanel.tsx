@@ -10,6 +10,7 @@ import {
 } from '@/domain/finance'
 import { formatNumberCompact } from '@/lib/format'
 import { soundCreate, soundDelete } from '@/lib/sounds'
+import { exportTemplate, importTemplate } from '@/lib/exports'
 import type { Room, Member, Cliente } from '@/types'
 
 const TIPOS = [
@@ -177,22 +178,21 @@ export function ProjectsPanel() {
   const projMembers = editRoom ? members.filter(m => (m.rooms || []).includes(editRoom.slug)) : []
 
   const downloadProjectTemplate = async () => {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre*', 'tipo', 'fecha_inicio', 'fecha_fin', 'servicio_nombre', 'servicio_coste', 'servicio_margen', 'servicio_riesgo'],
-      ['VWFS', 'agile', '2025-01-01', '2025-12-31', 'Desarrollo fase 1', '80000', '20', '5'],
-      ['Endesa', 'itil', '2025-03-01', '2026-02-28', 'Mantenimiento', '50000', '25', '3'],
-    ])
-    ws['!cols'] = [{wch:22},{wch:10},{wch:12},{wch:12},{wch:24},{wch:14},{wch:14},{wch:14}]
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Proyectos')
-    XLSX.writeFile(wb, 'plantilla_proyectos_revelio.xlsx')
+    await exportTemplate({
+      sheetName: 'Proyectos',
+      filename: 'plantilla_proyectos_revelio',
+      headers: ['nombre*', 'tipo', 'fecha_inicio', 'fecha_fin', 'servicio_nombre', 'servicio_coste', 'servicio_margen', 'servicio_riesgo'],
+      exampleRows: [
+        ['VWFS', 'agile', '2025-01-01', '2025-12-31', 'Desarrollo fase 1', '80000', '20', '5'],
+        ['Endesa', 'itil', '2025-03-01', '2026-02-28', 'Mantenimiento', '50000', '25', '3'],
+      ],
+      colWidths: [22,10,12,12,24,14,14,14],
+    })
   }
   const handleImportProjects = async (file: File) => {
     setImportingProjects(true); setImportProjectResult(null)
     try {
-      const XLSX = await import('xlsx'); const buf = await file.arrayBuffer(); const wb = XLSX.read(buf, { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]!]; if (!ws) throw new Error('Hoja vacia')
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws)
+      const rows = await importTemplate<Record<string, unknown>>(file)
       let created = 0; const errors: string[] = []
       for (const row of rows) {
         const name = String(row['nombre*'] || row['nombre'] || '').trim(); if (!name) continue
