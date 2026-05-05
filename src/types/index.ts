@@ -28,15 +28,10 @@ export interface Member {
   color: string
   role_label: string
   company: string
-  phone: string
   rooms: string[]
   is_superuser: boolean
   house: string | null
-  dedication: number
-  start_date: string | null
-  end_date: string | null
   calendario_id: string | null
-  convenio_id: string | null
   vacations: VacationEntry[]
   annual_vac_days: number
   prev_year_pending: number
@@ -54,6 +49,20 @@ export interface Member {
   status?: string | null
   vacation_carryover?: number | null
 }
+
+// History — fields removed in session 38 (sesión 38) because they
+// existed in the type but NOT in the team_members table:
+//   - phone           → never had a column in DB; only used as ''
+//                       in tests to satisfy the type.
+//   - dedication      → lives on org_chart, not on the member;
+//                       no member.dedication is ever read by code.
+//   - start_date      → idem (org_chart owns project assignment dates).
+//   - end_date        → idem.
+//   - convenio_id     → DB has `convenio` (text) and `calendario_id`,
+//                       not a separate convenio_id column. The text
+//                       column is enough; no FK to a convenios table.
+// If any of these come back, add the column to team_members FIRST,
+// migrate existing rows, and only then declare it here again.
 
 export interface VacationEntry {
   date: string
