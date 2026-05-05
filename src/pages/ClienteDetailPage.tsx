@@ -13,7 +13,7 @@
 //
 // El portal de cliente (ruta /cliente/:slug, vista filtrada para usuarios
 // no-admin) es trabajo del Anligo 2 — depende de RLS y no se construye aquí.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Building2, ChevronLeft, Pencil, Trash2, ExternalLink, Mail, User as UserIcon, FileText, FolderOpen,
@@ -22,7 +22,14 @@ import { fetchClienteBySlug, deleteCliente, fetchClientes } from '@/data/cliente
 import { fetchRoomsByCliente } from '@/data/rooms'
 import type { Cliente, Room } from '@/types'
 import { ClienteFormModal, ClienteDeleteModal } from '@/components/admin/ClienteFormModal'
-import { ClienteFinanceSummary } from '@/components/admin/ClienteFinanceSummary'
+
+// Lazy-loaded so recharts (~95KB) doesn't enter the main bundle. The
+// import returns the named export wrapped in a default to satisfy
+// React.lazy's API contract. Suspense fallback below shows a placeholder
+// while the chunk is fetched the first time the page is opened.
+const ClienteFinanceSummary = lazy(() =>
+  import('@/components/admin/ClienteFinanceSummary').then(m => ({ default: m.ClienteFinanceSummary }))
+)
 
 export function ClienteDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -190,8 +197,16 @@ export function ClienteDetailPage() {
         </div>
       </div>
 
-      {/* Aggregated finance */}
-      <ClienteFinanceSummary clienteId={cliente.id} />
+      {/* Aggregated finance — wrapped in Suspense because the chart lib
+          (recharts) is loaded on demand. Fallback uses the same neutral
+          card style as the rest of the page so it doesn't visually jolt. */}
+      <Suspense fallback={
+        <div className="rounded-card border border-revelio-border dark:border-revelio-dark-border bg-white dark:bg-revelio-dark-card p-8 text-center">
+          <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle">Cargando resumen financiero...</p>
+        </div>
+      }>
+        <ClienteFinanceSummary clienteId={cliente.id} />
+      </Suspense>
 
       {/* Projects list */}
       <div>

@@ -1,6 +1,14 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import * as XLSX from 'xlsx'
+// ── Lazy-loaded heavy libraries ────────────────────────────────────────────
+//
+// jsPDF (~120KB), jspdf-autotable, XLSX (~270KB) and pptxgenjs (~190KB) are
+// loaded only when the user actually clicks an export button. Each function
+// below is async and awaits the dynamic import so the libraries are not in
+// the main bundle. Vite emits one chunk per dynamic import (`pdf-libs-*.js`,
+// `xlsx-*.js`, `pptx-*.js`).
+//
+// All export functions return Promise<void> — callers must await them or
+// fire-and-forget. UI buttons should set a "exporting..." state until the
+// promise resolves.
 
 // ── PDF Export ──
 interface PdfOptions {
@@ -16,7 +24,13 @@ interface TableData {
   rows: (string | number)[][]
 }
 
-export function exportPDF(tables: TableData[], opts: PdfOptions) {
+export async function exportPDF(tables: TableData[], opts: PdfOptions): Promise<void> {
+  // Dynamic imports run in parallel so the user waits one round-trip, not two.
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+
   const doc = new jsPDF({ orientation: opts.orientation || 'landscape', unit: 'mm', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()
 
@@ -66,7 +80,8 @@ interface SheetData {
   rows: (string | number)[][]
 }
 
-export function exportExcel(sheets: SheetData[], filename: string) {
+export async function exportExcel(sheets: SheetData[], filename: string): Promise<void> {
+  const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
 
   sheets.forEach(s => {
@@ -87,7 +102,7 @@ export function exportExcel(sheets: SheetData[], filename: string) {
 
 // ── Pre-built exports ──
 
-export function exportPnLPDF(projectName: string, year: number, months: Array<{ revenue: number; cost: number; margin: number; hours: number }>, people: Array<{ name: string; months: Array<{ cost: number; hours: number }> }>) {
+export async function exportPnLPDF(projectName: string, year: number, months: Array<{ revenue: number; cost: number; margin: number; hours: number }>, people: Array<{ name: string; months: Array<{ cost: number; hours: number }> }>): Promise<void> {
   const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
   const fmt = (n: number) => n.toLocaleString('es-ES', { maximumFractionDigits: 0 })
 
@@ -109,13 +124,13 @@ export function exportPnLPDF(projectName: string, year: number, months: Array<{ 
     }
   ]
 
-  exportPDF(tables, { title: `P&L ${projectName} ${year}`, subtitle: `Generado desde Revelio` })
+  await exportPDF(tables, { title: `P&L ${projectName} ${year}`, subtitle: `Generado desde Revelio` })
 }
 
-export function exportPnLExcel(projectName: string, year: number, months: Array<{ revenue: number; cost: number; margin: number; hours: number }>, people: Array<{ name: string; months: Array<{ cost: number; hours: number }> }>) {
+export async function exportPnLExcel(projectName: string, year: number, months: Array<{ revenue: number; cost: number; margin: number; hours: number }>, people: Array<{ name: string; months: Array<{ cost: number; hours: number }> }>): Promise<void> {
   const MO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
-  exportExcel([
+  await exportExcel([
     {
       name: 'P&L',
       headers: ['Concepto', ...MO, 'Total'],
@@ -134,16 +149,16 @@ export function exportPnLExcel(projectName: string, year: number, months: Array<
   ], `PnL-${projectName}-${year}`)
 }
 
-export function exportRisksPDF(projectName: string, risks: Array<{ title: string; type: string; status: string; prob?: string; impact?: string; owner?: string }>) {
-  exportPDF([{
+export async function exportRisksPDF(projectName: string, risks: Array<{ title: string; type: string; status: string; prob?: string; impact?: string; owner?: string }>): Promise<void> {
+  await exportPDF([{
     title: 'Registro de riesgos',
     headers: ['Título', 'Tipo', 'Estado', 'Probabilidad', 'Impacto', 'Responsable'],
     rows: risks.map(r => [r.title, r.type, r.status, r.prob || '—', r.impact || '—', r.owner || '—'])
   }], { title: `Riesgos — ${projectName}`, orientation: 'landscape' })
 }
 
-export function exportTeamExcel(projectName: string, team: Array<{ name: string; role: string; dedication: number; costRate: number; projects: string }>) {
-  exportExcel([{
+export async function exportTeamExcel(projectName: string, team: Array<{ name: string; role: string; dedication: number; costRate: number; projects: string }>): Promise<void> {
+  await exportExcel([{
     name: 'Equipo',
     headers: ['Nombre', 'Rol', 'Dedicación %', 'Coste €/h', 'Proyectos'],
     rows: team.map(t => [t.name, t.role, t.dedication, t.costRate, t.projects])
@@ -156,7 +171,7 @@ export async function exportExecutivePPTX(project: {
   risks: Array<{ title: string; prob: string; impact: string; status: string }>
   milestones: Array<{ text: string; date: string; status: string }>
   team: Array<{ name: string; role: string; dedication: number }>
-}) {
+}): Promise<void> {
   const pptxgen = (await import('pptxgenjs')).default
   const pptx = new pptxgen()
   pptx.layout = 'LAYOUT_16x9'
@@ -228,5 +243,5 @@ export async function exportExecutivePPTX(project: {
     s5.addTable(rows, { x: 0.5, y: 1.0, w: 9, fontSize: 10, border: { pt: 0.5, color: 'E5E5EA' }, colW: [4, 3, 2] })
   }
 
-  pptx.writeFile({ fileName: `Informe-${project.name}-${new Date().toISOString().slice(0, 10)}.pptx` })
+  await pptx.writeFile({ fileName: `Informe-${project.name}-${new Date().toISOString().slice(0, 10)}.pptx` })
 }
