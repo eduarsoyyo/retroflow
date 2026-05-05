@@ -23,6 +23,21 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // The `xlsx` package on the public npm registry is permanently
+      // locked at 0.18.5 with two known high-severity CVEs (Prototype
+      // Pollution + ReDoS). The official patches live behind SheetJS's
+      // own CDN, which is blocked by the ALTEN corporate firewall.
+      //
+      // `@e965/xlsx` is a community-maintained mirror that auto-republishes
+      // the latest SheetJS source to npm via GitHub Actions. Same code,
+      // patched CVEs, accessible from corporate networks. The alias keeps
+      // every `import ... from 'xlsx'` working untouched across the
+      // codebase (lib/exports.ts, UsersPanel.tsx, ProjectsPanel.tsx).
+      //
+      // Revisit this if (a) the corporate proxy ever opens cdn.sheetjs.com,
+      // or (b) Anillo 2 needs richer Excel features (styled cells, charts)
+      // — at that point ExcelJS becomes a viable migration target.
+      'xlsx': '@e965/xlsx',
     },
   },
   server: {
@@ -41,6 +56,9 @@ export default defineConfig({
           // exclusively from src/lib/exports.ts via dynamic import.
           if (id.includes('jspdf')) return 'pdf-libs'
           // Spreadsheet — xlsx alone is ~270KB minified, biggest of the lot.
+          // The substring 'xlsx' also matches '@e965/xlsx' under
+          // node_modules/@e965/xlsx/, so the alias above doesn't break
+          // chunking — they share a single chunk under the 'xlsx' name.
           if (id.includes('xlsx')) return 'xlsx'
           // PowerPoint — pptxgenjs lazy-loaded via dynamic import.
           if (id.includes('pptxgenjs')) return 'pptx'
