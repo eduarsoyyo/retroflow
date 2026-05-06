@@ -99,3 +99,20 @@ export function hoursByMonth(entries: TimeEntry[]): Record<string, number> {
   }
   return out
 }
+
+
+/**
+ * Insert a new time_entry row.
+ *
+ * Used by admin panels (UsersPanel bulk fichaje, ClockWidget, TimeTracker)
+ * that record hours worked. The DB generates `id`, `created_at` and
+ * `updated_at` automatically.
+ *
+ * Throws RevelioError on Supabase errors via handleSupabaseError.
+ */
+export async function createTimeEntry(
+  entry: Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>,
+): Promise<void> {
+  const { error } = await supabase.from('time_entries').insert(entry)
+  if (error) handleSupabaseError(error)
+}

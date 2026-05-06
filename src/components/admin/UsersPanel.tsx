@@ -1,11 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '@/data/supabase'
 import { authAdmin } from '@/data/authAdmin'
-import { fetchTeamMembers } from '@/data/team'
+import { fetchTeamMembers, createMember, updateMember, updateMemberFull, deleteMember } from '@/data/team'
 import { fetchRoomsLite } from '@/data/rooms'
 import { fetchCalendarios } from '@/data/calendarios'
-import { fetchAllOrgChart } from '@/data/orgChart'
-import { fetchTimeEntries } from '@/data/time-entries'
+import { fetchAllOrgChart, createOrgChartEntry, updateOrgChartEntry, deleteOrgChartByMemberAndSala, deleteOrgChartByMember } from '@/data/orgChart'
+import { fetchTimeEntries, createTimeEntry } from '@/data/time-entries'
 import { fetchApprovedAbsences } from '@/data/absences'
 import { fetchAdminRoles } from '@/data/roles'
 import type { Member } from '@/types'
@@ -159,12 +158,17 @@ export function UsersPanel() {
       else if (bulkAction === 'role') upd.role_label = bulkValue
       else if (bulkAction === 'calendario') upd.calendario_id = bulkValue || null
       else if (bulkAction === 'status') upd.contract_type = bulkValue
-      if (Object.keys(upd).length > 0) await supabase.from('team_members').update(upd).eq('id', id)
+      if (Object.keys(upd).length > 0) await updateMember(id, upd)
       if (bulkAction === 'project' && bulkValue) {
         const m = members.find(x => x.id === id)
         if (m && !(m.rooms || []).includes(bulkValue)) {
-          await supabase.from('team_members').update({ rooms: [...(m.rooms || []), bulkValue] }).eq('id', id)
-          await supabase.from('org_chart').insert({ member_id: id, sala: bulkValue, dedication: 1, start_date: null, end_date: null })
+          await updateMember(id, { rooms: [...(m.rooms || []), bulkValue] })
+          await createOrgChartEntry({
+            sala: bulkValue,
+            member_id: id,
+            manager_id: null,
+            dedication: 1,
+          })
         }
       }
     }
@@ -194,11 +198,15 @@ export function UsersPanel() {
         const activeOrg = myOrg.filter(o => (o.start_date || '2000-01-01') <= ds && (o.end_date || '2099-12-31') >= ds)
         if (activeOrg.length > 0) {
           let distributed = 0
-          for (const o of activeOrg) { const oh = Math.round(o.dedication * h * 100) / 100; distributed += oh; await supabase.from('time_entries').insert({ member_id: id, sala: o.sala, date: ds, hours: oh, category: 'productivo', auto_distributed: true, status: 'approved' }) }
+          for (const o of activeOrg) {
+            const oh = Math.round(o.dedication * h * 100) / 100
+            distributed += oh
+            await createTimeEntry({ member_id: id, sala: o.sala, date: ds, hours: oh, category: 'productivo', auto_distributed: true, status: 'approved' })
+          }
           const rem = Math.round((h - distributed) * 100) / 100
-          if (rem > 0.01) await supabase.from('time_entries').insert({ member_id: id, sala: '_sin_asignar', date: ds, hours: rem, category: 'no_asignado', auto_distributed: true, status: 'approved' })
+          if (rem > 0.01) await createTimeEntry({ member_id: id, sala: '_sin_asignar', date: ds, hours: rem, category: 'no_asignado', auto_distributed: true, status: 'approved' })
         } else {
-          await supabase.from('time_entries').insert({ member_id: id, sala: '_sin_asignar', date: ds, hours: h, category: 'no_asignado', auto_distributed: true, status: 'approved' })
+          await createTimeEntry({ member_id: id, sala: '_sin_asignar', date: ds, hours: h, category: 'no_asignado', auto_distributed: true, status: 'approved' })
         }
         totalDays++
       }
@@ -226,7 +234,24 @@ export function UsersPanel() {
       for (const row of rows) {
         const name = String(row['nombre'] || row['name'] || '').trim(); if (!name) continue
         const email = String(row['email'] || '').trim(); const id = crypto.randomUUID()
-        const { error: tmErr } = await supabase.from('team_members').insert({ id, name, username: email.split('@')[0] || name.toLowerCase().replace(/\s+/g,'.'), email, avatar: AVATARS[Math.floor(Math.random()*AVATARS.length)]||'👤', color: COLORS[Math.floor(Math.random()*COLORS.length)]||'#007AFF', company: String(row['empresa']||'ALTEN'), role_label: String(row['rol']||''), is_superuser: false, rooms: [], cost_rates: [], preferences: {} })
+        let tmErr: { message: string } | null = null
+        try {
+          await createMember({
+            id, name,
+            username: email.split('@')[0] || name.toLowerCase().replace(/\s+/g,'.'),
+            email,
+            avatar: AVATARS[Math.floor(Math.random()*AVATARS.length)]||'👤',
+            color: COLORS[Math.floor(Math.random()*COLORS.length)]||'#007AFF',
+            company: String(row['empresa']||'ALTEN'),
+            role_label: String(row['rol']||''),
+            is_superuser: false,
+            rooms: [],
+            cost_rates: [],
+            preferences: {},
+          } as Parameters<typeof createMember>[0])
+        } catch (e) {
+          tmErr = { message: (e as Error).message }
+        }
         if (tmErr) { errors.push(`${name}: ${tmErr.message}`); continue }
         if (email) {
           // Delete any existing auth user with this email first to avoid duplicate key errors
@@ -282,27 +307,58 @@ export function UsersPanel() {
     let memberId = editMember?.id || ''
     if (modal === 'create') {
       memberId = uid()
-      const { data, error } = await supabase.from('team_members').insert({ id: memberId, ...payload }).select().single()
-      if (error) { setSaveError(error.message); setSaving(false); return }
-      if (data) { setMembers(prev => [...prev, data]); soundCreate() }
+      try {
+        const created = await createMember({ id: memberId, ...payload } as Parameters<typeof createMember>[0])
+        setMembers(prev => [...prev, created])
+        soundCreate()
+      } catch (e) {
+        setSaveError((e as Error).message)
+        setSaving(false)
+        return
+      }
       if (form.email && form.password) void authAdmin.create({ email: form.email, password: form.password, userId: memberId }).catch(err => console.error('Auth create failed:', err))
     } else if (editMember) {
-      const { data, error } = await supabase.from('team_members').update(payload).eq('id', editMember.id).select().single()
-      if (error) { setSaveError(error.message); setSaving(false); return }
-      if (data) { setMembers(prev => prev.map(m => m.id === editMember.id ? data : m)); soundCreate() }
+      try {
+        const updated = await updateMemberFull(editMember.id, payload as Partial<typeof payload>)
+        setMembers(prev => prev.map(m => m.id === editMember.id ? updated : m))
+        soundCreate()
+      } catch (e) {
+        setSaveError((e as Error).message)
+        setSaving(false)
+        return
+      }
       if (form.password) void authAdmin.updatePassword({ userId: editMember.id, newPassword: form.password }).catch(err => console.error('Auth update password failed:', err))
       if (form.email && form.email !== editMember.email) void authAdmin.updateEmail({ userId: editMember.id, newEmail: form.email }).catch(err => console.error('Auth update email failed:', err))
     }
-    for (const pa of form.projects) { const ex = orgChart.find(o => o.member_id === memberId && o.sala === pa.slug); if (ex?.id) await supabase.from('org_chart').update({ dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }).eq('id', ex.id); else await supabase.from('org_chart').insert({ member_id: memberId, sala: pa.slug, dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }) }
-    for (const s of (editMember?.rooms||[]).filter(s => !roomSlugs.includes(s))) await supabase.from('org_chart').delete().eq('member_id', memberId).eq('sala', s)
+    for (const pa of form.projects) {
+      const ex = orgChart.find(o => o.member_id === memberId && o.sala === pa.slug)
+      const patch = {
+        dedication: pa.dedication / 100,
+        start_date: pa.from || undefined,
+        end_date: pa.to || undefined,
+      }
+      if (ex?.id) {
+        await updateOrgChartEntry(ex.id, patch)
+      } else {
+        await createOrgChartEntry({
+          sala: pa.slug,
+          member_id: memberId,
+          manager_id: null,
+          ...patch,
+        })
+      }
+    }
+    for (const s of (editMember?.rooms||[]).filter(s => !roomSlugs.includes(s))) {
+      await deleteOrgChartByMemberAndSala(memberId, s)
+    }
     const refreshedOrg = await fetchAllOrgChart()
     setOrgChart(refreshedOrg as OrgRow[])
     setSaving(false); setModal(null)
   }
   const handleDelete = async () => {
     if (!deleteTarget || deleteConfirm !== deleteTarget.name) return
-    await supabase.from('team_members').delete().eq('id', deleteTarget.id)
-    await supabase.from('org_chart').delete().eq('member_id', deleteTarget.id)
+    await deleteMember(deleteTarget.id)
+    await deleteOrgChartByMember(deleteTarget.id)
     void (async () => { try { await authAdmin.delete({ userId: deleteTarget.id }) } catch (err) { console.warn('Auth delete by ID failed:', err) } if (deleteTarget.email) { try { await authAdmin.deleteByEmail({ email: deleteTarget.email }) } catch (err) { console.warn('Auth delete by email failed:', err) } } })()
     setMembers(prev => prev.filter(m => m.id !== deleteTarget.id)); setDeleteTarget(null); setDeleteConfirm(''); soundDelete()
   }

@@ -93,3 +93,37 @@ export async function updateOrgChartEntry(
   if (error) handleSupabaseError(error)
   return data as OrgChartEntry
 }
+
+
+/**
+ * Delete a single org_chart row identified by member + sala.
+ *
+ * Used when an admin removes a project assignment from a member without
+ * touching others. There can be multiple rows per (member, sala) pair
+ * for multi-period dedication; this deletes ALL of them in one call.
+ */
+export async function deleteOrgChartByMemberAndSala(
+  memberId: string,
+  sala: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('org_chart')
+    .delete()
+    .eq('member_id', memberId)
+    .eq('sala', sala)
+  if (error) handleSupabaseError(error)
+}
+
+/**
+ * Delete all org_chart rows for a given member.
+ *
+ * Used when deleting a team_member: cleans up every project assignment
+ * the member had. Idempotent — safe to call even if there are no rows.
+ */
+export async function deleteOrgChartByMember(memberId: string): Promise<void> {
+  const { error } = await supabase
+    .from('org_chart')
+    .delete()
+    .eq('member_id', memberId)
+  if (error) handleSupabaseError(error)
+}
