@@ -2,7 +2,11 @@ import { useEffect, useState, useMemo } from 'react'
 import { CheckCircle2, Clock, AlertTriangle, Calendar, ChevronRight, ListChecks, Target, Check, X, UserCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/data/supabase'
+import { fetchRoomsLite } from '@/data/rooms'
+import { fetchActiveRetros } from '@/data/retros'
+import { fetchTeamMembers } from '@/data/team'
+import { fetchTimeEntries, updateTimeEntry } from '@/data/time-entries'
+import { fetchAbsencesByMember, fetchAbsencesByStatus, updateAbsenceRequest } from '@/data/absences'
 
 
 interface Action { id: string; text: string; status: string; date?: string; owner?: string; type?: string; [k: string]: unknown }
@@ -27,14 +31,14 @@ export function HomePage() {
   useEffect(() => {
     if (!user) return
     Promise.all([
-      supabase.from('rooms').select('slug, name'),
-      supabase.from('retros').select('sala, data').eq('status', 'active'),
-      supabase.from('team_members').select('id, name, avatar, color'),
-    ]).then(([rR, retR, mR]) => {
-      if (rR.data) setRooms(rR.data)
-      if (mR.data) setMembers(mR.data as Array<{ id: string; name: string; avatar: string; color: string }>)
+      fetchRoomsLite(),
+      fetchActiveRetros(),
+      fetchTeamMembers(),
+    ]).then(([roomsData, retrosData, membersData]) => {
+      setRooms(roomsData)
+      setMembers(membersData as unknown as Array<{ id: string; name: string; avatar: string; color: string }>)
       const all: Action[] = []
-      ;(retR.data || []).forEach((r: { sala: string; data: Record<string, unknown> }) => {
+      retrosData.forEach((r) => {
         ;((r.data?.actions || []) as Action[]).forEach(a => { if (a.status !== 'discarded' && a.status !== 'cancelled') all.push({ ...a, _sala: r.sala }) })
       })
       setActions(all)
@@ -43,18 +47,37 @@ export function HomePage() {
 
     // Load my resolved requests (last 7 days)
     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
-    supabase.from('absence_requests').select('id, type, date_from, date_to, days, status').eq('member_id', user.id).in('status', ['aprobada', 'rechazada']).gte('created_at', weekAgo.toISOString()).then(({ data }) => {
-      if (data) setResolvedAbs(data)
+    const weekAgoIso = weekAgo.toISOString()
+    fetchAbsencesByMember(user.id).then(absList => {
+      const filtered = absList.filter(a =>
+        (a.status === 'aprobada' || a.status === 'rechazada') &&
+        (a.created_at ?? '') >= weekAgoIso
+      )
+      setResolvedAbs(filtered.map(a => ({
+        id: a.id, type: a.type, date_from: a.date_from, date_to: a.date_to, days: a.days, status: a.status,
+      })))
     })
-    supabase.from('time_entries').select('id, sala, date, hours, status').eq('member_id', user.id).in('status', ['approved', 'rejected']).then(({ data }) => {
+    fetchTimeEntries({ memberId: user.id, statuses: ['approved', 'rejected'] }).then(entries => {
       // Filter to only show retro filings (auto_distributed ones that were pending)
-      if (data) setResolvedRetro((data as Array<{ id: string; sala: string; date: string; hours: number; status: string; auto_distributed?: boolean }>).filter(e => e.status === 'rejected' || e.auto_distributed))
+      const filtered = entries.filter(e => e.status === 'rejected' || e.auto_distributed)
+      setResolvedRetro(filtered.map(e => ({
+        id: e.id, sala: e.sala, date: e.date, hours: e.hours, status: e.status ?? '',
+      })))
     })
 
     // Load pending approvals (for SM / responsable)
     if (user?.is_superuser) {
-      supabase.from('absence_requests').select('id, member_id, type, date_from, date_to, days, notes').eq('status', 'pendiente').then(({ data }) => { if (data) setPendingAbs(data as PendingAbsence[]) })
-      supabase.from('time_entries').select('id, member_id, sala, date, hours').eq('status', 'pending_approval').then(({ data }) => { if (data) setPendingRetro(data as PendingRetro[]) })
+      fetchAbsencesByStatus('pendiente').then(absList => {
+        setPendingAbs(absList.map(a => ({
+          id: a.id, member_id: a.member_id, type: a.type, date_from: a.date_from, date_to: a.date_to,
+          days: a.days, notes: a.notes ?? '',
+        })))
+      })
+      fetchTimeEntries({ statuses: ['pending_approval'] }).then(entries => {
+        setPendingRetro(entries.map(e => ({
+          id: e.id, member_id: e.member_id, sala: e.sala, date: e.date, hours: e.hours,
+        })))
+      })
     }
   }, [user])
 
@@ -65,10 +88,22 @@ export function HomePage() {
   const myMilestones = myPending.filter(a => (a.type || '') === 'hito')
   const myDone = myItems.filter(a => a.status === 'done' || a.status === 'archived').length
 
-  const approveAbsence = async (id: string) => { await supabase.from('absence_requests').update({ status: 'aprobada', reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id); setPendingAbs(p => p.filter(a => a.id !== id)) }
-  const rejectAbsence = async (id: string) => { await supabase.from('absence_requests').update({ status: 'rechazada', reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id); setPendingAbs(p => p.filter(a => a.id !== id)) }
-  const approveRetro = async (id: string) => { await supabase.from('time_entries').update({ status: 'approved' }).eq('id', id); setPendingRetro(p => p.filter(e => e.id !== id)) }
-  const rejectRetro = async (id: string) => { await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', id); setPendingRetro(p => p.filter(e => e.id !== id)) }
+  const approveAbsence = async (id: string) => {
+    await updateAbsenceRequest(id, { status: 'aprobada', reviewed_by: user?.id ?? null, reviewed_at: new Date().toISOString() })
+    setPendingAbs(p => p.filter(a => a.id !== id))
+  }
+  const rejectAbsence = async (id: string) => {
+    await updateAbsenceRequest(id, { status: 'rechazada', reviewed_by: user?.id ?? null, reviewed_at: new Date().toISOString() })
+    setPendingAbs(p => p.filter(a => a.id !== id))
+  }
+  const approveRetro = async (id: string) => {
+    await updateTimeEntry(id, { status: 'approved' })
+    setPendingRetro(p => p.filter(e => e.id !== id))
+  }
+  const rejectRetro = async (id: string) => {
+    await updateTimeEntry(id, { status: 'rejected' })
+    setPendingRetro(p => p.filter(e => e.id !== id))
+  }
 
   const getMember = (id: string) => members.find(m => m.id === id)
 
