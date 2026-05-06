@@ -9,6 +9,18 @@ export async function fetchRooms(): Promise<Room[]> {
 }
 
 /**
+ * Slim version of `fetchRooms`: returns only `slug` and `name` columns,
+ * sorted alphabetically. Used by panels that just need a dropdown of
+ * project names (UsersPanel, etc) without paying for the full Room
+ * payload (services, member_assigns, cost_profiles, ...).
+ */
+export async function fetchRoomsLite(): Promise<Array<Pick<Room, 'slug' | 'name'>>> {
+  const { data, error } = await supabase.from('rooms').select('slug, name').order('name')
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as Array<Pick<Room, 'slug' | 'name'>>
+}
+
+/**
  * Load all rooms (projects) linked to a given cliente by cliente_id.
  * Sorted alphabetically by name. Used by the cliente detail page to
  * show the projects associated with the cliente.

@@ -1,6 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/data/supabase'
 import { authAdmin } from '@/data/authAdmin'
+import { fetchTeamMembers } from '@/data/team'
+import { fetchRoomsLite } from '@/data/rooms'
+import { fetchCalendarios } from '@/data/calendarios'
+import { fetchAllOrgChart } from '@/data/orgChart'
+import { fetchTimeEntries } from '@/data/time-entries'
+import { fetchApprovedAbsences } from '@/data/absences'
+import { fetchAdminRoles } from '@/data/roles'
 import type { Member } from '@/types'
 import { Plus, Edit, Trash2, Search, DollarSign, X, Upload, Download, List, Palmtree, Clock, TrendingUp, Check } from 'lucide-react'
 import { soundCreate, soundDelete } from '@/lib/sounds'
@@ -161,8 +168,10 @@ export function UsersPanel() {
         }
       }
     }
-    const { data } = await supabase.from('team_members').select('*').order('name'); if (data) setMembers(data)
-    const { data: nO } = await supabase.from('org_chart').select('*'); if (nO) setOrgChart(nO as OrgRow[])
+    const refreshedMembers = await fetchTeamMembers()
+    setMembers(refreshedMembers)
+    const refreshedOrg = await fetchAllOrgChart()
+    setOrgChart(refreshedOrg as OrgRow[])
     setSaving(false); setBulkAction(null); setBulkValue(''); setSelected(new Set())
   }
 
@@ -194,8 +203,8 @@ export function UsersPanel() {
         totalDays++
       }
     }
-    const { data: te } = await supabase.from('time_entries').select('member_id, date, hours, status, sala').gte('date', `${yr}-01-01`).lte('date', `${yr}-12-31`)
-    if (te) setTimeEntries(te as TimeEntry[])
+    const refreshedTE = await fetchTimeEntries({ year: yr })
+    setTimeEntries(refreshedTE as unknown as TimeEntry[])
     setBulkFichajeSaving(false); setBulkFichajeResult(`${totalDays} días fichados para ${selected.size} personas${skipped > 0 ? ` (${skipped} ya fichados, omitidos)` : ''}`)
     setSelected(new Set())
   }
@@ -228,26 +237,30 @@ export function UsersPanel() {
         created++
       }
       setImportResult(`${created} creados${errors.length ? `. Errores: ${errors.join('; ')}` : ''}`)
-      const { data } = await supabase.from('team_members').select('*').order('name'); if (data) setMembers(data)
+      const refreshed = await fetchTeamMembers()
+      setMembers(refreshed)
     } catch (e) { setImportResult(`Error: ${(e as Error).message}`) }
     setImporting(false)
   }
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('*').order('name'),
-      supabase.from('rooms').select('slug, name').order('name'),
-      supabase.from('calendarios').select('*').order('name'),
-      supabase.from('org_chart').select('*'),
-      supabase.from('time_entries').select('member_id, date, hours, status, sala').gte('date', `${yr}-01-01`).lte('date', `${yr}-12-31`),
-      supabase.from('absence_requests').select('member_id, type, date_from, date_to, days, status'),
-    ]).then(([mR, rR, cR, oR, tR, aR]) => {
-      if (mR.data) setMembers(mR.data); if (rR.data) setRooms(rR.data); if (cR.data) setCalendarios(cR.data as CalFull[]); if (oR.data) setOrgChart(oR.data as OrgRow[]); if (tR.data) setTimeEntries(tR.data as TimeEntry[]); if (aR.data) setAbsReqs(aR.data as AbsenceReq[]); setLoading(false)
+      fetchTeamMembers(),
+      fetchRoomsLite(),
+      fetchCalendarios(),
+      fetchAllOrgChart(),
+      fetchTimeEntries({ year: yr }),
+      fetchApprovedAbsences(),
+    ]).then(([membersData, roomsData, calsData, orgData, teData, absData]) => {
+      setMembers(membersData)
+      setRooms(roomsData)
+      setCalendarios(calsData as CalFull[])
+      setOrgChart(orgData as OrgRow[])
+      setTimeEntries(teData as unknown as TimeEntry[])
+      setAbsReqs(absData as unknown as AbsenceReq[])
+      setLoading(false)
     })
-    supabase.from('admin_roles').select('*').order('name').then(({ data }) => {
-      if (data && data.length > 0) { setRoles(data.map((r: Record<string, unknown>) => String(r.name||r.label||'')).filter(Boolean)); return }
-      supabase.from('roles').select('*').order('label').then(({ data: r2 }) => { if (r2?.length) setRoles(r2.map((r: Record<string, unknown>) => String(r.label||r.name||'')).filter(Boolean)) })
-    })
+    fetchAdminRoles().then(setRoles)
   }, [])
 
   const filtered = useMemo(() => { const q = search.toLowerCase(); return members.filter(m => m.name.toLowerCase().includes(q) || (m.username||'').toLowerCase().includes(q) || (m.role_label||'').toLowerCase().includes(q) || (m.email||'').toLowerCase().includes(q)) }, [members, search])
@@ -282,7 +295,8 @@ export function UsersPanel() {
     }
     for (const pa of form.projects) { const ex = orgChart.find(o => o.member_id === memberId && o.sala === pa.slug); if (ex?.id) await supabase.from('org_chart').update({ dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }).eq('id', ex.id); else await supabase.from('org_chart').insert({ member_id: memberId, sala: pa.slug, dedication: pa.dedication/100, start_date: pa.from||null, end_date: pa.to||null }) }
     for (const s of (editMember?.rooms||[]).filter(s => !roomSlugs.includes(s))) await supabase.from('org_chart').delete().eq('member_id', memberId).eq('sala', s)
-    const { data: newOrg } = await supabase.from('org_chart').select('*'); if (newOrg) setOrgChart(newOrg as OrgRow[])
+    const refreshedOrg = await fetchAllOrgChart()
+    setOrgChart(refreshedOrg as OrgRow[])
     setSaving(false); setModal(null)
   }
   const handleDelete = async () => {
