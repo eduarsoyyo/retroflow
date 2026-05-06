@@ -53,6 +53,33 @@ export async function createInitialRetro(sala: string): Promise<void> {
   if (error) handleSupabaseError(error)
 }
 
+/**
+ * Slim shape including `status`. Used by consumers that need to filter
+ * retros by status client-side (e.g. ConsultantProfilePage which counts
+ * how many retros are in 'closed' status for a member).
+ */
+export interface RetroWithStatusLite {
+  sala: string
+  data: Record<string, unknown>
+  status: string
+}
+
+/**
+ * Load ALL retros across all salas — every status (active, closed, draft,
+ * etc). Slim shape (sala + data + status). Used by panels that need to
+ * compute aggregates over the full historical record, not just live retros.
+ *
+ * For dashboards that only care about active retros, prefer
+ * `fetchActiveRetros` (smaller payload, status filter applied server-side).
+ */
+export async function fetchAllRetros(): Promise<RetroWithStatusLite[]> {
+  const { data, error } = await supabase
+    .from('retros')
+    .select('sala, data, status')
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as RetroWithStatusLite[]
+}
+
 export async function saveRetro(retro: Retro): Promise<void> {
   // Rule #9: auto-save loads DB first, prefers richer data
   const { data: current } = await supabase

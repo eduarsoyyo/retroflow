@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, Calendar, Clock, ListChecks, Users, AlertTriangle } from 'lucide-react'
 import { useParams, Link } from 'react-router-dom'
-import { supabase } from '@/data/supabase'
+import { fetchMemberById } from '@/data/team'
+import { fetchOrgChartByMember } from '@/data/orgChart'
+import { fetchTimeEntries } from '@/data/time-entries'
+import { fetchAbsencesByMember } from '@/data/absences'
+import { fetchRoomsLite } from '@/data/rooms'
+import { fetchAllRetros } from '@/data/retros'
 
 interface MemberFull { id: string; name: string; avatar: string; color: string; role_label: string; company: string; email: string; hire_date: string; contract_type: string; calendario_id: string; cost_rates: Array<{ from: string; rate: number }>; rooms: string[]; is_superuser: boolean }
 interface OrgEntry { sala: string; dedication: number; start_date: string; end_date: string }
@@ -24,23 +29,23 @@ export function ConsultantProfilePage() {
     if (!id) return
     const yr = new Date().getFullYear()
     Promise.all([
-      supabase.from('team_members').select('*').eq('id', id).single(),
-      supabase.from('org_chart').select('sala, dedication, start_date, end_date').eq('member_id', id),
-      supabase.from('time_entries').select('date, hours, sala').eq('member_id', id).gte('date', `${yr}-01-01`),
-      supabase.from('absence_requests').select('type, date_from, date_to, days, status').eq('member_id', id),
-      supabase.from('rooms').select('slug, name'),
-      supabase.from('retros').select('sala, data, status'),
-    ]).then(([mR, oR, tR, aR, rR, retR]) => {
-      if (mR.data) setMember(mR.data as unknown as MemberFull)
-      if (oR.data) setOrg(oR.data as OrgEntry[])
-      if (tR.data) setHours(tR.data as TimeEntry[])
-      if (aR.data) setAbsences(aR.data as AbsReq[])
-      if (rR.data) setRooms(rR.data)
+      fetchMemberById(id),
+      fetchOrgChartByMember(id),
+      fetchTimeEntries({ memberId: id, dateFrom: `${yr}-01-01` }),
+      fetchAbsencesByMember(id),
+      fetchRoomsLite(),
+      fetchAllRetros(),
+    ]).then(([memberData, orgData, hoursData, absData, roomsData, retrosData]) => {
+      if (memberData) setMember(memberData as unknown as MemberFull)
+      setOrg(orgData as unknown as OrgEntry[])
+      setHours(hoursData as unknown as TimeEntry[])
+      setAbsences(absData as unknown as AbsReq[])
+      setRooms(roomsData)
 
       // Calc action stats and retro count
       let pending = 0, done = 0, retros = 0, risks = 0
-      const mName = (mR.data as Record<string, unknown>)?.name as string
-      ;(retR.data || []).forEach((r: { sala: string; data: Record<string, unknown>; status: string }) => {
+      const mName = (memberData as Record<string, unknown> | null)?.name as string
+      retrosData.forEach((r) => {
         const acts = ((r.data?.actions || []) as Array<Record<string, unknown>>)
         pending += acts.filter(a => a.owner === mName && a.status !== 'done' && a.status !== 'archived' && a.status !== 'discarded').length
         done += acts.filter(a => a.owner === mName && (a.status === 'done' || a.status === 'archived')).length
