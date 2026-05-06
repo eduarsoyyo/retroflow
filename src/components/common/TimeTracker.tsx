@@ -1,7 +1,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Clock, ChevronLeft, ChevronRight, Calendar, Check, X, AlertTriangle, Edit, Send, Trash2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { supabase } from '@/data/supabase'
+import { fetchTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntries } from '@/data/time-entries'
+import { fetchAbsencesByMember, fetchAbsencesByStatus, createAbsenceRequest, updateAbsenceRequest, deleteAbsenceRequest } from '@/data/absences'
+import { fetchClockEventsByMember } from '@/data/clock-events'
+import { fetchMemberById, fetchManagedMembers } from '@/data/team'
+import { fetchCalendarioById } from '@/data/calendarios'
+import { fetchOrgChartByMember } from '@/data/orgChart'
 
 interface TimeEntry { id?: string; member_id?: string; sala: string; date: string; hours: number; status?: string }
 interface Calendario { id: string; name: string; convenio_hours: number; weekly_hours_normal: number; daily_hours_lj: number; daily_hours_v: number; daily_hours_intensive: number; intensive_start: string; intensive_end: string; vacation_days: number; free_days: number; adjustment_days: number; adjustment_hours: number; holidays: Array<{ date: string; name: string }> }
@@ -78,30 +83,37 @@ export function TimeTracker() {
 
   const loadData = useCallback(async () => {
     if (!user?.id) return
-    const [tR, aR, cR] = await Promise.all([
-      supabase.from('time_entries').select('*').eq('member_id', user.id).gte('date', range.from).lte('date', range.to),
-      supabase.from('absence_requests').select('*').eq('member_id', user.id),
-      supabase.from('clock_events').select('event, timestamp, date').eq('member_id', user.id).gte('date', range.from).lte('date', range.to).order('timestamp'),
+    const [te, abs, ce] = await Promise.all([
+      fetchTimeEntries({ memberId: user.id, dateFrom: range.from, dateTo: range.to }),
+      fetchAbsencesByMember(user.id),
+      fetchClockEventsByMember(user.id, { from: range.from, to: range.to }),
     ])
-    if (tR.data) setEntries(tR.data as TimeEntry[])
-    if (aR.data) setAbsences(aR.data as AbsenceRequest[])
-    if (cR.data) setClockEvents(cR.data as ClockEvent[])
+    setEntries(te as unknown as TimeEntry[])
+    setAbsences(abs as unknown as AbsenceRequest[])
+    setClockEvents(ce as unknown as ClockEvent[])
     // Load calendario from team_members
-    const { data: profile } = await supabase.from('team_members').select('calendario_id').eq('id', user.id).single()
-    const calId = (profile as Record<string, unknown>)?.calendario_id as string
-    if (calId) { const { data } = await supabase.from('calendarios').select('*').eq('id', calId).single(); if (data) setCalendario(data as Calendario) }
+    const profile = await fetchMemberById(user.id)
+    const calId = (profile as Record<string, unknown> | null)?.calendario_id as string | undefined
+    if (calId) {
+      const cal = await fetchCalendarioById(calId)
+      if (cal) setCalendario(cal as unknown as Calendario)
+    }
     // Load pending approvals: for people I'm responsible for, or all if superuser
     if (user.is_superuser) {
       // Get IDs of people I manage
-      const { data: managed } = await supabase.from('team_members').select('id').eq('responsable_id', user.id)
-      const managedIds = (managed || []).map((m: { id: string }) => m.id)
+      const managed = await fetchManagedMembers(user.id)
+      const managedIds = managed.map(m => m.id)
       // If I manage people, show their requests. If superuser with no reports, show all.
       if (managedIds.length > 0) {
-        const { data: pa } = await supabase.from('absence_requests').select('*').eq('status', 'pendiente').in('member_id', managedIds); if (pa) setPendingToReview(pa as AbsenceRequest[])
-        const { data: pr } = await supabase.from('time_entries').select('*').eq('status', 'pending_approval').in('member_id', managedIds); if (pr) setPendingRetro(pr as TimeEntry[])
+        const pa = await fetchAbsencesByStatus('pendiente', managedIds)
+        setPendingToReview(pa as unknown as AbsenceRequest[])
+        const pr = await fetchTimeEntries({ memberIds: managedIds, statuses: ['pending_approval'] })
+        setPendingRetro(pr as unknown as TimeEntry[])
       } else {
-        const { data: pa } = await supabase.from('absence_requests').select('*').eq('status', 'pendiente'); if (pa) setPendingToReview(pa as AbsenceRequest[])
-        const { data: pr } = await supabase.from('time_entries').select('*').eq('status', 'pending_approval'); if (pr) setPendingRetro(pr as TimeEntry[])
+        const pa = await fetchAbsencesByStatus('pendiente')
+        setPendingToReview(pa as unknown as AbsenceRequest[])
+        const pr = await fetchTimeEntries({ statuses: ['pending_approval'] })
+        setPendingRetro(pr as unknown as TimeEntry[])
       }
     }
   }, [user, range.from, range.to])
@@ -149,12 +161,18 @@ export function TimeTracker() {
     if (!user?.id || !showRetroModal || !retroHours) return
     const h = Number(retroHours); if (h <= 0) return
     // Delete any previous pending or rejected for this date+sala
-    await supabase.from('time_entries').delete().eq('member_id', user.id).eq('date', showRetroModal).eq('sala', '_pendiente')
-    const { error } = await supabase.from('time_entries').insert({
-      member_id: user.id, sala: '_pendiente', date: showRetroModal, hours: h,
-      category: 'retro', auto_distributed: false, status: 'pending_approval'
-    })
-    if (error) { console.error('[revelio] retro save:', error.message); alert('Error: ' + error.message); return }
+    await deleteTimeEntries({ memberId: user.id, date: showRetroModal, sala: '_pendiente' })
+    try {
+      await createTimeEntry({
+        member_id: user.id, sala: '_pendiente', date: showRetroModal, hours: h,
+        category: 'retro', auto_distributed: false, status: 'pending_approval',
+      })
+    } catch (e) {
+      const msg = (e as Error).message
+      console.error('[revelio] retro save:', msg)
+      alert('Error: ' + msg)
+      return
+    }
     setShowRetroModal(null); setRetroHours(''); loadData()
   }
 
@@ -188,40 +206,47 @@ export function TimeTracker() {
     const sorted = [...selectedDays].sort()
     const from = sorted[0]!; const to = sorted[sorted.length - 1]!
     const days = sorted.filter(d => isWorkday(d) && !(calendario?.holidays || []).some(h => h.date === d)).length
-    const { error } = await supabase.from('absence_requests').insert({ member_id: user.id, type: absType, date_from: from, date_to: to, days, notes: absNotes, status: 'pendiente' })
-    if (error) { console.error('[revelio] absence save error:', error.message); return }
+    try {
+      await createAbsenceRequest({ member_id: user.id, type: absType, date_from: from, date_to: to, days, notes: absNotes, status: 'pendiente' })
+    } catch (e) {
+      console.error('[revelio] absence save error:', (e as Error).message)
+      return
+    }
     setSelectedDays(new Set()); setAbsNotes(''); loadData()
   }
 
-  const deleteAbsence = async (id: string) => { await supabase.from('absence_requests').delete().eq('id', id); loadData() }
-  const reviewAbsence = async (id: string, status: 'aprobada' | 'rechazada') => { await supabase.from('absence_requests').update({ status, reviewed_by: user?.id, reviewed_at: new Date().toISOString() }).eq('id', id); setPendingToReview(p => p.filter(a => a.id !== id)) }
+  const deleteAbsence = async (id: string) => { await deleteAbsenceRequest(id); loadData() }
+  const reviewAbsence = async (id: string, status: 'aprobada' | 'rechazada') => { await updateAbsenceRequest(id, { status, reviewed_by: user?.id ?? null, reviewed_at: new Date().toISOString() }); setPendingToReview(p => p.filter(a => a.id !== id)) }
   const reviewRetro = async (e: TimeEntry, ok: boolean) => {
+    if (!e.id || !e.member_id) return
     if (!ok) {
       // Reject — mark as rejected, stays visible to user
-      await supabase.from('time_entries').update({ status: 'rejected' }).eq('id', e.id)
+      await updateTimeEntry(e.id, { status: 'rejected' })
     } else {
       // Approve: distribute hours across projects, mark original as approved
-      const { data: org } = await supabase.from('org_chart').select('sala, dedication, start_date, end_date').eq('member_id', e.member_id)
+      const org = await fetchOrgChartByMember(e.member_id)
       const today = e.date
-      const active = ((org || []) as Array<{ sala: string; dedication: number; start_date?: string; end_date?: string }>)
-        .filter(o => { const s = o.start_date || '2000-01-01'; const en = o.end_date || '2099-12-31'; return today >= s && today <= en && o.dedication > 0 })
+      const active = org
+        .filter(o => {
+          const s = o.start_date || '2000-01-01'
+          const en = o.end_date || '2099-12-31'
+          return today >= s && today <= en && (o.dedication ?? 0) > 0
+        })
       let distributed = 0
       for (const o of active) {
-        const h = Math.round(o.dedication * e.hours * 100) / 100
+        const h = Math.round((o.dedication ?? 0) * e.hours * 100) / 100
         distributed += h
-        await supabase.from('time_entries').insert(
-          { member_id: e.member_id, sala: o.sala, date: e.date, hours: h, category: 'productivo', auto_distributed: true, status: 'approved' }
-        )
+        await createTimeEntry({ member_id: e.member_id, sala: o.sala, date: e.date, hours: h, category: 'productivo', auto_distributed: true, status: 'approved' })
       }
       const remainder = Math.round((e.hours - distributed) * 100) / 100
       if (remainder > 0.01) {
-        await supabase.from('time_entries').insert({ member_id: e.member_id, sala: '_sin_asignar', date: e.date, hours: remainder, category: 'no_asignado', auto_distributed: true, status: 'approved' })
+        await createTimeEntry({ member_id: e.member_id, sala: '_sin_asignar', date: e.date, hours: remainder, category: 'no_asignado', auto_distributed: true, status: 'approved' })
       }
       if (active.length === 0) {
-        await supabase.from('time_entries').insert({ member_id: e.member_id, sala: '_sin_asignar', date: e.date, hours: e.hours, category: 'no_asignado', auto_distributed: true, status: 'approved' })
+        await createTimeEntry({ member_id: e.member_id, sala: '_sin_asignar', date: e.date, hours: e.hours, category: 'no_asignado', auto_distributed: true, status: 'approved' })
       }
       // Mark original _pendiente entry as approved (keeps record for user notifications)
-      await supabase.from('time_entries').update({ status: 'approved' }).eq('id', e.id)
+      await updateTimeEntry(e.id, { status: 'approved' })
     }
     setPendingRetro(p => p.filter(x => x.id !== e.id))
   }
@@ -255,8 +280,8 @@ export function TimeTracker() {
   const [carryover, setCarryover] = useState(0)
   useEffect(() => {
     if (!user?.id) return
-    supabase.from('team_members').select('vacation_carryover').eq('id', user.id).single().then(({ data }) => {
-      setCarryover(Number((data as Record<string, unknown>)?.vacation_carryover) || 0)
+    fetchMemberById(user.id).then(member => {
+      setCarryover(Number((member as Record<string, unknown> | null)?.vacation_carryover) || 0)
     })
   }, [user?.id])
 

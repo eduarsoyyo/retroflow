@@ -24,6 +24,8 @@ export interface TimeEntriesFilter {
   sala?: string
   /** Filter by member id. Optional. */
   memberId?: string
+  /** Filter by multiple member ids (uses .in). Optional. */
+  memberIds?: string[]
   /** Inclusive lower bound for `date` (yyyy-mm-dd). Optional. */
   dateFrom?: string
   /** Inclusive upper bound for `date` (yyyy-mm-dd). Optional. */
@@ -48,6 +50,9 @@ export async function fetchTimeEntries(filter: TimeEntriesFilter = {}): Promise<
 
   if (filter.sala) query = query.eq('sala', filter.sala)
   if (filter.memberId) query = query.eq('member_id', filter.memberId)
+  if (filter.memberIds && filter.memberIds.length > 0) {
+    query = query.in('member_id', filter.memberIds)
+  }
 
   // Resolve year shortcut (only if no explicit dateFrom/dateTo).
   let dateFrom = filter.dateFrom
@@ -114,5 +119,45 @@ export async function createTimeEntry(
   entry: Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>,
 ): Promise<void> {
   const { error } = await supabase.from('time_entries').insert(entry)
+  if (error) handleSupabaseError(error)
+}
+
+
+/**
+ * Update fields on a time_entry by id.
+ *
+ * Typical patches: { status: 'approved' | 'rejected' }, mostly used
+ * by approval flows in TimeTracker.
+ */
+export async function updateTimeEntry(
+  id: string,
+  patch: Partial<Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>>,
+): Promise<void> {
+  const { error } = await supabase.from('time_entries').update(patch).eq('id', id)
+  if (error) handleSupabaseError(error)
+}
+
+/**
+ * Delete time_entries matching a (memberId, date, sala) tuple.
+ *
+ * Used by retro fichaje flow where a user re-submits hours for a day
+ * and we need to clean previous pending/rejected rows for the same
+ * member-day-sala combination before inserting the new one.
+ *
+ * If sala is omitted, deletes ALL entries for that member-day across
+ * salas — be careful, this is destructive. Caller decides.
+ */
+export async function deleteTimeEntries(filter: {
+  memberId: string
+  date: string
+  sala?: string
+}): Promise<void> {
+  let query = supabase
+    .from('time_entries')
+    .delete()
+    .eq('member_id', filter.memberId)
+    .eq('date', filter.date)
+  if (filter.sala) query = query.eq('sala', filter.sala)
+  const { error } = await query
   if (error) handleSupabaseError(error)
 }

@@ -86,3 +86,34 @@ export async function deleteMember(id: string): Promise<void> {
   const { error } = await supabase.from('team_members').delete().eq('id', id)
   if (error) handleSupabaseError(error)
 }
+
+
+/**
+ * Fetch a single team_member by id, returning the full row.
+ * Returns null if no row matches (uses maybeSingle, not single).
+ *
+ * Used by panels that need profile fields outside the bulk fetch
+ * (e.g., TimeTracker reading own vacation_carryover, calendario_id).
+ */
+export async function fetchMemberById(id: string): Promise<Member | null> {
+  const { data, error } = await supabase.from('team_members').select('*').eq('id', id).maybeSingle()
+  if (error) handleSupabaseError(error)
+  return (data as Member | null) ?? null
+}
+
+/**
+ * Fetch the slim list of members managed by a given responsable.
+ * Returns only `id` (caller usually only needs the IDs to query
+ * downstream tables filtered by member_id IN (...)).
+ *
+ * Used by TimeTracker / approval flows where the manager loads pending
+ * items only for direct reports.
+ */
+export async function fetchManagedMembers(responsableId: string): Promise<Array<{ id: string }>> {
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('id')
+    .eq('responsable_id', responsableId)
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as Array<{ id: string }>
+}

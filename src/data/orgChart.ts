@@ -127,3 +127,20 @@ export async function deleteOrgChartByMember(memberId: string): Promise<void> {
     .eq('member_id', memberId)
   if (error) handleSupabaseError(error)
 }
+
+
+/**
+ * Fetch all org_chart rows for a single member across every sala.
+ *
+ * Used by approval flows that need to know the member's current
+ * project distribution to compute hour distribution (TimeTracker
+ * approving a retro fichaje proportionally by dedication %).
+ */
+export async function fetchOrgChartByMember(memberId: string): Promise<OrgChartEntry[]> {
+  const { data, error } = await supabase
+    .from('org_chart')
+    .select(COLS)
+    .eq('member_id', memberId)
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as OrgChartEntry[]
+}

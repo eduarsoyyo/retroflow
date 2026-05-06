@@ -35,3 +35,17 @@ export async function fetchCalendariosIndexed(): Promise<Record<string, Calendar
   const all = await fetchCalendarios()
   return indexCalendarios(all)
 }
+
+
+/**
+ * Fetch a single calendario by id.
+ * Returns null if no row matches.
+ *
+ * Used by TimeTracker which loads only the calendar attached to the
+ * current user's profile, not all calendars.
+ */
+export async function fetchCalendarioById(id: string): Promise<Calendario | null> {
+  const { data, error } = await supabase.from('calendarios').select('*').eq('id', id).maybeSingle()
+  if (error) handleSupabaseError(error)
+  return (data as Calendario | null) ?? null
+}
