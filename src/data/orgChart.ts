@@ -39,3 +39,57 @@ export async function fetchOrgChartBySalas(salas: string[]): Promise<Record<stri
   }
   return grouped
 }
+
+/**
+ * Load all org_chart rows across every sala.
+ *
+ * Used by admin panels that need a global view of project assignments
+ * (e.g. ProjectsPanel cross-checks who is assigned where). For
+ * sala-specific reads, prefer `fetchOrgChartBySala` to reduce payload.
+ */
+export async function fetchAllOrgChart(): Promise<OrgChartEntry[]> {
+  const { data, error } = await supabase.from('org_chart').select(COLS)
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as OrgChartEntry[]
+}
+
+/**
+ * Insert a new org_chart row (member assignment to a sala) and return
+ * the inserted row with its DB-generated id.
+ *
+ * `dedication` is stored as a 0..1 fraction (1 = full time); callers
+ * with percent-based UIs must divide by 100 before calling.
+ */
+export async function createOrgChartEntry(
+  entry: Omit<OrgChartEntry, 'id'>,
+): Promise<OrgChartEntry> {
+  const { data, error } = await supabase
+    .from('org_chart')
+    .insert(entry)
+    .select(COLS)
+    .single()
+  if (error) handleSupabaseError(error)
+  return data as OrgChartEntry
+}
+
+/**
+ * Update fields on an existing org_chart row identified by `id`.
+ * Returns the updated row so callers can reflect server-side state.
+ *
+ * Typical patches: dedication, start_date, end_date. Member and sala
+ * shouldn't change — to move someone, delete the entry and create a
+ * new one in the destination sala.
+ */
+export async function updateOrgChartEntry(
+  id: string,
+  patch: Partial<Omit<OrgChartEntry, 'id'>>,
+): Promise<OrgChartEntry> {
+  const { data, error } = await supabase
+    .from('org_chart')
+    .update(patch)
+    .eq('id', id)
+    .select(COLS)
+    .single()
+  if (error) handleSupabaseError(error)
+  return data as OrgChartEntry
+}

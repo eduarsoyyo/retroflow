@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Edit, Trash2, ExternalLink, Users, DollarSign, Calendar, X, Upload, Download, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/data/supabase'
 import { fetchClientes } from '@/data/clientes'
+import { fetchRooms, createRoom, updateRoom, deleteRoom } from '@/data/rooms'
+import { fetchTeamMembers } from '@/data/team'
+import { fetchAllOrgChart, createOrgChartEntry, updateOrgChartEntry } from '@/data/orgChart'
+import { fetchActiveRetros, createInitialRetro } from '@/data/retros'
+import { fetchCalendarios } from '@/data/calendarios'
+import { fetchApprovedAbsences } from '@/data/absences'
 import {
   saleFromServiceContract, totalSaleFromServices, totalEstCostFromServices,
   avgMarginFromServices, memberCostHour, memberProjectCost,
@@ -64,25 +69,29 @@ export function ProjectsPanel() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('rooms').select('*').order('name'),
-      supabase.from('team_members').select('*').order('name'),
-      supabase.from('org_chart').select('*'),
-      supabase.from('retros').select('sala, data').eq('status', 'active'),
-      supabase.from('calendarios').select('*'),
-      supabase.from('absence_requests').select('member_id, type, date_from, date_to, days, status'),
+      fetchRooms(),
+      fetchTeamMembers(),
+      fetchAllOrgChart(),
+      fetchActiveRetros(),
+      fetchCalendarios(),
+      fetchApprovedAbsences(),
       fetchClientes(),
-    ]).then(([rR, mR, oR, retR, cR, aR, clientesData]) => {
-      if (rR.data) setRooms(rR.data)
-      if (mR.data) setMembers(mR.data)
-      if (oR.data) setOrgChart(oR.data as OrgEntry[])
-      if (cR.data) setCalendarios(cR.data as CalendarData[])
-      if (aR.data) setAbsenceDatas(aR.data as AbsenceData[])
+    ]).then(([roomsData, membersData, orgData, retrosData, calsData, absData, clientesData]) => {
+      setRooms(roomsData)
+      setMembers(membersData)
+      setOrgChart(orgData as OrgEntry[])
+      setCalendarios(calsData as CalendarData[])
+      setAbsenceDatas(absData as AbsenceData[])
       setClientes(clientesData)
       const stats: Record<string, { actions: number; done: number; risks: number }> = {}
-      ;(retR.data || []).forEach((r: { sala: string; data: Record<string, unknown> }) => {
-        const d = r.data || {}; const acts = ((d.actions || []) as Array<Record<string, unknown>>).filter(a => a.status !== 'discarded' && a.status !== 'cancelled')
+      retrosData.forEach((r) => {
+        const d = (r.data || {}) as Record<string, unknown>
+        const acts = ((d.actions || []) as Array<Record<string, unknown>>).filter(a => a.status !== 'discarded' && a.status !== 'cancelled')
         stats[r.sala] = { actions: acts.length, done: acts.filter(a => a.status === 'done' || a.status === 'archived').length, risks: ((d.risks || []) as Array<Record<string, unknown>>).filter(ri => ri.status !== 'mitigated').length }
       })
+      // stats was historically computed but never persisted to state.
+      // Preserved as-is to avoid changing behaviour during 4.2a refactor.
+      void stats
       setLoading(false)
     })
   }, [])
@@ -150,29 +159,60 @@ export function ProjectsPanel() {
     }
     if (modal === 'create') {
       const slug = form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      const { data, error } = await supabase.from('rooms').insert({ ...payload, slug }).select().single()
-      if (error) { console.error('[revelio] create error:', error.message); alert('Error: ' + error.message); setSaving(false); return }
-      if (data) { setRooms(prev => [...prev, data]); soundCreate() }
-      await supabase.from('retros').insert({ sala: slug, data: { actions: [], risks: [], notes: [], positives: [] }, status: 'active' })
-    } else if (editRoom) {
-      const { data } = await supabase.from('rooms').update(payload).eq('slug', editRoom.slug).select().single()
-      if (data) setRooms(prev => prev.map(r => r.slug === editRoom.slug ? data : r))
-      for (const oe of orgEdits) {
-        const existing = orgChart.find(o => o.member_id === oe.member_id && o.sala === oe.sala)
-        if (existing?.id) await supabase.from('org_chart').update({ dedication: oe.dedication / 100, start_date: oe.start_date || null, end_date: oe.end_date || null }).eq('id', existing.id)
-        else await supabase.from('org_chart').insert({ member_id: oe.member_id, sala: oe.sala, dedication: oe.dedication / 100, start_date: oe.start_date || null, end_date: oe.end_date || null })
+      try {
+        const created = await createRoom({ ...payload, slug } as Parameters<typeof createRoom>[0])
+        setRooms(prev => [...prev, created])
+        soundCreate()
+        await createInitialRetro(slug)
+      } catch (e) {
+        const msg = (e as Error).message
+        console.error('[revelio] create error:', msg)
+        alert('Error: ' + msg)
+        setSaving(false)
+        return
       }
-      const { data: newOrg } = await supabase.from('org_chart').select('*')
-      if (newOrg) setOrgChart(newOrg as OrgEntry[])
-      soundCreate()
+    } else if (editRoom) {
+      try {
+        const updated = await updateRoom(editRoom.slug, payload as Parameters<typeof updateRoom>[1])
+        setRooms(prev => prev.map(r => r.slug === editRoom.slug ? updated : r))
+        for (const oe of orgEdits) {
+          const existing = orgChart.find(o => o.member_id === oe.member_id && o.sala === oe.sala)
+          const patch = {
+            dedication: oe.dedication / 100,
+            start_date: oe.start_date || undefined,
+            end_date: oe.end_date || undefined,
+          }
+          if (existing?.id) {
+            await updateOrgChartEntry(existing.id, patch)
+          } else {
+            await createOrgChartEntry({
+              sala: oe.sala,
+              member_id: oe.member_id,
+              manager_id: null,
+              ...patch,
+            })
+          }
+        }
+        const newOrg = await fetchAllOrgChart()
+        setOrgChart(newOrg as OrgEntry[])
+        soundCreate()
+      } catch (e) {
+        console.error('[revelio] update error:', (e as Error).message)
+        alert('Error: ' + (e as Error).message)
+        setSaving(false)
+        return
+      }
     }
     setSaving(false); setModal(null)
   }
 
   const handleDelete = async () => {
     if (!deleteTarget || deleteConfirm !== deleteTarget.name) return
-    await supabase.from('rooms').delete().eq('slug', deleteTarget.slug)
-    setRooms(prev => prev.filter(r => r.slug !== deleteTarget.slug)); setDeleteTarget(null); setDeleteConfirm(''); soundDelete()
+    await deleteRoom(deleteTarget.slug)
+    setRooms(prev => prev.filter(r => r.slug !== deleteTarget.slug))
+    setDeleteTarget(null)
+    setDeleteConfirm('')
+    soundDelete()
   }
 
   const projMembers = editRoom ? members.filter(m => (m.rooms || []).includes(editRoom.slug)) : []
@@ -202,13 +242,34 @@ export function ProjectsPanel() {
         const svName = String(row['servicio_nombre'] || name)
         const services: ServiceContract[] = svCost > 0 ? [{ id: uid(), name: svName, from: startDate, to: endDate, cost: svCost, margin_pct: svMargin, risk_pct: svRisk }] : []
         const totalSale = totalSaleFromServices(services)
-        const { error } = await supabase.from('rooms').insert({ slug, name, tipo: String(row['tipo'] || 'agile'), status: 'active', start_date: startDate || null, end_date: endDate || null, services, budget: svCost, fixed_price: totalSale, target_margin: svMargin, billing_type: 'fixed', sell_rate: 0, planned_hours: 0, risk_pct: svRisk, cost_profiles: [], member_sell_rates: [] })
-        if (error) { errors.push(`${name}: ${error.message}`); continue }
-        await supabase.from('retros').insert({ sala: slug, data: { actions: [], risks: [], notes: [], positives: [] }, status: 'active' })
-        created++
+        try {
+          await createRoom({
+            slug, name,
+            tipo: String(row['tipo'] || 'agile') as Room['tipo'],
+            status: 'active',
+            start_date: startDate || undefined,
+            end_date: endDate || undefined,
+            services,
+            budget: svCost,
+            fixed_price: totalSale,
+            target_margin: svMargin,
+            billing_type: 'fixed',
+            sell_rate: 0,
+            planned_hours: 0,
+            risk_pct: svRisk,
+            cost_profiles: [],
+            member_sell_rates: [],
+          } as Parameters<typeof createRoom>[0])
+          await createInitialRetro(slug)
+          created++
+        } catch (e) {
+          errors.push(`${name}: ${(e as Error).message}`)
+          continue
+        }
       }
       setImportProjectResult(`${created} creados${errors.length ? `. Errores: ${errors.join('; ')}` : ''}`)
-      const { data } = await supabase.from('rooms').select('*').order('name'); if (data) setRooms(data)
+      const refreshed = await fetchRooms()
+      setRooms(refreshed)
     } catch (e) { setImportProjectResult(`Error: ${(e as Error).message}`) }
     setImportingProjects(false)
   }
