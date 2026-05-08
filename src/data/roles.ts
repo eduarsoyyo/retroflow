@@ -48,3 +48,63 @@ export async function fetchAdminRoles(): Promise<string[]> {
 
   return []
 }
+
+
+/**
+ * Slim shape for admin role rows when callers need the full row
+ * (e.g. RolesPanel for CRUD), not just the names list returned by
+ * `fetchAdminRoles`.
+ */
+export interface AdminRoleRow {
+  id?: string
+  name: string
+}
+
+/**
+ * Fetch all admin_roles rows ordered by name. Returns the raw rows
+ * (not just names) for management panels that need to render, edit
+ * and delete each role individually.
+ *
+ * For dropdowns/selects that just need the list of names, prefer
+ * `fetchAdminRoles` (returns string[] with legacy fallback).
+ */
+export async function fetchAdminRolesFull(): Promise<AdminRoleRow[]> {
+  const { data, error } = await supabase.from('admin_roles').select('*').order('name')
+  if (error) handleSupabaseError(error)
+  return (data ?? []) as AdminRoleRow[]
+}
+
+/**
+ * Insert a new admin_role row by name. Caller is responsible for
+ * uniqueness validation client-side; the DB unique constraint on
+ * `name` will throw if the row already exists.
+ */
+export async function createAdminRole(name: string): Promise<void> {
+  const { error } = await supabase.from('admin_roles').insert({ name })
+  if (error) handleSupabaseError(error)
+}
+
+/**
+ * Rename an admin_role identified by old name. Note: this only
+ * updates the admin_roles row. The cascade to team_members.role_label
+ * (which stores the label as a denormalised string) must be done
+ * separately via `updateMembersByRoleLabel(oldName, newName)`.
+ */
+export async function renameAdminRole(oldName: string, newName: string): Promise<void> {
+  const { error } = await supabase
+    .from('admin_roles')
+    .update({ name: newName })
+    .eq('name', oldName)
+  if (error) handleSupabaseError(error)
+}
+
+/**
+ * Delete an admin_role by name. Note: this does NOT cascade to
+ * team_members.role_label. Callers must follow up with
+ * `updateMembersByRoleLabel(name, '')` to clear the label from
+ * affected members.
+ */
+export async function deleteAdminRole(name: string): Promise<void> {
+  const { error } = await supabase.from('admin_roles').delete().eq('name', name)
+  if (error) handleSupabaseError(error)
+}

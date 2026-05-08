@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Plus, ChevronDown, ChevronRight, X, Pencil, Trash2 } from 'lucide-react'
-import { supabase } from '@/data/supabase'
+import { fetchTeamMembers, updateMember, updateMembersByRoleLabel } from '@/data/team'
+import { fetchAdminRolesFull, createAdminRole, renameAdminRole, deleteAdminRole } from '@/data/roles'
 import type { Member } from '@/types'
 
 const ROLE_COLORS: Record<string, string> = { 'Service Manager': '#FF3B30', 'Jefe de proyecto': '#FF9500', 'Scrum Master': '#007AFF', 'Product Owner': '#5856D6', 'Consultor': '#34C759', 'Analista Funcional': '#AF52DE', 'Desarrollador/a': '#00C7BE', 'QA / Tester': '#FF2D55', 'DevOps': '#5AC8FA', 'Tech Lead': '#FF6482' }
@@ -20,11 +21,11 @@ export function RolesPanel() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('team_members').select('*').order('name'),
-      supabase.from('admin_roles').select('*').order('name'),
-    ]).then(([mR, rR]) => {
-      if (mR.data) setMembers(mR.data)
-      if (rR.data) setRoles(rR.data.map((r: Record<string, unknown>) => String(r.name || r.label || '')).filter(Boolean))
+      fetchTeamMembers(),
+      fetchAdminRolesFull(),
+    ]).then(([membersData, rolesData]) => {
+      setMembers(membersData)
+      setRoles(rolesData.map(r => r.name).filter(Boolean))
       setLoading(false)
     })
   }, [])
@@ -36,20 +37,20 @@ export function RolesPanel() {
   const handleAddRole = async () => {
     const t = newRole.trim()
     if (!t || allRoleNames.includes(t)) return
-    await supabase.from('admin_roles').insert({ name: t })
+    await createAdminRole(t)
     setRoles(prev => [...prev, t]); setNewRole('')
   }
 
   const handleAssignRole = async (memberId: string, role: string) => {
     setSaving(memberId)
-    await supabase.from('team_members').update({ role_label: role }).eq('id', memberId)
+    await updateMember(memberId, { role_label: role })
     setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role_label: role } : m))
     setSaving(null)
   }
 
   const handleUnassignRole = async (memberId: string) => {
     setSaving(memberId)
-    await supabase.from('team_members').update({ role_label: '' }).eq('id', memberId)
+    await updateMember(memberId, { role_label: '' })
     setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role_label: '' } : m))
     setSaving(null)
   }
@@ -58,9 +59,9 @@ export function RolesPanel() {
     const newName = editName.trim()
     if (!newName || newName === oldName) { setEditingRole(null); return }
     // Rename in admin_roles
-    await supabase.from('admin_roles').update({ name: newName }).eq('name', oldName)
+    await renameAdminRole(oldName, newName)
     // Update all team_members with this role
-    await supabase.from('team_members').update({ role_label: newName }).eq('role_label', oldName)
+    await updateMembersByRoleLabel(oldName, newName)
     setRoles(prev => prev.map(r => r === oldName ? newName : r))
     setMembers(prev => prev.map(m => m.role_label === oldName ? { ...m, role_label: newName } : m))
     setEditingRole(null); setEditName('')
@@ -68,9 +69,9 @@ export function RolesPanel() {
 
   const handleDeleteRole = async (name: string) => {
     // Remove from admin_roles
-    await supabase.from('admin_roles').delete().eq('name', name)
+    await deleteAdminRole(name)
     // Clear role from all members with this role
-    await supabase.from('team_members').update({ role_label: '' }).eq('role_label', name)
+    await updateMembersByRoleLabel(name, '')
     setRoles(prev => prev.filter(r => r !== name))
     setMembers(prev => prev.map(m => m.role_label === name ? { ...m, role_label: '' } : m))
     setConfirmDelete(null); setDeleteInput('')

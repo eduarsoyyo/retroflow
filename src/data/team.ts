@@ -117,3 +117,24 @@ export async function fetchManagedMembers(responsableId: string): Promise<Array<
   if (error) handleSupabaseError(error)
   return (data ?? []) as Array<{ id: string }>
 }
+
+
+/**
+ * Bulk-update `role_label` for every team_member that currently has
+ * `oldLabel` as their role. Used when renaming or deleting a role:
+ *   - rename: `updateMembersByRoleLabel('oldName', 'newName')`
+ *   - delete: `updateMembersByRoleLabel('name', '')`
+ *
+ * Atomic at the DB level (single UPDATE...WHERE), so no risk of
+ * partial state if the caller is interrupted.
+ */
+export async function updateMembersByRoleLabel(
+  oldLabel: string,
+  newLabel: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('team_members')
+    .update({ role_label: newLabel })
+    .eq('role_label', oldLabel)
+  if (error) handleSupabaseError(error)
+}
