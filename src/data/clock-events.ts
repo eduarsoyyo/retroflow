@@ -39,3 +39,18 @@ export async function fetchClockEventsByMember(
   if (error) handleSupabaseError(error)
   return (data ?? []) as ClockEventLite[]
 }
+
+
+/**
+ * Insert a new clock_event row.
+ *
+ * Used by ClockWidget to log start/pause/resume/stop events as the
+ * user clocks in/out throughout the day. The DB generates the
+ * timestamp via DEFAULT now().
+ */
+export async function createClockEvent(
+  event: { member_id: string; date: string; event: string },
+): Promise<void> {
+  const { error } = await supabase.from('clock_events').insert(event)
+  if (error) handleSupabaseError(error)
+}

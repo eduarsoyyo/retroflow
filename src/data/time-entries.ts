@@ -161,3 +161,26 @@ export async function deleteTimeEntries(filter: {
   const { error } = await query
   if (error) handleSupabaseError(error)
 }
+
+
+/**
+ * Upsert a time_entry row — insert if (member_id, sala, date) doesn't exist,
+ * update otherwise. Atomic at the DB level.
+ *
+ * Used by ClockWidget when stopping the clock: it (re)distributes the day's
+ * hours across active projects, and a previous entry for the same
+ * member-sala-day must be overwritten with the new total.
+ *
+ * `onConflict` defaults to 'member_id,sala,date' which matches the unique
+ * index used by the clock distribution flow. Pass a different key only if
+ * you have a custom unique constraint on the table.
+ */
+export async function upsertTimeEntry(
+  entry: Omit<TimeEntry, 'id' | 'created_at' | 'updated_at'>,
+  onConflict: string = 'member_id,sala,date',
+): Promise<void> {
+  const { error } = await supabase
+    .from('time_entries')
+    .upsert(entry, { onConflict })
+  if (error) handleSupabaseError(error)
+}

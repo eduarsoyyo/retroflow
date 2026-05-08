@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Pause, Square, Timer, ArrowUpDown } from 'lucide-react'
-import { supabase } from '@/data/supabase'
+import { fetchMemberById } from '@/data/team'
+import { fetchCalendarioById } from '@/data/calendarios'
+import { fetchTimeEntries, createTimeEntry, upsertTimeEntry } from '@/data/time-entries'
+import { fetchOrgChartByMember } from '@/data/orgChart'
+import { createClockEvent } from '@/data/clock-events'
 import { soundComplete } from '@/lib/sounds'
 
 interface ClockWidgetProps { userId?: string }
@@ -26,12 +30,14 @@ export function ClockWidget({ userId }: ClockWidgetProps) {
   // Load target + already filed
   useEffect(() => {
     if (!userId) return
-    supabase.from('team_members').select('calendario_id').eq('id', userId).single().then(({ data }) => {
-      const calId = (data as Record<string, unknown>)?.calendario_id as string
+    fetchMemberById(userId).then(member => {
+      const calId = (member as Record<string, unknown> | null)?.calendario_id as string
       if (!calId) { setTargetSecs(8.5 * 3600); return }
-      supabase.from('calendarios').select('daily_hours_lj, daily_hours_v, daily_hours_intensive, intensive_start, intensive_end').eq('id', calId).single().then(({ data: cal }) => {
+      fetchCalendarioById(calId).then(cal => {
         if (!cal) { setTargetSecs(8.5 * 3600); return }
-        const c = cal as Record<string, unknown>; const dow = new Date().getDay(); const mmdd = new Date().toISOString().slice(5, 10)
+        const c = cal as unknown as Record<string, unknown>
+        const dow = new Date().getDay()
+        const mmdd = new Date().toISOString().slice(5, 10)
         let h = Number(c.daily_hours_lj) || 8.5
         if (dow === 5) h = Number(c.daily_hours_v) || 6
         if (dow === 0 || dow === 6) h = 0
@@ -39,8 +45,8 @@ export function ClockWidget({ userId }: ClockWidgetProps) {
         setTargetSecs(Math.round(h * 3600))
       })
     })
-    supabase.from('time_entries').select('hours').eq('member_id', userId).eq('date', today).then(({ data }) => {
-      setFiledSecs(Math.round((data || []).reduce((s: number, e: { hours: number }) => s + e.hours, 0) * 3600))
+    fetchTimeEntries({ memberId: userId, dateFrom: today, dateTo: today }).then(entries => {
+      setFiledSecs(Math.round(entries.reduce((s, e) => s + (e.hours || 0), 0) * 3600))
     })
     // Restore
     const saved = localStorage.getItem('revelio-clock')
@@ -69,7 +75,14 @@ export function ClockWidget({ userId }: ClockWidgetProps) {
     return () => window.removeEventListener('revelio-clock-start', handler)
   }, [userId])
 
-  const logEvent = async (event: string) => { if (userId) { const { error } = await supabase.from('clock_events').insert({ member_id: userId, date: today, event }); if (error) console.error('[revelio] clock event error:', error.message) } }
+  const logEvent = async (event: string) => {
+    if (!userId) return
+    try {
+      await createClockEvent({ member_id: userId, date: today, event })
+    } catch (e) {
+      console.error('[revelio] clock event error:', (e as Error).message)
+    }
+  }
 
   const handlePlay = () => { if (elapsed === 0) logEvent('start'); else logEvent('resume'); setRunning(true); persist(true, baseRef.current, mode) }
   const handlePause = () => { const now = Math.floor(Date.now() / 1000); baseRef.current += now - (startRef.current || now); setElapsed(baseRef.current); setRunning(false); logEvent('pause'); persist(false, baseRef.current, mode) }
@@ -80,21 +93,27 @@ export function ClockWidget({ userId }: ClockWidgetProps) {
     setRunning(false); const hours = Math.round((secs / 3600) * 100) / 100
     await logEvent('stop')
     if (hours > 0 && userId) {
-      const { data: org } = await supabase.from('org_chart').select('sala, dedication, start_date, end_date').eq('member_id', userId)
-      const allEntries = (org || []) as Array<{ sala: string; dedication: number; start_date?: string; end_date?: string }>
-      const active = allEntries.filter(e => { const s = e.start_date || '2000-01-01'; const en = e.end_date || '2099-12-31'; return today >= s && today <= en && e.dedication > 0 })
+      const allEntries = await fetchOrgChartByMember(userId)
+      const active = allEntries.filter(e => {
+        const s = e.start_date || '2000-01-01'
+        const en = e.end_date || '2099-12-31'
+        return today >= s && today <= en && (e.dedication ?? 0) > 0
+      })
       let distributed = 0
       for (const e of active) {
-        const h = Math.round(e.dedication * hours * 100) / 100
+        const h = Math.round((e.dedication ?? 0) * hours * 100) / 100
         distributed += h
-        await supabase.from('time_entries').upsert({ member_id: userId, sala: e.sala, date: today, hours: h, category: 'productivo', description: '', auto_distributed: true }, { onConflict: 'member_id,sala,date' })
+        await upsertTimeEntry({
+          member_id: userId, sala: e.sala, date: today, hours: h,
+          category: 'productivo', description: '', auto_distributed: true,
+        })
       }
       const remainder = Math.round((hours - distributed) * 100) / 100
       if (remainder > 0.01) {
-        await supabase.from('time_entries').insert({ member_id: userId, sala: '_sin_asignar', date: today, hours: remainder, category: 'no_asignado', auto_distributed: true })
+        await createTimeEntry({ member_id: userId, sala: '_sin_asignar', date: today, hours: remainder, category: 'no_asignado', auto_distributed: true })
       }
       if (active.length === 0) {
-        await supabase.from('time_entries').insert({ member_id: userId, sala: '_sin_asignar', date: today, hours, category: 'no_asignado', auto_distributed: true })
+        await createTimeEntry({ member_id: userId, sala: '_sin_asignar', date: today, hours, category: 'no_asignado', auto_distributed: true })
       }
       soundComplete()
     }
