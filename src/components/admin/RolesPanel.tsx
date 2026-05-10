@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { Plus, ChevronDown, ChevronRight, X, Pencil, Trash2 } from 'lucide-react'
 import { fetchTeamMembers, updateMember, updateMembersByRoleLabel } from '@/data/team'
 import { fetchAdminRolesFull, createAdminRole, renameAdminRole, deleteAdminRole } from '@/data/roles'
@@ -6,18 +6,60 @@ import type { Member } from '@/types'
 
 const ROLE_COLORS: Record<string, string> = { 'Service Manager': '#FF3B30', 'Jefe de proyecto': '#FF9500', 'Scrum Master': '#007AFF', 'Product Owner': '#5856D6', 'Consultor': '#34C759', 'Analista Funcional': '#AF52DE', 'Desarrollador/a': '#00C7BE', 'QA / Tester': '#FF2D55', 'DevOps': '#5AC8FA', 'Tech Lead': '#FF6482' }
 
+// ─── Reusable modal shell ─────────────────────────────────────────────────
+// Centralises Escape-key dismissal, overlay-click dismissal, role/aria
+// attributes and outer layout. Body content is provided by caller.
+interface RoleModalProps {
+  titleId: string
+  title: string
+  onClose: () => void
+  children: React.ReactNode
+}
+function RoleModal({ titleId, title, onClose, children }: RoleModalProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 z-[200] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-revelio-dark-card rounded-2xl max-w-sm w-full p-5 shadow-xl"
+      >
+        <h3 id={titleId} className="text-sm font-semibold dark:text-revelio-dark-text mb-3">{title}</h3>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export function RolesPanel() {
   const [members, setMembers] = useState<Member[]>([])
   const [roles, setRoles] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [newRole, setNewRole] = useState('')
   const [expandedRole, setExpandedRole] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
 
-  const [editingRole, setEditingRole] = useState<string | null>(null)
+  // Modal state
+  const [showCreate, setShowCreate] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [editingRole, setEditingRole] = useState<string | null>(null)  // role being renamed (null = closed)
   const [editName, setEditName] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)  // role being deleted (null = closed)
   const [deleteInput, setDeleteInput] = useState('')
+
+  // Refs for autofocus on modal open
+  const createInputRef = useRef<HTMLInputElement>(null)
+  const editInputRef = useRef<HTMLInputElement>(null)
+  const deleteInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     Promise.all([
@@ -34,13 +76,20 @@ export function RolesPanel() {
   const byRole = (role: string) => members.filter(m => m.role_label === role)
   const roleColor = (role: string) => ROLE_COLORS[role] || '#5856D6'
 
-  const handleAddRole = async () => {
-    const t = newRole.trim()
+  // ─── Create role ──────────────────────────────────────────────────────
+  const openCreate = () => { setCreateName(''); setShowCreate(true) }
+  const closeCreate = useCallback(() => { setShowCreate(false); setCreateName('') }, [])
+  useEffect(() => { if (showCreate) setTimeout(() => createInputRef.current?.focus(), 50) }, [showCreate])
+
+  const handleCreateRole = async () => {
+    const t = createName.trim()
     if (!t || allRoleNames.includes(t)) return
     await createAdminRole(t)
-    setRoles(prev => [...prev, t]); setNewRole('')
+    setRoles(prev => [...prev, t])
+    closeCreate()
   }
 
+  // ─── Assign / Unassign (inline buttons within card, no modal) ─────────
   const handleAssignRole = async (memberId: string, role: string) => {
     setSaving(memberId)
     await updateMember(memberId, { role_label: role })
@@ -55,39 +104,58 @@ export function RolesPanel() {
     setSaving(null)
   }
 
-  const handleRenameRole = async (oldName: string) => {
+  // ─── Rename role ──────────────────────────────────────────────────────
+  const openRename = (role: string) => { setEditName(role); setEditingRole(role) }
+  const closeRename = useCallback(() => { setEditingRole(null); setEditName('') }, [])
+  useEffect(() => { if (editingRole) setTimeout(() => editInputRef.current?.focus(), 50) }, [editingRole])
+
+  const handleRenameRole = async () => {
+    const oldName = editingRole
+    if (!oldName) return
     const newName = editName.trim()
-    if (!newName || newName === oldName) { setEditingRole(null); return }
+    if (!newName || newName === oldName) { closeRename(); return }
     // Rename in admin_roles
     await renameAdminRole(oldName, newName)
     // Update all team_members with this role
     await updateMembersByRoleLabel(oldName, newName)
     setRoles(prev => prev.map(r => r === oldName ? newName : r))
     setMembers(prev => prev.map(m => m.role_label === oldName ? { ...m, role_label: newName } : m))
-    setEditingRole(null); setEditName('')
+    closeRename()
   }
 
-  const handleDeleteRole = async (name: string) => {
+  // ─── Delete role ──────────────────────────────────────────────────────
+  const openDelete = (role: string) => { setDeleteInput(''); setConfirmDelete(role) }
+  const closeDelete = useCallback(() => { setConfirmDelete(null); setDeleteInput('') }, [])
+  useEffect(() => { if (confirmDelete) setTimeout(() => deleteInputRef.current?.focus(), 50) }, [confirmDelete])
+
+  const handleDeleteRole = async () => {
+    const name = confirmDelete
+    if (!name) return
+    if (deleteInput !== name) return
     // Remove from admin_roles
     await deleteAdminRole(name)
     // Clear role from all members with this role
     await updateMembersByRoleLabel(name, '')
     setRoles(prev => prev.filter(r => r !== name))
     setMembers(prev => prev.map(m => m.role_label === name ? { ...m, role_label: '' } : m))
-    setConfirmDelete(null); setDeleteInput('')
+    closeDelete()
   }
 
   if (loading) return <div className="text-sm text-revelio-subtle dark:text-revelio-dark-subtle text-center py-10">Cargando roles...</div>
 
   return (
     <div className="max-w-4xl">
-      <h2 className="text-lg font-semibold text-revelio-text dark:text-revelio-dark-text mb-1">Roles y Habilidades</h2>
-      <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle mb-4">{allRoleNames.length} roles · {members.length} personas</p>
-
-      {/* Add role */}
-      <div className="flex gap-2 mb-5">
-        <input value={newRole} onChange={e => setNewRole(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddRole()} placeholder="Nombre del nuevo rol..." className="flex-1 rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-sm outline-none focus:border-revelio-blue dark:bg-revelio-dark-bg dark:text-revelio-dark-text" />
-        <button onClick={handleAddRole} disabled={!newRole.trim()} className="px-4 py-2 rounded-lg bg-revelio-text text-white text-xs font-medium disabled:opacity-30 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Añadir</button>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-revelio-text dark:text-revelio-dark-text mb-1">Roles y Habilidades</h2>
+          <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle">{allRoleNames.length} roles · {members.length} personas</p>
+        </div>
+        <button
+          onClick={openCreate}
+          className="px-4 py-2 rounded-lg bg-revelio-blue text-white text-xs font-medium flex items-center gap-1 hover:opacity-90"
+        >
+          <Plus className="w-3.5 h-3.5" /> Nuevo rol
+        </button>
       </div>
 
       {/* Role cards */}
@@ -113,33 +181,12 @@ export function RolesPanel() {
 
               {isExp && (
                 <div className="border-t border-revelio-border dark:border-revelio-dark-border px-4 py-3">
-                  {/* Edit / Delete actions */}
-                  <div className="flex gap-2 mb-3">
-                    {editingRole === role ? (
-                      <div className="flex gap-1 flex-1">
-                        <input value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleRenameRole(role)} className="flex-1 rounded-lg border border-revelio-border dark:border-revelio-dark-border px-2 py-1 text-xs outline-none dark:bg-revelio-dark-bg dark:text-revelio-dark-text" autoFocus />
-                        <button onClick={() => handleRenameRole(role)} className="px-2 py-1 rounded-lg bg-revelio-blue text-white text-[10px] font-semibold">Guardar</button>
-                        <button onClick={() => setEditingRole(null)} className="text-[10px] text-revelio-subtle">Cancelar</button>
-                      </div>
-                    ) : (
-                      <>
-                        <button onClick={() => { setEditingRole(role); setEditName(role) }} className="flex items-center gap-1 text-[10px] text-revelio-blue hover:underline"><Pencil className="w-2.5 h-2.5" /> Renombrar</button>
-                        <button onClick={() => { setConfirmDelete(role); setDeleteInput('') }} className="flex items-center gap-1 text-[10px] text-revelio-red hover:underline"><Trash2 className="w-2.5 h-2.5" /> Eliminar</button>
-                      </>
-                    )}
+                  {/* Edit / Delete buttons (open modals) */}
+                  <div className="flex gap-3 mb-3">
+                    <button onClick={() => openRename(role)} className="flex items-center gap-1 text-[10px] text-revelio-blue hover:underline"><Pencil className="w-2.5 h-2.5" /> Renombrar</button>
+                    <button onClick={() => openDelete(role)} className="flex items-center gap-1 text-[10px] text-revelio-red hover:underline"><Trash2 className="w-2.5 h-2.5" /> Eliminar</button>
                   </div>
-                  {/* Confirm delete */}
-                  {confirmDelete === role && (
-                    <div className="bg-revelio-red/5 border border-revelio-red/20 rounded-lg p-3 mb-3">
-                      <p className="text-[10px] text-revelio-red font-semibold mb-1">Escribe "{role}" para confirmar la eliminación</p>
-                      <p className="text-[9px] text-revelio-subtle mb-2">Se desasignará el rol de {mems.length} persona{mems.length !== 1 ? 's' : ''}.</p>
-                      <div className="flex gap-1">
-                        <input value={deleteInput} onChange={e => setDeleteInput(e.target.value)} className="flex-1 rounded-lg border border-revelio-red/30 px-2 py-1 text-xs outline-none" placeholder={role} />
-                        <button onClick={() => handleDeleteRole(role)} disabled={deleteInput !== role} className="px-2 py-1 rounded-lg bg-revelio-red text-white text-[10px] font-semibold disabled:opacity-30">Eliminar</button>
-                        <button onClick={() => setConfirmDelete(null)} className="text-[10px] text-revelio-subtle">Cancelar</button>
-                      </div>
-                    </div>
-                  )}
+
                   {/* Assigned */}
                   {mems.length > 0 && (
                     <div className="mb-3">
@@ -148,7 +195,14 @@ export function RolesPanel() {
                         <div key={m.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg mb-1" style={{ background: color + '08' }}>
                           <div className="w-5 h-5 rounded flex items-center justify-center text-xs" style={{ background: m.color || '#007AFF' }}>{m.avatar || '👤'}</div>
                           <span className="text-xs font-medium flex-1">{m.name}</span>
-                          <button onClick={() => handleUnassignRole(m.id)} disabled={saving === m.id} className="text-revelio-subtle dark:text-revelio-dark-subtle hover:text-revelio-red disabled:opacity-30"><X className="w-3 h-3" /></button>
+                          <button
+                            onClick={() => handleUnassignRole(m.id)}
+                            disabled={saving === m.id}
+                            aria-label={`Quitar rol de ${m.name}`}
+                            className="text-revelio-subtle dark:text-revelio-dark-subtle hover:text-revelio-red disabled:opacity-30"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -173,6 +227,104 @@ export function RolesPanel() {
           )
         })}
       </div>
+
+      {/* ─── Create role modal ─────────────────────────────────────────── */}
+      {showCreate && (
+        <RoleModal titleId="role-create-title" title="Crear nuevo rol" onClose={closeCreate}>
+          <input
+            ref={createInputRef}
+            value={createName}
+            onChange={e => setCreateName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreateRole()}
+            placeholder="Nombre del nuevo rol..."
+            aria-label="Nombre del nuevo rol"
+            className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-sm outline-none focus:border-revelio-blue dark:bg-revelio-dark-bg dark:text-revelio-dark-text mb-4"
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={closeCreate}
+              className="px-4 py-2 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-xs font-medium text-revelio-subtle dark:text-revelio-dark-subtle"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCreateRole}
+              disabled={!createName.trim() || allRoleNames.includes(createName.trim())}
+              className="px-4 py-2 rounded-lg bg-revelio-blue text-white text-xs font-semibold disabled:opacity-30"
+            >
+              Crear
+            </button>
+          </div>
+        </RoleModal>
+      )}
+
+      {/* ─── Rename role modal ─────────────────────────────────────────── */}
+      {editingRole && (
+        <RoleModal titleId="role-rename-title" title={`Renombrar rol "${editingRole}"`} onClose={closeRename}>
+          <input
+            ref={editInputRef}
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleRenameRole()}
+            aria-label="Nuevo nombre del rol"
+            className="w-full rounded-lg border border-revelio-border dark:border-revelio-dark-border px-3 py-2 text-sm outline-none focus:border-revelio-blue dark:bg-revelio-dark-bg dark:text-revelio-dark-text mb-4"
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={closeRename}
+              className="px-4 py-2 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-xs font-medium text-revelio-subtle dark:text-revelio-dark-subtle"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleRenameRole}
+              disabled={!editName.trim() || editName.trim() === editingRole}
+              className="px-4 py-2 rounded-lg bg-revelio-blue text-white text-xs font-semibold disabled:opacity-30"
+            >
+              Guardar
+            </button>
+          </div>
+        </RoleModal>
+      )}
+
+      {/* ─── Delete role confirm modal (safe-delete with name typing) ──── */}
+      {confirmDelete && (() => {
+        const targetMems = byRole(confirmDelete)
+        return (
+          <RoleModal titleId="role-delete-title" title={`Eliminar rol "${confirmDelete}"`} onClose={closeDelete}>
+            <p className="text-xs text-revelio-subtle dark:text-revelio-dark-subtle mb-2">
+              Se desasignará el rol de {targetMems.length} persona{targetMems.length !== 1 ? 's' : ''}.
+            </p>
+            <p className="text-xs font-semibold text-revelio-red mb-2">
+              Escribe "{confirmDelete}" para confirmar:
+            </p>
+            <input
+              ref={deleteInputRef}
+              value={deleteInput}
+              onChange={e => setDeleteInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && deleteInput === confirmDelete && handleDeleteRole()}
+              aria-label={`Confirmar nombre del rol a eliminar`}
+              placeholder={confirmDelete}
+              className="w-full rounded-lg border border-revelio-red/30 px-3 py-2 text-sm outline-none focus:border-revelio-red dark:bg-revelio-dark-bg dark:text-revelio-dark-text mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={closeDelete}
+                className="px-4 py-2 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-xs font-medium text-revelio-subtle dark:text-revelio-dark-subtle"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteRole}
+                disabled={deleteInput !== confirmDelete}
+                className="px-4 py-2 rounded-lg bg-revelio-red text-white text-xs font-semibold disabled:opacity-30"
+              >
+                Eliminar
+              </button>
+            </div>
+          </RoleModal>
+        )
+      })()}
     </div>
   )
 }
