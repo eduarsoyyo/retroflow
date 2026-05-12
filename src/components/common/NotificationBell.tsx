@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Bell, Clock, AlertTriangle, Target, ArrowUpRight, X } from 'lucide-react'
-import { supabase } from '@/data/supabase'
+import { fetchMemberById } from '@/data/team'
+import { fetchActiveRetros } from '@/data/retros'
+import { fetchAbsencesByMember, fetchAbsencesByStatus } from '@/data/absences'
+import { fetchTimeEntries } from '@/data/time-entries'
 
 interface Alert { id: string; type: 'overdue' | 'blocked' | 'escalated' | 'milestone' | 'approved' | 'rejected'; title: string; project: string; date?: string }
 
@@ -14,49 +17,55 @@ export function NotificationBell({ userId }: { userId?: string }) {
     if (!userId) return
     const today = new Date().toISOString().slice(0, 10)
 
-    supabase.from('team_members').select('rooms').eq('id', userId).single().then(({ data: me }) => {
-      if (!me?.rooms) { setLoading(false); return }
-      supabase.from('retros').select('sala, data').in('sala', me.rooms).eq('status', 'active').then(({ data: retros }) => {
-        const all: Alert[] = []
-        ;(retros || []).forEach((r: { sala: string; data: Record<string, unknown> }) => {
-          const acts = ((r.data?.actions || []) as Array<Record<string, unknown>>)
-          const risks = ((r.data?.risks || []) as Array<Record<string, unknown>>)
+    // Single fetchMemberById covers both rooms (for retros filter) and is_superuser (for SM approvals)
+    fetchMemberById(userId).then(me => {
+      const meRecord = me as Record<string, unknown> | null
+      const rooms = meRecord?.rooms as string[] | undefined
+      const isSuperuser = !!meRecord?.is_superuser
 
-          // Overdue items
-          acts.filter(a => a.date && (a.date as string) < today && a.status !== 'done' && a.status !== 'archived' && a.status !== 'discarded').forEach(a => {
-            all.push({ id: `ov-${a.id}`, type: 'overdue', title: a.text as string, project: r.sala, date: a.date as string })
+      if (!rooms || rooms.length === 0) {
+        setLoading(false)
+      } else {
+        fetchActiveRetros(rooms).then(retros => {
+          const all: Alert[] = []
+          retros.forEach(r => {
+            const acts = ((r.data?.actions || []) as Array<Record<string, unknown>>)
+            const risks = ((r.data?.risks || []) as Array<Record<string, unknown>>)
+
+            // Overdue items
+            acts.filter(a => a.date && (a.date as string) < today && a.status !== 'done' && a.status !== 'archived' && a.status !== 'discarded').forEach(a => {
+              all.push({ id: `ov-${a.id}`, type: 'overdue', title: a.text as string, project: r.sala, date: a.date as string })
+            })
+            // Blocked
+            acts.filter(a => a.status === 'blocked').forEach(a => {
+              all.push({ id: `bl-${a.id}`, type: 'blocked', title: a.text as string, project: r.sala })
+            })
+            // Upcoming milestones (7 days)
+            acts.filter(a => (a.type as string) === 'hito' && a.date && (a.date as string) >= today && daysBetween(today, a.date as string) <= 7 && a.status !== 'done').forEach(a => {
+              all.push({ id: `ms-${a.id}`, type: 'milestone', title: a.text as string, project: r.sala, date: a.date as string })
+            })
+            // Escalated risks
+            risks.filter(r2 => (r2.escalation as Record<string, unknown>)?.level && (r2.escalation as Record<string, unknown>)?.level !== 'equipo' && r2.status !== 'cerrado').forEach(r2 => {
+              all.push({ id: `esc-${r2.id}`, type: 'escalated', title: (r2.title || r2.text) as string, project: r.sala })
+            })
           })
-          // Blocked
-          acts.filter(a => a.status === 'blocked').forEach(a => {
-            all.push({ id: `bl-${a.id}`, type: 'blocked', title: a.text as string, project: r.sala })
-          })
-          // Upcoming milestones (7 days)
-          acts.filter(a => (a.type as string) === 'hito' && a.date && (a.date as string) >= today && daysBetween(today, a.date as string) <= 7 && a.status !== 'done').forEach(a => {
-            all.push({ id: `ms-${a.id}`, type: 'milestone', title: a.text as string, project: r.sala, date: a.date as string })
-          })
-          // Escalated risks
-          risks.filter(r2 => (r2.escalation as Record<string, unknown>)?.level && (r2.escalation as Record<string, unknown>)?.level !== 'equipo' && r2.status !== 'cerrado').forEach(r2 => {
-            all.push({ id: `esc-${r2.id}`, type: 'escalated', title: (r2.title || r2.text) as string, project: r.sala })
-          })
+          setAlerts(all); setLoading(false)
         })
-        setAlerts(all); setLoading(false)
-      })
-    })
+      }
 
-    // Load pending approvals for SM
-    supabase.from('team_members').select('id, is_superuser').eq('id', userId).single().then(({ data: me }) => {
-      if ((me as Record<string, unknown>)?.is_superuser) {
-        supabase.from('absence_requests').select('id, member_id, type, date_from, date_to, days').eq('status', 'pendiente').then(({ data: pending }) => {
-          if (pending && pending.length > 0) {
-            setAlerts(prev => [...prev, ...pending.map((p: Record<string, unknown>) => ({
-              id: `appr-${p.id}`, type: 'escalated' as const, title: `Ausencia pendiente de aprobar (${p.days}d)`, project: 'Aprobaciones', date: p.date_from as string
+      // Load pending approvals for SM
+      if (isSuperuser) {
+        fetchAbsencesByStatus('pendiente').then(pending => {
+          if (pending.length > 0) {
+            setAlerts(prev => [...prev, ...pending.map(p => ({
+              id: `appr-${p.id}`, type: 'escalated' as const, title: `Ausencia pendiente de aprobar (${p.days}d)`, project: 'Aprobaciones', date: p.date_from,
             }))])
           }
         })
-        supabase.from('time_entries').select('id, member_id, date, hours').eq('status', 'pending_approval').then(({ data: pending }) => {
-          if (pending && pending.length > 0) {
-            setAlerts(prev => [...prev, ...pending.map((p: Record<string, unknown>) => ({
-              id: `retro-${p.id}`, type: 'escalated' as const, title: `Fichaje retroactivo pendiente (${p.hours}h)`, project: 'Aprobaciones', date: p.date as string
+        fetchTimeEntries({ statuses: ['pending_approval'] }).then(pending => {
+          if (pending.length > 0) {
+            setAlerts(prev => [...prev, ...pending.map(p => ({
+              id: `retro-${p.id}`, type: 'escalated' as const, title: `Fichaje retroactivo pendiente (${p.hours}h)`, project: 'Aprobaciones', date: p.date,
             }))])
           }
         })
@@ -65,24 +74,27 @@ export function NotificationBell({ userId }: { userId?: string }) {
 
     // Load resolved notifications for me (my requests that were approved/rejected recently)
     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
-    supabase.from('absence_requests').select('id, type, date_from, date_to, days, status, reviewed_at').eq('member_id', userId).in('status', ['aprobada', 'rechazada']).gte('reviewed_at', weekAgo.toISOString()).then(({ data }) => {
-      if (data && data.length > 0) {
-        setAlerts(prev => [...prev, ...data.map((a: Record<string, unknown>) => ({
+    const weekAgoIso = weekAgo.toISOString()
+    fetchAbsencesByMember(userId).then(absList => {
+      const filtered = absList.filter(a =>
+        (a.status === 'aprobada' || a.status === 'rechazada') &&
+        (a.reviewed_at ?? '') >= weekAgoIso
+      )
+      if (filtered.length > 0) {
+        setAlerts(prev => [...prev, ...filtered.map(a => ({
           id: `res-${a.id}`, type: (a.status === 'aprobada' ? 'approved' : 'rejected') as 'approved' | 'rejected',
           title: `Tu ${a.type === 'vacaciones' ? 'vacaciones' : 'ausencia'} (${a.days}d) ha sido ${a.status}`,
-          project: 'Ausencias', date: a.reviewed_at as string
+          project: 'Ausencias', date: a.reviewed_at ?? undefined,
         }))])
       }
     })
-    supabase.from('time_entries').select('id, date, hours, status').eq('member_id', userId).in('status', ['approved', 'rejected']).then(({ data }) => {
-      // Only show recently resolved retro filings (that were pending)
-      if (data) {
-        const retro = data.filter((e: Record<string, unknown>) => e.status === 'rejected')
-        if (retro.length > 0) {
-          setAlerts(prev => [...prev, ...retro.map((e: Record<string, unknown>) => ({
-            id: `retro-res-${e.id}`, type: 'rejected' as const, title: `Fichaje retroactivo (${e.hours}h) rechazado`, project: 'Fichaje', date: e.date as string
-          }))])
-        }
+    fetchTimeEntries({ memberId: userId, statuses: ['approved', 'rejected'] }).then(entries => {
+      // Only show recently resolved retro filings (that were rejected)
+      const retro = entries.filter(e => e.status === 'rejected')
+      if (retro.length > 0) {
+        setAlerts(prev => [...prev, ...retro.map(e => ({
+          id: `retro-res-${e.id}`, type: 'rejected' as const, title: `Fichaje retroactivo (${e.hours}h) rechazado`, project: 'Fichaje', date: e.date,
+        }))])
       }
     })
   }, [userId])

@@ -30,11 +30,15 @@ export interface ActiveRetroLite {
  * Used by admin panels (e.g. ProjectsPanel) to compute per-project
  * counters (open actions, mitigated risks, ...) in a single query.
  */
-export async function fetchActiveRetros(): Promise<ActiveRetroLite[]> {
-  const { data, error } = await supabase
+export async function fetchActiveRetros(salas?: string[]): Promise<ActiveRetroLite[]> {
+  let query = supabase
     .from('retros')
     .select('sala, data')
     .eq('status', 'active')
+  if (salas && salas.length > 0) {
+    query = query.in('sala', salas)
+  }
+  const { data, error } = await query
   if (error) handleSupabaseError(error)
   return (data ?? []) as ActiveRetroLite[]
 }
