@@ -1,27 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Calendar, Plus, Edit, Trash2, Copy, ChevronLeft, ChevronRight, X, Sun, Clock } from 'lucide-react'
-import { supabase } from '@/data/supabase'
 import { soundCreate, soundDelete } from '@/lib/sounds'
+import {
+  fetchCalendarios,
+  createCalendario,
+  updateCalendario,
+  deleteCalendario,
+} from '@/data/calendarios'
+import { fetchTeamMembers } from '@/data/team'
+import type { Calendario, CalendarHoliday } from '@/types'
 
-interface Holiday { date: string; name: string }
-interface Calendario {
-  id: string; name: string; convenio_hours: number; weekly_hours_normal: number
-  daily_hours_lj: number; daily_hours_v: number; daily_hours_intensive: number
-  intensive_start: string; intensive_end: string; vacation_days: number
-  free_days: number; adjustment_days: number; adjustment_hours: number
-  holidays: Holiday[]
-}
 interface CalForm {
   name: string; convenio_hours: number; weekly_hours_normal: number
   daily_hours_lj: number; daily_hours_v: number; daily_hours_intensive: number
   intensive_start: string; intensive_end: string; vacation_days: number
   free_days: number; adjustment_days: number; adjustment_hours: number
-  holidays: Holiday[]
+  holidays: CalendarHoliday[]
 }
+
 const emptyForm: CalForm = { name: '', convenio_hours: 1764, weekly_hours_normal: 40, daily_hours_lj: 8.5, daily_hours_v: 6, daily_hours_intensive: 7, intensive_start: '06-15', intensive_end: '09-15', vacation_days: 22, free_days: 2, adjustment_days: 0, adjustment_hours: 0, holidays: [] }
 
 // Festivos nacionales España por defecto
-const DEFAULT_HOLIDAYS = (year: number): Holiday[] => [
+const DEFAULT_HOLIDAYS = (year: number): CalendarHoliday[] => [
   { date: `${year}-01-01`, name: 'Año Nuevo' },
   { date: `${year}-01-06`, name: 'Reyes' },
   { date: `${year}-03-28`, name: 'Viernes Santo' },
@@ -36,7 +36,7 @@ const DEFAULT_HOLIDAYS = (year: number): Holiday[] => [
 
 export function CalendarPanel() {
   const [calendarios, setCalendarios] = useState<Calendario[]>([])
-  const [members, setMembers] = useState<Array<{ id: string; name: string; avatar?: string; calendario_id?: string }>>([])
+  const [members, setMembers] = useState<Array<{ id: string; name: string; avatar?: string; calendario_id?: string | null }>>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [editCal, setEditCal] = useState<Calendario | null>(null)
@@ -50,46 +50,69 @@ export function CalendarPanel() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('calendarios').select('*').order('name'),
-      supabase.from('team_members').select('id, name, avatar, calendario_id').order('name'),
-    ]).then(([cR, mR]) => {
-      if (cR.data) setCalendarios(cR.data)
-      if (mR.data) setMembers(mR.data)
+      fetchCalendarios(),
+      fetchTeamMembers(),
+    ]).then(([cals, mems]) => {
+      setCalendarios(cals)
+      // Map team_members to the lightweight shape used here (id, name, avatar, calendario_id)
+      setMembers(mems.map(m => ({ id: m.id, name: m.name, avatar: m.avatar, calendario_id: m.calendario_id ?? null })))
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [])
 
   const openCreate = () => { setForm({ ...emptyForm, holidays: DEFAULT_HOLIDAYS(viewYear) }); setEditCal(null); setModal('create') }
   const openEdit = (c: Calendario) => {
-    setForm({ name: c.name, convenio_hours: c.convenio_hours, weekly_hours_normal: c.weekly_hours_normal, daily_hours_lj: c.daily_hours_lj, daily_hours_v: c.daily_hours_v, daily_hours_intensive: c.daily_hours_intensive, intensive_start: c.intensive_start, intensive_end: c.intensive_end, vacation_days: c.vacation_days, free_days: c.free_days, adjustment_days: c.adjustment_days, adjustment_hours: c.adjustment_hours, holidays: c.holidays || [] })
+    setForm({
+      name: c.name,
+      convenio_hours: c.convenio_hours ?? 1764,
+      weekly_hours_normal: c.weekly_hours_normal ?? 40,
+      daily_hours_lj: c.daily_hours_lj,
+      daily_hours_v: c.daily_hours_v,
+      daily_hours_intensive: c.daily_hours_intensive,
+      intensive_start: c.intensive_start ?? '',
+      intensive_end: c.intensive_end ?? '',
+      vacation_days: c.vacation_days ?? 22,
+      free_days: c.free_days ?? 0,
+      adjustment_days: c.adjustment_days ?? 0,
+      adjustment_hours: c.adjustment_hours ?? 0,
+      holidays: c.holidays || [],
+    })
     setEditCal(c); setModal('edit')
   }
 
   const handleSave = async () => {
     setSaving(true)
-    const payload = { ...form }
-    if (modal === 'create') {
-      const { data } = await supabase.from('calendarios').insert(payload).select().single()
-      if (data) { setCalendarios(prev => [...prev, data]); soundCreate() }
-    } else if (editCal) {
-      const { data } = await supabase.from('calendarios').update(payload).eq('id', editCal.id).select().single()
-      if (data) { setCalendarios(prev => prev.map(c => c.id === editCal.id ? data : c)); soundCreate() }
+    try {
+      const payload = { ...form }
+      if (modal === 'create') {
+        const created = await createCalendario(payload)
+        setCalendarios(prev => [...prev, created])
+        soundCreate()
+      } else if (editCal) {
+        const updated = await updateCalendario(editCal.id, payload)
+        setCalendarios(prev => prev.map(c => c.id === editCal.id ? updated : c))
+        soundCreate()
+      }
+      setModal(null)
+    } finally {
+      setSaving(false)
     }
-    setSaving(false); setModal(null)
   }
 
   const handleDelete = async () => {
     if (!deleteTarget || deleteConfirm !== deleteTarget.name) return
-    await supabase.from('calendarios').delete().eq('id', deleteTarget.id)
+    await deleteCalendario(deleteTarget.id)
     setCalendarios(prev => prev.filter(c => c.id !== deleteTarget.id))
     setDeleteTarget(null); setDeleteConfirm(''); soundDelete()
   }
 
   const handleClone = async (source: Calendario) => {
-    const payload = { ...source, name: `${source.name} (copia)` }
-    delete (payload as Record<string, unknown>).id
-    const { data } = await supabase.from('calendarios').insert(payload).select().single()
-    if (data) { setCalendarios(prev => [...prev, data]); soundCreate() }
+    const { id: _id, ...rest } = source
+    void _id
+    const payload = { ...rest, name: `${source.name} (copia)` }
+    const created = await createCalendario(payload)
+    setCalendarios(prev => [...prev, created])
+    soundCreate()
   }
 
   const addHoliday = () => {
@@ -124,7 +147,7 @@ export function CalendarPanel() {
             <span className="text-sm font-semibold text-revelio-text dark:text-revelio-dark-text w-12 text-center">{viewYear}</span>
             <button onClick={() => setViewYear(y => y + 1)} className="w-6 h-6 rounded border border-revelio-border dark:border-revelio-dark-border flex items-center justify-center hover:bg-revelio-bg dark:hover:bg-revelio-dark-border"><ChevronRight className="w-3 h-3" /></button>
           </div>
-          <button onClick={openCreate} className="px-3 py-1.5 rounded-lg bg-revelio-text text-white text-xs font-medium flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Nuevo</button>
+          <button onClick={openCreate} className="px-3 py-1.5 rounded-lg bg-revelio-blue text-white text-xs font-medium flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Nuevo</button>
         </div>
       </div>
 
@@ -144,10 +167,10 @@ export function CalendarPanel() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-[10px] mb-3">
-                <R l="Convenio" v={`${cal.convenio_hours}h/año`} /><R l="Semanal" v={`${cal.weekly_hours_normal}h`} />
+                <R l="Convenio" v={`${cal.convenio_hours ?? 0}h/año`} /><R l="Semanal" v={`${cal.weekly_hours_normal ?? 0}h`} />
                 <R l="L-J" v={`${cal.daily_hours_lj}h`} /><R l="Viernes" v={`${cal.daily_hours_v}h`} />
-                <R l="Intensiva" v={`${cal.daily_hours_intensive}h`} /><R l="Vacaciones" v={`${cal.vacation_days}d`} />
-                <R l="Libre disp." v={`${cal.free_days}d`} /><R l="Festivos {viewYear}" v={String(yh.length)} red />
+                <R l="Intensiva" v={`${cal.daily_hours_intensive}h`} /><R l="Vacaciones" v={`${cal.vacation_days ?? 0}d`} />
+                <R l="Libre disp." v={`${cal.free_days ?? 0}d`} /><R l={`Festivos ${viewYear}`} v={String(yh.length)} red />
               </div>
               {cal.intensive_start && <p className="text-[9px] text-revelio-orange flex items-center gap-0.5 mb-2"><Sun className="w-2.5 h-2.5" /> Intensiva: {cal.intensive_start} → {cal.intensive_end}</p>}
               {assigned.length > 0 && <div className="flex -space-x-1 mt-1">{assigned.slice(0, 6).map(m => <span key={m.id} className="w-5 h-5 rounded-full bg-revelio-blue/10 flex items-center justify-center text-[8px] border border-white" title={m.name}>{m.avatar || '·'}</span>)}{assigned.length > 6 && <span className="text-[8px] text-revelio-subtle ml-1">+{assigned.length - 6}</span>}</div>}
@@ -229,7 +252,7 @@ export function CalendarPanel() {
 
             <div className="flex gap-2 mt-5">
               <button onClick={() => setModal(null)} className="flex-1 py-2 rounded-lg border border-revelio-border dark:border-revelio-dark-border text-sm font-medium text-revelio-subtle">Cancelar</button>
-              <button onClick={handleSave} disabled={saving || !form.name.trim()} className="flex-[2] py-2 rounded-lg bg-revelio-text text-white text-sm font-medium disabled:opacity-40">{saving ? 'Guardando...' : modal === 'create' ? 'Crear' : 'Guardar'}</button>
+              <button onClick={handleSave} disabled={saving || !form.name.trim()} className="flex-[2] py-2 rounded-lg bg-revelio-blue text-white text-sm font-medium disabled:opacity-40">{saving ? 'Guardando...' : modal === 'create' ? 'Crear' : 'Guardar'}</button>
             </div>
           </div>
         </div>

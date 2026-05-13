@@ -185,6 +185,12 @@ export interface Calendario {
   intensive_end: string | null
   // ─── Optional finance / hours fields ───
   convenio_hours?: number | null
+  // ─── Optional fields used by admin CRUD (CalendarPanel) ───
+  weekly_hours_normal?: number | null
+  vacation_days?: number | null
+  free_days?: number | null
+  adjustment_days?: number | null
+  adjustment_hours?: number | null
 }
 
 export interface CalendarHoliday {
@@ -205,9 +211,9 @@ export interface AuthUser {
   rooms: string[]
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 // Finance / cost-tracking jsonb shapes — referenced from Member and Room
-// ═════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 
 /** Single salary entry on team_members.cost_rates (jsonb array). */
 export interface CostRateEntry {
@@ -258,9 +264,9 @@ export interface ServiceContractEntry {
   risk_pct: number
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 // Re-exports of jsonb-domain shapes from src/types/project.ts
-// ═════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
 //
 // These shapes live inside `retros.data` (jsonb). They are owned by
 // project.ts because that's where their semantics are documented in

@@ -49,3 +49,53 @@ export async function fetchCalendarioById(id: string): Promise<Calendario | null
   if (error) handleSupabaseError(error)
   return (data as Calendario | null) ?? null
 }
+
+// ─────────────────────────────────────────────────────────────
+// Mutations (CalendarPanel admin CRUD)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Payload accepted by create/update.
+ *
+ * Allows partial inputs so callers don't need to repeat full Calendario
+ * fields (e.g. when only `name` and `holidays` change on edit).
+ */
+export type CalendarioInput = Partial<Omit<Calendario, 'id'>>
+
+/**
+ * Create a new calendario. Returns the created row.
+ */
+export async function createCalendario(input: CalendarioInput): Promise<Calendario> {
+  const { data, error } = await supabase
+    .from('calendarios')
+    .insert(input)
+    .select()
+    .single()
+  if (error) handleSupabaseError(error)
+  return data as Calendario
+}
+
+/**
+ * Update an existing calendario by id. Returns the updated row.
+ */
+export async function updateCalendario(id: string, input: CalendarioInput): Promise<Calendario> {
+  const { data, error } = await supabase
+    .from('calendarios')
+    .update(input)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) handleSupabaseError(error)
+  return data as Calendario
+}
+
+/**
+ * Delete a calendario by id.
+ */
+export async function deleteCalendario(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('calendarios')
+    .delete()
+    .eq('id', id)
+  if (error) handleSupabaseError(error)
+}
